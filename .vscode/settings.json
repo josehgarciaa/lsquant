@@ -70,6 +70,7 @@
         "core": "cpp",
         "list": "cpp",
         "set": "cpp",
-        "__locale": "cpp"
+        "__locale": "cpp",
+        "__mutex_base": "cpp"
     }
 }
