@@ -12,7 +12,7 @@ lib.chebyshev_density.restype =  None
 
 
 # Create a sparse matrix and a complex vector
-Ham= sp.csr_matrix([[0.0+2.j, 0.0, 1.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.+2.j]], dtype=complex)
+Ham= sp.csr_matrix([[1.0+2.j, 1.0, 2.0], [0.0, np.pi, 0.787686], [541560, 1j*45 + .0, 1.+2.j]], dtype=np.complex128)
 cheb_vecs  = np.eye(3, dtype=complex).flatten()
 
 #Convert numpy array to c_types
@@ -31,23 +31,13 @@ c_cheb_vec0 = VectorStruct()
 c_cheb_vec0.dim= Ham.shape[0]
 c_cheb_vec0.data = make_ndpointer( cheb_vec0, dtype=np.complex128 )
 
+#Create the array that will storage the chebyshev array
 nmom=10
 cheb_moms=np.zeros(nmom, dtype=np.complex128)
 c_cheb_moms = VectorStruct()
 c_cheb_moms.dim= nmom
 c_cheb_moms.data = make_ndpointer( cheb_moms, dtype=np.complex128 ) 
 
-#lib.test_array(nmom, byref(csr))
-
 # Perform the matrix-vector multiplication
 lib.chebyshev_density(nmom,  byref(csr),  byref(csr),  byref(c_cheb_vec0), byref(c_cheb_moms))
-
-print(cheb_moms)
-# Convert the vector to a complex NumPy array
-#complex_array = np.ctypeslib.as_array(values).view(np.complex128)
-
-#print(complex_array)
-
-# Convert result back to numpy array
-#cheb_vecs = np.array([complex(r.real, r.imag) for r in c_cheb_vecs])
-#print(f"The result of the matrix-vector multiplication is: {cheb_vecs}")
+print(cheb_vec0, Ham.dot(cheb_vec0))

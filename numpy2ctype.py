@@ -8,12 +8,13 @@ from numpy.ctypeslib import as_ctypes, ndpointer
 def make_ndpointer(array, dtype):
     array = np.ascontiguousarray(array, dtype=dtype)
     return array.ctypes.data_as(ndpointer(dtype=dtype, ndim=1, flags='C_CONTIGUOUS, ALIGNED'))
+
 class CSRStruct(Structure):
     _fields_ = [
                 ("dim", c_int),
                 ("nnz", c_int),
-                ("pindices",ndpointer(dtype=np.int32, ndim=1, flags='C_CONTIGUOUS, ALIGNED')),
                 ("pindptr", ndpointer(dtype=np.int32, ndim=1, flags='C_CONTIGUOUS, ALIGNED')),
+                ("pindices",ndpointer(dtype=np.int32, ndim=1, flags='C_CONTIGUOUS, ALIGNED')),
                 ("data", ndpointer(dtype=np.complex128, ndim=1, flags='C_CONTIGUOUS, ALIGNED'))
                  ]
 class MatrixStruct(Structure):

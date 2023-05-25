@@ -71,6 +71,10 @@
         "list": "cpp",
         "set": "cpp",
         "__locale": "cpp",
-        "__mutex_base": "cpp"
+        "__mutex_base": "cpp",
+        "__bit_reference": "cpp",
+        "__functional_03": "cpp",
+        "__node_handle": "cpp",
+        "ios": "cpp"
     }
 }

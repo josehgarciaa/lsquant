@@ -29,6 +29,7 @@ extern "C"{
 EigSpMatrix 
 convert_to_eigen(const ctype_csr* x)
 {
+    printf("%d %d ", x->dim, x-> nnz);
     EigSpMatrix X(x->dim, x->dim);
     X.reserve(x->nnz);
     for (int i = 0; i < x->dim; ++i)
@@ -62,10 +63,15 @@ void  chebyshev_density( int num_moms,
     Tm0 = eigenT0;
     Tm1 = eigen_ham * eigenT0;
 
-    for (int m=0; m < num_moms; m++)
+    for (int m=0; m < 2; m++)
     {
+        printf("\n" );
+        for (int i = 0 ; i < dim; i++)
+            printf("%f %f \n", (Tm0.data())[i].real(), (Tm0.data())[i].imag() );
+
         cheb_moms->values[m] = dot(T0->values,Tm0.data(),dim);
-        Tm0 = 2*eigen_ham * Tm1 - Tm0;
+//        Tm0 = 2*eigen_ham * Tm1 - Tm0;
+        Tm1 = eigen_ham * Tm0;
         Tm0.swap(Tm1);
     }
 }};
