@@ -1,15 +1,13 @@
 import numpy as np
 import scipy.sparse as sp
-from ctypes import CDLL, c_int, c_double, POINTER, Structure, c_void_p,cast
-from numpy.ctypeslib import as_ctypes
-
-from numpy2ctype import copy_complex_nparray, copy_nparray, ComplexStruct, CSRStruct
+from ctypes import CDLL, c_int, c_double, POINTER, byref
+from numpy2ctype import make_ndpointer, CSRStruct, MatrixStruct, VectorStruct
 
 
 # Load the shared library into ctypes
 lib = CDLL("lib/eigen3_spalg.so")
 
-lib.chebyshev_density.argtypes = [ c_int, CSRStruct, CSRStruct, POINTER(ComplexStruct)]
+lib.chebyshev_density.argtypes = [ c_int, POINTER(CSRStruct), POINTER(CSRStruct), POINTER(VectorStruct)]
 lib.chebyshev_density.restype =  None
 
 
@@ -17,27 +15,38 @@ lib.chebyshev_density.restype =  None
 Ham= sp.csr_matrix([[0.0+2.j, 0.0, 1.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.+2.j]], dtype=complex)
 cheb_vecs  = np.eye(3, dtype=complex).flatten()
 
-
 #Convert numpy array to c_types
-nnz   = c_int(Ham.nnz)
-dim = c_int(Ham.shape[0])
-col_indices = copy_nparray(Ham.indices)
-row_ptr = copy_nparray(Ham.indptr)
-values = copy_complex_nparray(Ham.data)
-c_cheb_vecs = copy_complex_nparray(cheb_vecs)
-csr_tuple = CSRStruct(dim, nnz, col_indices, row_ptr, values )
+csr = CSRStruct();
+csr.dim = Ham.shape[0]
+csr.nnz = Ham.nnz
+csr.pindices= make_ndpointer(Ham.indices, dtype=np.int32)
+csr.pindptr = make_ndpointer(Ham.indptr, dtype=np.int32)
+csr.data    = make_ndpointer(Ham.data, dtype=np.complex128)
 
 #We create a structure for the number of moments
-nmom=100
-c_chebmoms = copy_complex_nparray(np.zeros(nmom, dtype=complex))
-c_nmom = c_int(nmom)
+cheb_vec0 = np.zeros(csr.dim).astype(np.complex128);
+cheb_vec0[0] = 1.5
+cheb_vec0[1] = 3
+c_cheb_vec0 = VectorStruct()
+c_cheb_vec0.dim= Ham.shape[0]
+c_cheb_vec0.data = make_ndpointer( cheb_vec0, dtype=np.complex128 )
+
+nmom=10
+cheb_moms=np.zeros(nmom, dtype=np.complex128)
+c_cheb_moms = VectorStruct()
+c_cheb_moms.dim= nmom
+c_cheb_moms.data = make_ndpointer( cheb_moms, dtype=np.complex128 ) 
+
+#lib.test_array(nmom, byref(csr))
+
 # Perform the matrix-vector multiplication
-lib.chebyshev_density(nmom, csr_tuple, csr_tuple, c_cheb_vecs, c_chebmoms)
+lib.chebyshev_density(nmom,  byref(csr),  byref(csr),  byref(c_cheb_vec0), byref(c_cheb_moms))
 
+print(cheb_moms)
 # Convert the vector to a complex NumPy array
-complex_array = np.ctypeslib.as_array(values).view(np.complex128)
+#complex_array = np.ctypeslib.as_array(values).view(np.complex128)
 
-print(complex_array)
+#print(complex_array)
 
 # Convert result back to numpy array
 #cheb_vecs = np.array([complex(r.real, r.imag) for r in c_cheb_vecs])
