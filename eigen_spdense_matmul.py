@@ -3,16 +3,14 @@ import scipy.sparse as sp
 from ctypes import CDLL, c_int, c_double, POINTER, byref
 from numpy2ctype import make_ndpointer, CSRStruct, MatrixStruct, VectorStruct
 
-
 # Load the shared library into ctypes
 lib = CDLL("lib/eigen3_spalg.so")
 
 lib.chebyshev_density.argtypes = [ c_int, POINTER(CSRStruct), POINTER(CSRStruct), POINTER(VectorStruct)]
 lib.chebyshev_density.restype =  None
 
-
 # Create a sparse matrix and a complex vector
-Ham= sp.csr_matrix([[1.0+2.j, 1.0, 2.0], [0.0, np.pi, 0.787686], [541560, 1j*45 + .0, 1.+2.j]], dtype=np.complex128)
+Ham= sp.csr_matrix([[1.0+np.sqrt(2)*1j, 1.0, 2.0], [0.0, np.pi, 0.787686], [.541560, 1j + .0, 1.+2.j]], dtype=np.complex128)
 cheb_vecs  = np.eye(3, dtype=complex).flatten()
 
 #Convert numpy array to c_types
@@ -40,4 +38,4 @@ c_cheb_moms.data = make_ndpointer( cheb_moms, dtype=np.complex128 )
 
 # Perform the matrix-vector multiplication
 lib.chebyshev_density(nmom,  byref(csr),  byref(csr),  byref(c_cheb_vec0), byref(c_cheb_moms))
-print(cheb_vec0, Ham.dot(cheb_vec0))
+print(cheb_moms)
