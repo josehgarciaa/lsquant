@@ -75,6 +75,14 @@
         "__bit_reference": "cpp",
         "__functional_03": "cpp",
         "__node_handle": "cpp",
-        "ios": "cpp"
+        "ios": "cpp",
+        "strstream": "cpp",
+        "cfenv": "cpp",
+        "typeindex": "cpp",
+        "variant": "cpp",
+        "__functional_base": "cpp",
+        "locale": "cpp",
+        "queue": "cpp",
+        "stack": "cpp"
     }
 }
