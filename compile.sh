@@ -5,4 +5,4 @@
 #eigen3
 #g++ -I/usr/include/eigen3 -I./lib/include/ -shared -o lib/eigen3_spalg.so lib/sparse/backends/eigen3/sparse_algebra.cpp -fPIC -lcblas
 
-g++ -I/usr/include/eigen3 -I./lib/include lib/src/neighbors.cpp -o neighbors
+g++ -I/usr/include/eigen3 -I./lib/include lib/src/neighbors.cpp -fPIC -O3 -o neighbors
