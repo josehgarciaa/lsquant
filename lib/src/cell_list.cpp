@@ -3,8 +3,6 @@
 const int spatial_dim =3;
 
 
-/////****************BEGIN: SET SITES FUNCTIONS********************///
-
 /**
  * @brief Sets the sites for neighbor searching and inserts them into the cell grid.
  * @param sites The collection of sites to be considered.
@@ -28,10 +26,6 @@ void CellList::SetSites(const std::vector<Site> & sites){ // Function verified
     return;
 }
 
-
-/////****************END: SET SITES FUNCTIONS********************///
-
-
 std::vector< std::vector<int> > CellList::GetNeighborList()
 {
     auto& supercell = this->GetSuperCell();
@@ -47,8 +41,6 @@ std::vector< std::vector<int> > CellList::GetNeighborList()
     //We reserve the neighbor list
     for( auto& site_neighbors: neighborStruct )
         site_neighbors.reserve(max_num_neighbors);
-
-
 
     for (const auto& cell: supercell.GetCells())
         for(const auto& site: cell)
@@ -129,10 +121,5 @@ void CellList::SetCellVectors(const LatticeCell lattice, const Real cutoff_radiu
         const auto& fracV = supercell_.FractionalCoords(cutoff_cube.GetVector(dir));      
         //std::cout<<fracV[0]<<" "<<fracV[1]<<" "<<fracV[2]<<std::endl;
     }
-    
-    
     //std::cout<<" FIN OF THE SPHEREW"<<std::endl;
-
-
-
 }
