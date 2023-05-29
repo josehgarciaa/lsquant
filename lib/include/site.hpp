@@ -74,16 +74,11 @@ inline const std::string& GetTag() const { return tag_; }
 inline void SetTag(std::string Id) { tag_ = Id; }
 
   /**
-   * @brief Sets the host cell of the site.
-   * @param host_cell The host cell.
+   * @brief Set the index of the site.
+   * @params The index.
    */
-inline void SetHostCell(const Triplet host_cell) { host_cell_ = host_cell; }
+inline void SetIndex(const size_t id) { id_=id; }
 
-  /**
-   * @brief Returns the host cell of the site.
-   * @return The host cell.
-   */
-inline const Triplet& GetHostCell() const { return host_cell_; }
 
   /**
    * @brief Returns the index of the site.

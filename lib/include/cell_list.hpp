@@ -13,7 +13,6 @@
 
 
 
-typedef std::unordered_map<std::string,std::vector<Site> > Map;
 
 /**
  * @brief Class for computing nearest neighbors using the CellList algorithm.
@@ -51,31 +50,13 @@ class CellList {
    * 
    * \note In this current implementation, the object sites will be modified.
    */
- void SetSites(std::vector<Site>& sites);
+ void SetSites(const std::vector<Site>& sites);
  
   /**
    * @brief Computes the neighbor list using the CellList algorithm.
    */ 
- void GetNeighborList();
+ std::vector< std::vector<int> > GetNeighborList();
  
-  /**
-   * @brief Computes the triplet identifying a host site and set at site.
-   * @param site The site for which to compute the cell triplet.
-   */
- void SetSiteHostCell(Site& site);
-  /**
-   * @brief Inserts a site into the cell grid.
-   * @param site The site to be inserted.
-   */
-void Insert(Site & site);
-
-  /**
-   * @brief Returns a reference to the cell grid.
-   * @return The cell grid.
-   */
-inline
-Map& GetCellMap(){ return cell_map_; };
-
   /**
    * @brief Returns the lattice vectors.
    * @return The lattice vectors.
@@ -84,11 +65,18 @@ inline
 const LatticeCell& GetLattice() const { return lattice_;}
 
   /**
-   * @brief Returns the cell vectors.
+   * @brief Returns the cell.
    * @return The cell vectors.
    */
 inline
 const LatticeCell& GetCell() const { return cell_;}
+
+  /**
+   * @brief Returns the supercell.
+   * @return The cell vectors.
+   */
+inline
+LatticeSupercell& GetSuperCell()  { return supercell_;}
 
   /**
    * @brief Returns the number of sites.
@@ -109,7 +97,7 @@ const Real& GetCutoffRadius() const { return cutoff_radius_;}
   Real cutoff_radius_;  ///< The cutoff radius for neighbor searching.
   LatticeCell lattice_; ///< The lattice vectors defining the periodic boundaries.
   LatticeCell cell_; ///< The cell vectors used for neighbor searching.
-  Map cell_map_; ///< The grid storing the sites in cells.
+  LatticeSupercell supercell_;
   size_t num_sites_ = 0; ///< The number of sites.
 };
 

@@ -1,13 +1,7 @@
 #include "cell_list.hpp"
 
 const int spatial_dim =3;
-//default tag ? 
-std::string TripletToString(const Triplet& arr) {
-    std::ostringstream oss;
-    for (size_t i = 0; i < 3; ++i) 
-        oss << arr[i]<<" ";
-    return oss.str();
-}
+
 
 /////****************BEGIN: SET SITES FUNCTIONS********************///
 
@@ -18,105 +12,67 @@ std::string TripletToString(const Triplet& arr) {
  * This function sets the sites for neighbor searching and inserts them into the cell grid. It iterates over
  * the given sites and inserts each site into the appropriate cell in the cell grid using the Insert function.
  */
-void CellList::SetSites(std::vector<Site> & sites){ // Function verified
+void CellList::SetSites(const std::vector<Site> & sites){ // Function verified
     // Guard condition-> Here
-    for(auto & site: sites)
-        Insert(site);
+
+    //Modifies the site and make it a cell site
+    auto& supercell = this->GetSuperCell();
+    num_sites_ = 0;
+    for(const auto & site: sites)
+    {
+        auto cell_site = site;
+        cell_site.SetIndex(num_sites_); 
+        supercell.InsertSite(cell_site);
+        num_sites_++;
+    }
     return;
 }
 
-/**
- * @brief Inserts a site into the cell grid.
- * @param site The site to be inserted.
- *
- * This function inserts a site into the cell grid. It increases the number of sites in the
- * cell list by one and determines the site's host cell using the CellTriplet function. The host cell information
- * is then assigned to the site. The site is inserted into the appropriate cell in the cell grid using a cell tag
- * derived from the host cell's triplet.
- */
-void CellList::Insert(Site & site){ // Function verified
-    num_sites_+=1; // increase number of sites
-    this->SetSiteHostCell(site); //Set the host cell index
-    const auto& cell_triplet = site.GetHostCell();
-
-    //Convert the triplet into a tag and use it as key
-    //in the map
-    const auto& cell_key = TripletToString(cell_triplet);
-    auto& cell_map = this->GetCellMap();
-    
-    // gf the cell does not exists 
-    // create an empty vector
-    if(cell_map.count(cell_key) == 0) 
-        cell_map[cell_key]= std::vector<Site>();
-        
-    //Add a site to the cell
-    cell_map[cell_key].emplace_back(site);
-    return;
-}
-
-/**
- * @brief Computes the cell triplet for a given site.
- * @param site The site for which to compute the cell triplet.
- * @return The cell triplet.
- *
- * This function computes the cell triplet for a given site. It extracts the position of the site using GetPosition,
- * and then calculates the fractional coordinates of the site using the GetCellVectors function. The fractional coordinates
- * are converted to the nearest integer values using floor, and the resulting values are stored in the cell triplet.
- * The computed cell triplet represents the cell in the cell grid to which the site belongs.
- */
-void CellList::SetSiteHostCell(Site& site) // Function verified
-{
-    const auto& cell = this->GetCell();  
-    const auto& fpos = cell.FractionalCoords( site.GetPosition() );
-
-    Triplet triplet;
-    for(auto i=0; i< spatial_dim; i++)
-        triplet[i] = (size_t) std::floor(fpos[i]);
-    site.SetHostCell(triplet);
-}
 
 /////****************END: SET SITES FUNCTIONS********************///
 
 
-void CellList::GetNeighborList()
+std::vector< std::vector<int> > CellList::GetNeighborList()
 {
+    auto& supercell = this->GetSuperCell();
     std::vector< std::vector<int> > neighborStruct( this->GetNumberOfSites() );
-    
-    const auto& cell_map = this->GetCellMap();
-    for (const auto& current_cell_pair  :cell_map ) 
-    {
-        //Iterate over all sites in each cell 
-        const auto current_cell = current_cell_pair.second;
-        for(const auto& current_site : current_cell)
-        {
-            const auto& current_hostcell = current_site.GetHostCell();
-            const auto& current_index = current_site.GetIndex();
 
+    //Here we determine the maximum number of neighbors
+    Integer max_num_neighbors = 0 ;
+    for (const auto& cell: supercell.GetCells())
+    if (max_num_neighbors < cell.size() )
+        max_num_neighbors = cell.size();
+    std::cout<<"max_num_neighbors"<<max_num_neighbors<<std::endl;        
+
+    //We reserve the neighbor list
+    for( auto& site_neighbors: neighborStruct )
+        site_neighbors.reserve(max_num_neighbors);
+
+
+
+    for (const auto& cell: supercell.GetCells())
+        for(const auto& site: cell)
+        {
+            //std::cout<<"Querying site"<<std::endl;
+            //std::cout<<"SiteID: "<<site.GetIndex()<<std::endl;
+            //std::cout<<"SitePos: "<<site.GetPosition()[0]<<" "<<site.GetPosition()[1]<<" "<<site.GetPosition()[2]<<std::endl;
+            //std::cout<<"SiteCell: "<<supercell.GetSiteHostCell(site)(0)<<" "<<supercell.GetSiteHostCell(site)(1)<<" "<<supercell.GetSiteHostCell(site)(2)<<std::endl;
+            //std::cout<<"CellIndex: "<<supercell.GetCellIndex(site)<<std::endl<<std::endl;
+
+            //Now we need to iterate over sites at neighboring cells
              //Iterate over all sites in neighbor cells
             for(int di0=-1; di0<=1; di0++ )
             for(int di1=-1; di1<=1; di1++ )
             for(int di2=-1; di2<=1; di2++ )
             {
-                //PERIODICITY SHOULD BE ENFORCED HERE
-                const auto neighbor_hostcell = current_hostcell+ Triplet(di0,di1,di2);
-                const auto neighboh_cellkey = TripletToString(neighbor_hostcell);
-
-                //We exclude all cells that does not exists.
-                //this is equivalent to assume open boundary conditions
-                if( cell_map.count(neighboh_cellkey) !=0 )
-                {
-                    const auto& neighbor_cell = cell_map.at(neighboh_cellkey);
-                    for (auto& neighbor_site : neighbor_cell ) 
-                    {
-                        const auto& neighbor_index = current_site.GetIndex();
-                        const auto& distance = current_site.Distance(neighbor_site);
-                        if ( distance < this->GetCutoffRadius() )
-                            neighborStruct[current_index].emplace_back(neighbor_index);
-                    }
-                }
+                Triplet neighbor_triplet = supercell.GetSiteHostCell(site) + Triplet(di0,di1,di2);
+                if( supercell.ValidCell(neighbor_triplet) )
+                for(const auto& neighbor_site: supercell.GetCell(neighbor_triplet))
+                    if ( site.Distance(neighbor_site) < this->GetCutoffRadius() )
+                        neighborStruct[site.GetIndex()].emplace_back(neighbor_site.GetIndex());                    
             }
-        }
-    }
+        }        
+return neighborStruct;
 }
 
 void CellList::SetCellVectors(const LatticeCell lattice, const Real cutoff_radius){
@@ -138,28 +94,45 @@ void CellList::SetCellVectors(const LatticeCell lattice, const Real cutoff_radiu
     const LatticeCell  cutoff_cube( {D,0.0,0.0},
                                     {0.0,D,0.0},
                                     {0.0,0.0,D});
-    Vector3D maxLen(0,0,0);
+    Vector3D minCellLen(0,0,0);
     //printf("Cutof Cube in lattice vectors\n");
     for( int dir=0; dir < 3; dir++)
     {
         const auto& fracV = lattice.FractionalCoords(cutoff_cube.GetVector(dir));        
-        //std::cout<<fracV[0]<<" "<<fracV[1]<<" "<<fracV[2]<<std::endl;
-
         //Get the maximum length 
         for( int comp=0; comp < 3; comp ++)
-        if( maxLen[comp]< std::abs(fracV[comp]) ) maxLen[comp]= std::abs(fracV[comp]);
+        if( minCellLen[comp]< std::abs(fracV[comp]) ) 
+            minCellLen[comp]= std::abs(fracV[comp]);
+    }
+    //Before, we determine the minimum cell length
+    //Nevertheless, we must pointed out, that we need an integer number
+    //of the lattice cell. Therefore, we will take the ceil of the
+    //inverse and the invert it again. That way, it will always 
+    //be an integer. The ceil of the inverse is nothing
+    //but the number of cells
+    Triplet numCells;
+    for( int dir=0; dir < 3; dir++)
+    {
+        numCells[dir] = (Integer)std::ceil(1/minCellLen[dir]);
+        minCellLen[dir] = 1.0/(Real)numCells[dir];
     }
     //std::cout<<std::endl;
 
     //We know use this length to construct an adequate cell
     for( int i=0; i < 3; i++)
-        cell_.SetVector(i, lattice.GetVector(i)*maxLen[i] );
+        cell_.SetVector(i, lattice.GetVector(i)*minCellLen[i] );
+    supercell_ = LatticeSupercell(numCells,cell_);
 
     //printf("Cutof Cube in cell vectors\nShould be larger than lattice less or equal to one\n");
     for( int dir=0; dir < 3; dir++)
     {
-        const auto& fracV = cell_.FractionalCoords(cutoff_cube.GetVector(dir));      
+        const auto& fracV = supercell_.FractionalCoords(cutoff_cube.GetVector(dir));      
         //std::cout<<fracV[0]<<" "<<fracV[1]<<" "<<fracV[2]<<std::endl;
     }
+    
+    
     //std::cout<<" FIN OF THE SPHEREW"<<std::endl;
+
+
+
 }
