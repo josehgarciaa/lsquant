@@ -18,7 +18,11 @@ lib.compute_neighbor_list.argtypes = [ctypes.c_int,
                                       array_1d_bool,
                                       array_1d_double,array_1d_double,array_1d_double,
                                       ctypes.c_int, array_1d_double,
-                                      ctypes.c_double]
+                                      ctypes.c_double,
+                                      ctypes.POINTER(ctypes.c_int)]
+
+lib.compute_neighbor_list.restype = ctypes.py_object
+
 # set return type
 lib.compute_neighbor_list.restype = None
 
@@ -31,7 +35,8 @@ positions = np.array([[1.1, 2.0,30], [3.0, 4.0,10]], dtype=float)
 cutoff_radius = 1.0
 neighbor_list = np.empty((2, 2), dtype=int)
 
-lib.compute_neighbor_list(3,pbc, lat0, lat1,lat2,len(positions), positions.flatten(), cutoff_radius )
+num_nei = ctypes.c_int(-1)
+X= lib.compute_neighbor_list(3,pbc, lat0, lat1,lat2,len(positions), positions.flatten(), cutoff_radius,ctypes.byref(num_nei) )
 
 
 """
