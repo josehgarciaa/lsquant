@@ -49,6 +49,11 @@ The `lsquant` Python package drives the core from Python:
 Calculations are JSON run files written with observable words; the command line tool and
 the MCP server are covered in \subpage run_files.
 
+## Building
+
+The CMake presets, the golden and native build profiles, the install and the kernel
+benchmark are covered in \subpage build.
+
 ## Testing
 
 Every numerical result is checked against committed golden masters; see

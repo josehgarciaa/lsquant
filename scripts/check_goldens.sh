@@ -138,7 +138,11 @@ usage() { echo "usage: scripts/check_goldens.sh <stage> [build_dir]"; exit 2; }
 [ $# -ge 1 ] || usage
 STAGE="$1"
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BUILD="$(cd "${2:-$REPO/build}" 2>/dev/null && pwd)" || { echo "ERROR: build dir '${2:-build}' not found"; exit 2; }
+# Default build directory: $REPO/build when it holds lsquant_core, else the "golden" preset
+# directory $REPO/build/golden (CMakePresets.json).
+DEFBUILD="$REPO/build"
+[ -d "$DEFBUILD/lsquant_core" ] || [ ! -d "$REPO/build/golden/lsquant_core" ] || DEFBUILD="$REPO/build/golden"
+BUILD="$(cd "${2:-$DEFBUILD}" 2>/dev/null && pwd)" || { echo "ERROR: build dir '${2:-$DEFBUILD}' not found"; exit 2; }
 GOLD="$REPO/goldens/stage0"
 export KPM_SEED=12345
 # timing lines use printf with decimals; a locale with a decimal comma breaks them
