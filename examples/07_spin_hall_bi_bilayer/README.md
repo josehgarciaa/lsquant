@@ -44,7 +44,7 @@ and the velocity / spin-current operators depend on the metric policy:
 
 ## Step 1: verify the SIESTA inputs
 
-The committed SIESTA run files live under [`siesta/`](siesta/) (`bi.fdf`,
+The committed SIESTA run files are in [`siesta/`](siesta/) (`bi.fdf`,
 `bi.TSHS`, `Bi.ion.xml`, `Bi.psml`) and are never modified at run time:
 
 ```bash

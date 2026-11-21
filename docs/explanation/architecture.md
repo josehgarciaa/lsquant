@@ -14,7 +14,7 @@ observables become traces is explained in [The kernel polynomial method](kpm.md)
 
 ## The C++ moment engine
 
-The engine lives in `lsquant/` and has three layers with one-way
+The engine is in `lsquant/` and has three layers with one-way
 dependencies:
 
 - `lsquant/core/algebra/` provides linear operators ($y \leftarrow a\,O x + b\,y$),

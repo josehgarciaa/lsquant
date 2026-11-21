@@ -30,7 +30,7 @@ $H(\mathbf{k})\,\mathbf{c}_n(\mathbf{k}) = \varepsilon_n(\mathbf{k})\,S(\mathbf{
 
 ## Step 1: verify the SIESTA inputs
 
-The committed SIESTA run files live under [`siesta/`](siesta/) (`pdse2.fdf`,
+The committed SIESTA run files are in [`siesta/`](siesta/) (`pdse2.fdf`,
 `pdse2.TSHS`, `Pd.ion.xml`, `Pd.psml`, `Se.ion.xml`, `Se.psml`) and are never
 modified at run time:
 

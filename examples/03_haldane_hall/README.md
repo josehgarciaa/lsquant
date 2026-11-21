@@ -17,7 +17,7 @@ gap.
 
 ## The physics
 
-The Haldane model lives on a honeycomb lattice with a real nearest-neighbour
+The Haldane model is defined on a honeycomb lattice with a real nearest-neighbour
 hopping $t_1$, a complex next-nearest-neighbour hopping $t_2 e^{i\phi}$ that
 carries a staggered flux, and an optional sublattice mass $M$:
 
