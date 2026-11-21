@@ -15,6 +15,12 @@ rsync -a --exclude 'CMakeLists.txt' --exclude 'Doxyfile.in' --exclude 'main.cpp'
 # Examples: pages, figures and the small input files they link to.
 rsync -a --exclude '*.TSHS' --exclude '*.psml' --exclude '*.ion.xml' \
       --exclude '__pycache__' "$ROOT/examples/" "$SRC/examples/"
+# Figures that examples/.gitignore keeps out of the example folders (run
+# outputs) but the site shows: docs-site/figures/<example>__<file>.png.
+for f in "$ROOT"/docs-site/figures/*__*.png; do
+  [ -e "$f" ] || continue
+  b=$(basename "$f"); cp "$f" "$SRC/examples/${b%%__*}/${b#*__}"
+done
 # Links to the repository README point to the quickstart page on the site.
 grep -rlE "\]\((\.\./)+README\.md" "$SRC/docs" "$SRC/examples" --include=*.md 2>/dev/null \
   | xargs -r sed -i -E "s#\]\(((\.\./)+)README\.md#](\1quickstart.md#g" || true
