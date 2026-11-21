@@ -54,8 +54,13 @@ if(LSQUANT_WITH_CUDA)
     find_package(CUDAToolkit REQUIRED)
     target_compile_definitions(lsquant_core PUBLIC LSQUANT_WITH_CUDA=1)
     target_sources(lsquant_core PRIVATE core/algebra/atom_block_cuda.cu)
+    # GPU compute capabilities the CUDA kernel is compiled for, as a CMake list:
+    # 90 = Hopper (H100, H200), 86 = RTX A6000, 80 = A100; "native" picks the
+    # GPU of the build machine. The default stays 90, the tested target.
+    set(LSQUANT_CUDA_ARCHITECTURES "90" CACHE STRING
+        "CUDA compute capabilities of the atom-block kernel (e.g. 90, 86, 80;86;90 or native)")
     set_target_properties(lsquant_core PROPERTIES
-        CUDA_ARCHITECTURES "90"
+        CUDA_ARCHITECTURES "${LSQUANT_CUDA_ARCHITECTURES}"
         CUDA_STANDARD 17
         CUDA_STANDARD_REQUIRED ON
         CUDA_POSITION_INDEPENDENT_CODE ON)

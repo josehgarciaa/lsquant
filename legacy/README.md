@@ -27,7 +27,7 @@ lines are its only build reference.
 
 Eighteen drivers: fifteen orphaned/unported single-purpose drivers, plus the three
 standalone non-orthogonal drivers (`*-nonOrth`, `kpm-nonOrth-precision-test`) kept as
-the non-orthogonal comparison corpus. The core non-orthogonal logic itself stays in
-the library (`chebyshev_moments`, `chebyshev_solver`, `metric_policy.hpp`), where it
-is an intentional throwing placeholder with the working implementation preserved at
-`5cc0924`.
+the non-orthogonal comparison corpus. In the legacy library
+(`chebyshev_moments`, `chebyshev_solver`, `metric_policy.hpp`) the non-orthogonal path
+is an intentional throwing placeholder. The new core implements it; see
+`docs/explanation/nonorthogonal-bases.md`.
