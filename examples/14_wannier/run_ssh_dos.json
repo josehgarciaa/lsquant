@@ -1,0 +1,34 @@
+{
+  "model": {
+    "kind": "wannier",
+    "dir": "examples/14_wannier/ssh",
+    "seed": "ssh"
+  },
+  "basis": {
+    "name": "bloch",
+    "supercell": [256, 1, 1]
+  },
+  "metric": {
+    "policy": "orthogonal"
+  },
+  "word": "Tr[delta(E-H)]",
+  "words": [
+    "Tr[delta(E-H)]",
+    "Tr[VX delta(E-H) VX delta(E-H)]"
+  ],
+  "expansion": {
+    "moments": 256,
+    "window": "eigen",
+    "trace": "exact"
+  },
+  "reconstruction": {
+    "kernel": "jackson",
+    "broadening_meV": 20.0,
+    "formulas": ["dos", "greenwood"]
+  },
+  "output": {
+    "dir": "out/ssh_dos",
+    "legacy_layout": true,
+    "write_chebmom": true
+  }
+}

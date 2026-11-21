@@ -85,11 +85,11 @@ Panel (a) plots `dos.dat` around $E_F = 0$. Panel (b) plots the KPM Kubo–Basti
 curve `shc.dat` alongside the exact eigenbasis oracle from `exact_shc.json`, and
 panel (c) shows the residual $\sigma^z_{xy,\mathrm{KPM}} - \sigma^z_{xy,\mathrm{oracle}}$.
 On a `24x24x1` mesh with the `covariant` velocity and the `lowdin` metric,
-the exact diagonalisation of the quick run (`exact_shc.json`, Gaussian of 20 meV)
-gives $\sigma^z_{xy}(E_F = 0) = 1.144\ e^2/h$. With the states restricted to a
-window of $\pm 5$ eV around $E_F$ (projection `shift`) and a Gaussian of 1 meV, the
-exact diagonalisation gives $1.0798\ e^2/h$, and the exact projected KPM sum at
-$M = 4096$ gives $1.0801\ e^2/h$.
+the exact diagonalisation of the quick run (`exact_shc.json`, Gaussian of
+20 meV) gives $\sigma^z_{xy}(E_F = 0) = 1.144\ e^2/h$. With the states
+restricted to a window of ±5 eV around $E_F$ (projection `shift`) and a
+Gaussian of 1 meV, the exact diagonalisation gives $1.0798\ e^2/h$, and the
+exact projected KPM sum at $M = 4096$ gives $1.0801\ e^2/h$.
 The converged KPM value of the production setting at $E_F = 0$ is still
 pending: a difference from the reference is under study.
 

@@ -1,0 +1,34 @@
+{
+  "model": {
+    "kind": "wannier",
+    "dir": "examples/10_bases_compare/graphene",
+    "seed": "graphene"
+  },
+  "basis": {
+    "name": "real",
+    "supercell": [16, 16, 1]
+  },
+  "metric": {
+    "policy": "orthogonal"
+  },
+  "word": "Tr[delta(E-H)]",
+  "words": [
+    "Tr[delta(E-H)]",
+    "Tr[VX delta(E-H) VX delta(E-H)]"
+  ],
+  "expansion": {
+    "moments": 128,
+    "window": [-9.0, 9.0],
+    "trace": "exact"
+  },
+  "reconstruction": {
+    "kernel": "jackson",
+    "broadening_meV": 150.0,
+    "formulas": ["dos", "greenwood"]
+  },
+  "output": {
+    "dir": "out/bases_real",
+    "legacy_layout": true,
+    "write_chebmom": true
+  }
+}
