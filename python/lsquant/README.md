@@ -20,6 +20,8 @@ surface.
   - `EigenBasis(model, supercell=(1, 1, 1))`
   - `BlochMetricBasis(model, supercell, *, route="lowdin", applier="exact", velocity_mode="covariant", ...)`
   - `EigenMetricBasis(model, supercell, *, velocity_mode="covariant")`
+  - `DisorderedBlochMetricBasis` and `RealSpaceMetricBasis`, the disordered SIESTA layouts, take `disorder_kind="scalar"` (`"scalar"`, `"magnetic"` or `"independent"`). A model that defines `physical_spin` accepts `"independent"` only.
+  - `spinor_disorder_values(dimension, width, seed, kind="scalar")`: the disorder values of an interleaved spinor basis.
   - `make_basis(basis_name, model, supercell=(1, 1, 1), ...)`
 - **Models** (`lsquant.models`):
   - `load_wannier_model(directory, seed)` — reads Wannier90 `<seed>_hr.dat`, `.uc`, and `.xyz`.
@@ -78,13 +80,13 @@ loaded.
 | `model.params` | `dict` | `{}` | Generator or SIESTA model parameters (e.g. `velocity_mode`: `"bare"` \| `"berry_connection"` \| `"covariant"`, `oracle`: `bool`). |
 | `basis.name` | `"real"` \| `"bloch"` \| `"eigen"` | `"real"` | Representation basis. |
 | `basis.supercell` | `[N1, N2, N3]` | `[1, 1, 1]` | Supercell or $k$-mesh dimensions. |
-| `basis.disorder` | `{"W": float, "seed": int}` | `{"W": 0.0, "seed": 7}` | Real-space Anderson box disorder parameters. |
+| `basis.disorder` | `{"W": float, "seed": int, "kind": str}` | `{"W": 0.0, "seed": 7, "kind": "scalar"}` | Real-space Anderson box disorder parameters; `kind` is `"scalar"`, `"magnetic"` or `"independent"` (the last two for SIESTA models only). |
 | `metric.policy` | `"orthogonal"` \| `"nonorthogonal"` | `"orthogonal"` | Basis overlap policy. |
 | `metric.route` | `"lowdin"` \| `"generalised"` | `"lowdin"` | Non-orthogonal evaluation route ($S^{-1/2} H S^{-1/2}$ vs. $S^{-1} H$). |
 | `metric.applier` | `"exact"` \| `"chebyshev"` \| `"ischo"` | `"exact"` | Overlap inverse / inverse-square-root applier. |
 | `metric.order` | `int` | `60` | Chebyshev polynomial order for overlap appliers. |
 | `metric.coeff_tol` | `float` | `1e-12` | Chebyshev coefficient truncation threshold for overlap appliers. |
-| `metric.tol` | `float` | `1e-13` | PCG solver tolerance for `"ischo"`. |
+| `metric.tol` | `float` | `1e-13` | PCG tolerance for `"ischo"`. |
 | `metric.max_iter` | `int` | `200` | Maximum PCG iterations for `"ischo"`. |
 | `metric.max_dim` | `int` | `4096` | Maximum dense matrix dimension for `"exact"` overlap appliers. |
 | `projection` | `dict` \| `null` | `null` | Spectral window projection (`{"kind": "hard" \| "shift" \| "orthogonal", "window": [emin, emax], ...}`). |
@@ -94,13 +96,13 @@ loaded.
 | `expansion.window` | `"gershgorin"` \| `"eigen"` \| `[lo, hi]` | `"gershgorin"` (`real`), `"eigen"` (`bloch`, `eigen`) | Spectral window mode or explicit `[lo, hi]` bounds in eV. |
 | `expansion.trace` | `"exact"` \| `"random"` | `"exact"` | Trace evaluation mode. |
 | `expansion.states` | `int` \| `null` | `null` | Number of trace states (`dim` for `exact`, `1` for `random` when omitted). |
-| `expansion.seed` | `int` | `12345` | Random-phase state generator seed (`KPM_SEED`). |
+| `expansion.seed` | `int` | `12345` | Random-phase state generator seed. |
 | `expansion.batch` | `int` \| `null` | `moments` | Engine vector batch size. |
 | `time.steps` | `int` | — | Number of time steps (`> 1`) for time-dependent words. |
 | `time.tmax` | `float` \| `null` | `20.0` | Maximum evolution time in fs. |
 | `time.dt` | `float` \| `null` | `null` | Explicit time step in fs as an alternative to `tmax = dt * (steps - 1)`. |
 | `time.bessel` | `"scipy"` \| `"legacy"` | `"scipy"` | Bessel coefficient backend (`"legacy"` uses GSL values for legacy byte identity). |
-| `reconstruction.kernel` | `"jackson"` \| `"lorentz"` \| `"none"` | `"jackson"` | Chebyshev damping kernel. |
+| `reconstruction.kernel` | `"jackson"` | `"jackson"` | Chebyshev damping kernel; only Jackson is implemented. |
 | `reconstruction.broadening_meV` | `float` \| `null` | `null` | Target broadening in meV. |
 | `reconstruction.fermi_energies` | `list[float]` | `[]` | Fermi energies in eV for time-correlation reconstruction. |
 | `reconstruction.formulas` | `list[str]` \| `null` | shape default | Reconstruction formulas (`dos`, `greenwood`, `bastin`, `sea`, `surf`, `greenwood_fft`, `bastin_fft`, `shc`, `time_correlation`, `row_m0`). |
@@ -110,10 +112,10 @@ loaded.
 | `reconstruction.per_site_dos` | `bool` | `false` | Also write standalone per-site `DOS_reconstructed.dat`. |
 | `reconstruction.targets` | `list[dict]` | `[]` | Additional `(formulas, broadening_meV, subdir, also_top_dir)` reconstruction targets from the same moments. |
 | `output.dir` | path | `"."` | Output directory (always receives `run.resolved.json`). |
-| `output.legacy_names` | `bool` | `true` | Use legacy file naming conventions when writing `.chebmom*` and `.dat` files. |
+| `output.legacy_names` | `bool` | `true` | `true`: write each curve as a legacy-named `.dat` file; `false`: write curves to `curves.json` (`csr`, `wannier`). Moment file names never change. |
 | `output.legacy_layout` | `bool` | `true` | Write `.chebmom1D`/`.chebmom2D`/`.chebmomTD` text files. |
 | `output.write_chebmom` | `bool` | `false` | Also write the unified `.chebmom` file. |
-| `output.write_basis_json` | `bool` | `false` | Write `<stem>.basis.json` provenance metadata. |
+| `output.write_basis_json` | `bool` | `true` for `wannier`, `false` otherwise | Write `<stem>.basis.json` provenance metadata. |
 | `output.capture_tutorial` | `bool` | `false` | Copy outputs into `captured/NNNN_*` for tutorial golden verification. |
 
 ### Generator catalogue (`model.kind = "generator"`)
@@ -152,8 +154,7 @@ All file operations are restricted to `LSQUANT_MCP_ROOT` (defaults to the reposi
       "env": {
         "PYTHONPATH": "/path/to/lsquant/build/golden/lsquant_core:/path/to/lsquant/python",
         "LSQUANT_MCP_ROOT": "/path/to/lsquant",
-        "OMP_NUM_THREADS": "16",
-        "KPM_SEED": "12345"
+        "OMP_NUM_THREADS": "16"
       }
     }
   }
