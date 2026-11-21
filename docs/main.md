@@ -31,6 +31,11 @@ how to run it.
 The new C++ core computes every KPM quantity by running a small instruction list (a
 *plan*) over trace vectors; see \subpage core_engine.
 
+## Python layer
+
+The `lsquant` Python package drives the core from Python and reconstructs the density of
+states; see \subpage python_layer.
+
 ## Testing
 
 Every numerical result is checked against committed golden masters; see
