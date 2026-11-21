@@ -143,7 +143,7 @@ def main(argv: list[str] | None = None) -> int:
 
     mid.axvline(0.0, color="0.6", ls=":", lw=0.8)
     mid.axhline(0.0, color="0.7", lw=0.6, zorder=0)
-    mid.set_ylabel(r"$\sigma^z_{xy}(E_F)$ ($e/4\pi$)")
+    mid.set_ylabel(r"$\sigma^z_{xy}(E_F)$ ($e^2/h$, Pauli $\sigma_z$)")
     prl.panel(mid, "(b)")
     mid.legend(loc="upper right")
 
@@ -151,7 +151,7 @@ def main(argv: list[str] | None = None) -> int:
     bot.axhline(0.0, color="0.7", lw=0.6, zorder=0)
     bot.set_xlim(args.emin, args.emax)
     bot.set_xlabel(r"Fermi energy $E_F$ (eV)")
-    bot.set_ylabel(r"residual ($e/4\pi$)")
+    bot.set_ylabel(r"residual ($e^2/h$)")
     prl.panel(bot, "(c)")
     if os.path.isfile(oracle_path):
         bot.legend(loc="upper right")
