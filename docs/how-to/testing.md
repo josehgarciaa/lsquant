@@ -12,13 +12,6 @@ developed. Each stage checks one part of the code, from the C++ moment
 engine (stage 1) to the run files, the command line and the MCP server
 (stage 7).
 
-> **Note.** On every preset build, stage 4 ends with `GATE FAIL`, even when
-> every number is right. Two checks of the C++ source report `FOUND` whatever
-> the numbers are. Judge your build by the per-file lines instead: if the only
-> failures are the two `GREP … FOUND` lines, the numerical results are
-> correct. For the cause, see the known limitations under
-> [Read the result](#read-the-result).
-
 [Testing: golden masters and the regression gate](../testing.md) explains what
 the golden files contain and the rules of the tolerance mode. It also shows how
 to read a `DIFFERS` line and how to compare two files by hand with
@@ -104,14 +97,20 @@ deletes it when it ends. It never writes into `goldens/`.
 ## Read the result
 
 The gate prints one line per compared file, then a summary. This is the end
-of `GOLDEN_TOL=1 scripts/check_goldens.sh 4` on a `golden` build on a node
-with gcc 9.4. The known limitations below explain why it fails:
+of `scripts/check_goldens.sh 4` on a `golden` build with the reference
+toolchain (g++ 11.4, Ubuntu 22.04):
 
 ```text
-== 71 files compared; failures: 8
-== tolerance mode (GOLDEN_TOL=1): 49 byte-identical, 16 tolerance-PASS (compare() and index.tsv rows)
-GATE FAIL (stage 4)
+GREP      grep -rn "basis\|std::cout\|getenv" lsquant/core: empty
+GREP      grep -rn "delta\|DOS\|Kubo\|basis\|std::cout\|getenv" lsquant/core lsquant/io, code lines: empty
+GREP      grep -rn "compat/" lsquant/core lsquant/io: empty
+GREP      grep -rnwE "time|velocity|spin|projector|bessel|gsl" lsquant/core lsquant/io, code lines: empty
+== 71 files compared; failures: 0
+GATE PASS (stage 4)
 ```
+
+On the same build, stage 0 gives `12 files compared; failures: 0` and stage 7
+passes with every file identical.
 
 Each line starts with one of these words:
 
@@ -120,7 +119,7 @@ Each line starts with one of these words:
 | `IDENTICAL` | The file is byte-identical to its golden file. |
 | `TOLPASS` | Only with `GOLDEN_TOL=1`: the file differs, but within the tolerance. It counts as a pass. |
 | `DIFFERS` | The file differs beyond the tolerance, or was not produced. The next lines locate the difference. |
-| `GREP` | A check on the C++ source. `FOUND` counts as a failure. |
+| `GREP` | A check on the C++ source. `empty` is a pass; `FOUND` counts as a failure. |
 
 The exit code of the script tells you the verdict:
 
@@ -133,19 +132,17 @@ The exit code of the script tells you the verdict:
 To read a `DIFFERS` line, see
 [Testing: golden masters and the regression gate](../testing.md).
 
-> **Known limitation: stages 1 to 4 and 7 end in `GATE FAIL` on source
-> greps.** The `GREP` lines for `getenv` report `FOUND`, because the C++
-> engine reads three environment variables
-> (`lsquant/core/chebyshev/moment_engine.cpp:1258`, `1273`, `1473`;
-> `scripts/check_goldens.sh:389`, `:420–430`). The stages `7runs`, `5only`
-> and `6only` skip the greps.
+Stage `0` reruns the earlier drivers, the `inline_*` programs built from
+`src/`, and compares them with the golden files. Every preset build also
+builds these drivers, because the top-level `CMakeLists.txt` always adds `src/`
+(`CMakeLists.txt:143`). Run the stage on the preset build directory:
 
-> **Known limitation: stage 0 does not run on a preset build.** It stops with
-> `legacy driver … missing`, because it needs programs of the earlier code
-> that the presets do not build (`scripts/check_goldens.sh:327–331`). Run
-> stage 7 instead, which builds them itself in a temporary worktree,
-> `/tmp/legacy-opus7` by default; set `S7_LEGACY_WT` to move it. Stage 7
-> deletes that directory first (`scripts/check_goldens.sh:1506`).
+```bash
+scripts/check_goldens.sh 0 build/golden
+```
+
+If a driver is missing, the stage stops with `legacy driver … missing`
+(`scripts/check_goldens.sh:330`).
 
 On a machine other than the one where the golden files were written, a few
 `DIFFERS` can remain even with `GOLDEN_TOL=1`. The tolerance, one unit in the
@@ -182,7 +179,6 @@ standard locations, set `EIGEN_DIR` before you run the fetch script.
 | `S7_SET` | 7, `7runs` | `all` (default), `quick`, or `list` with the names in `S7_LIST`. |
 | `S7_THREADS` | 7, `7runs` | Thread counts of the run files (default `16 1`). |
 | `S7_KEEP=<dir>` | 7, `7runs` | Keep the outputs of the run files in `<dir>`. |
-| `S7_LEGACY_WT` | 7 | Directory of the temporary worktree for the earlier code (default `/tmp/legacy-opus7`). The gate deletes this directory before it starts, so point it to a path that does not exist. |
 | `S6_THREADS` | 6 | Thread count of the stage-6 runs (default 16). |
 | `S6_KEEP=<dir>`, `S5_KEEP=<dir>` | 6, 5 | Keep the outputs of these stages. |
 
