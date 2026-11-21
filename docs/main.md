@@ -40,6 +40,8 @@ Time evolution (mean-square displacement, projected operators, time correlations
 covered in \subpage time_evolution.
 The real-space, Bloch and eigen bases built from one Wannier model are covered in
 \subpage bases.
+Non-orthogonal bases (an overlap matrix S, the Löwdin and generalised routes, the overlap
+appliers) are covered in \subpage nonorthogonal.
 
 ## Testing
 
