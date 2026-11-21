@@ -14,7 +14,8 @@ Every curve is compared with an exact calculation on the same k-point mesh.
 ## The model
 
 We use the Kane–Mele model of a honeycomb crystal, with the bond length
-$a = 1$ Å and two spin-degenerate $p_z$-like orbitals per cell:
+$a = 1$ Å and two $p_z$-like orbitals per cell, each with two spin states
+(four states per cell):
 
 $$
 H = -t\sum_{\langle ij\rangle} c_i^\dagger c_j
@@ -68,8 +69,13 @@ five words in one call, and every other key of the run file stays the same:
 
 The number of moments sets the energy resolution, like a smearing: with 512
 moments on the window of half-width 4 eV the resolution is about
-$\pi \cdot 4\ \mathrm{eV}/512 \approx 25$ meV. Every curve is built with a
-20 meV broadening. The trace is exact, so the curves carry no random-vector
+$\pi \cdot 4\ \mathrm{eV}/512 \approx 25$ meV. We ask for a 20 meV broadening.
+The reconstruction keeps $\lceil \pi W/(2\eta) \rceil$ moments for a window of
+width $W = 8$ eV and a broadening $\eta$, which would be 628 moments here. The run
+has 512, so all 512 are used and the curves keep the resolution of 512 moments,
+about 25 meV, rather than 20 meV.
+<!-- source: python/lsquant/reconstruct.py dos_curve (eta = 2 b / W, M_eff = min(ceil(pi/eta), M)) and _truncate_and_damp_2d (same rule per axis) -->
+The trace is exact, so the curves carry no random-vector
 noise. The supercell size sets the finite-size error, like a k-mesh.
 
 From the repository root we generate the model, run the five words, build the
@@ -96,7 +102,7 @@ $S_z = (\hbar/2)\sigma_z$ report half this value.
 > therefore leave `shc` out of the run file, give `num_cells` and `cell_area`,
 > and call `python -m lsquant reconstruct --formula shc` on the moment file, as
 > above. SIESTA models do not need the second step.
-<!-- source: docs/reference/observable-words.md and docs/explanation (materials) known limitation; python/lsquant/runfile.py reconstruct_target reads num_cells/cell_area from run.resolved.json -->
+<!-- source: docs/explanation/kubo-formulas.md, known limitation "shc in csr and wannier runs"; python/lsquant/runfile.py:1714, 2239, 2318 (the three run paths call the formula without num_cells and cell_area); runfile.py:2431-2440 (reconstruct reads num_cells and cell_area from run.resolved.json) -->
 
 ## The result
 
@@ -125,28 +131,33 @@ following comparison at $E_F = 0$ and over the range −3.5 to 3.5 eV:
 
 The two Hall curves agree with the exact result over the whole spectrum. In the
 gap, $\sigma_{xy}$ vanishes and $\sigma^z_{xy}$ forms a plateau at
-−2.02 $e^2/h$. Without the Rashba term the plateau would sit at exactly
+−2.02 $e^2/h$. Without the Rashba term the plateau would be exactly
 $-2\,e^2/h$; the spin mixing shifts it by 1%. In the bands the exchange field
 gives an anomalous Hall conductivity that reaches −0.8 $e^2/h$ near +1 eV, and it
 splits the two spins in $\rho_z(E)$.
 
 The density of states integrates to 4.000 states per cell in both calculations,
 one per orbital. The spin density of states integrates to zero in both. The peak
-heights of $\rho$, $\rho_z$ and $\sigma_{xx}$ differ because the KPM Jackson
-kernel and the Gaussian of the exact calculation have different shapes. A
+heights of $\rho$, $\rho_z$ and $\sigma_{xx}$ differ for two reasons: the KPM
+curves have the resolution of 512 moments, about 25 meV, against the 20 meV of
+the exact calculation, and the Jackson kernel and the Gaussian have different
+shapes. A
 $16 \times 16$ mesh has sharp peaks, and the shape difference shows most there.
 The clean $\sigma_{xx}$ depends on the square of the broadened delta function and
 grows as the broadening decreases. Its integral over the range is 297 $e^2/h\cdot$eV
-in KPM and 313 $e^2/h\cdot$eV in the exact calculation.
+in KPM. The exact calculation gives 313 $e^2/h\cdot$eV with a 20 meV Gaussian
+and 251 $e^2/h\cdot$eV with a 25 meV Gaussian, so the KPM value lies between the
+two.
 
-> **Known limitation: Hall words in a clean metal need many random vectors.**
+> **Known limitation: Hall curves of a clean metal are noisy with few random vectors.**
 > On a $64 \times 64$ supercell with 4 random vectors instead of an exact trace,
 > the plateau stays right: −2.014 and −2.031 $e^2/h$ for two seeds, against
 > −2.018 $e^2/h$ exact. In the bands the two seeds differ by several $e^2/h$, for
-> example +3.09 and +6.54 $e^2/h$ at −1.5 eV, against −0.40 $e^2/h$ exact. The
-> noise of $\sigma_{xy}$ follows the size of $\sigma_{xx}$, which is large in a
-> clean metal. Use an exact trace for small clean cells, many random vectors, or
-> disorder that brings $\sigma_{xx}$ down.
+> example +3.09 and +6.54 $e^2/h$ at −1.5 eV, against −0.40 $e^2/h$ exact. In this
+> run the seeds differ most in the bands, where $\sigma_{xx}$ is large, and agree
+> in the gap, where $\sigma_{xx}$ vanishes. For small clean cells we therefore use
+> an exact trace; otherwise many random vectors, or disorder that lowers
+> $\sigma_{xx}$.
 
 ## Runtime
 
