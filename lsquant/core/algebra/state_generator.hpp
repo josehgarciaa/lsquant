@@ -71,6 +71,22 @@ public:
   virtual void Reset() = 0;
 
   /**
+   * @brief Advance the cursor by `count` states without materialising them.
+   *
+   * After `Reset(); Skip(count)` the next `Next(out)` yields exactly the state that an
+   * uninterrupted sequence would yield at position `count`, so a moment engine resuming from
+   * a checkpoint of `count` finished states reproduces the uninterrupted accumulation bit for
+   * bit. The default implementation calls `Next` `count` times into a scratch vector;
+   * generators with an explicit stream override it (`RandomPhaseStates` discards
+   * `count * Dimension()` PRNG draws).
+   *
+   * @param count Number of states to skip `0 <= count <= NumberOfStates() - consumed`.
+   *
+   * @warning Throws `std::invalid_argument` if `count` overshoots the remaining sequence.
+   */
+  virtual void Skip(Index count);
+
+  /**
    * @brief Return the canonical state-set label used in output filenames and headers.
    *
    * @return One of `"default"`, `"exact"`, `"local"`, or `"user"`.
@@ -136,6 +152,11 @@ public:
   void Reset() override;
 
   /**
+   * @brief Advance by `count` states; see `StateGenerator::Skip`.
+   */
+  void Skip(Index count) override;
+
+  /**
    * @brief Return `"default"` (matching legacy `gen.StateLabel()`).
    *
    * @return `"default"`.
@@ -146,6 +167,92 @@ private:
   Index dimension_;
   Index numberOfStates_;
   unsigned seed_;
+  Index current_ = 0;
+  std::mt19937 rng_;
+  std::uniform_real_distribution<double> uni_;
+};
+
+/**
+ * @brief Stochastic-trace generator yielding one row range of the random-phase vectors.
+ *
+ * For distributed (MPI) trace evaluations: yields only the rows `[rowBegin, rowEnd)` of the
+ * same `std::mt19937(seed)` random-phase sequence `RandomPhaseStates` would produce for the
+ * full dimension, so the global state assembled from the per-rank slices is bit-identical to
+ * the single-process state. The normalisation keeps the full-system convention
+ * `1 / sqrt(N_full)`. The generator keeps the stream-position invariant "state `s` starts at
+ * uniform draw `s * N_full`" by skipping the draws outside the row range through the
+ * distribution object (a `uniform_real_distribution<double>` consumes two 32-bit mt19937
+ * outputs per value, so a raw `std::mt19937::discard` count would be off by a factor of two;
+ * re-applied from the seed on `Reset`). `Dimension()` returns the
+ * local slice length, matching the distributed operator's local row count.
+ *
+ * @warning Cost per state is `O(N_full)` stream advances even though only
+ *          `rowEnd - rowBegin` values are produced.
+ * @par Pitfall
+ *      Do not renormalise the slice to `1 / sqrt(rowEnd - rowBegin)`; the global vector's
+ *      norm would exceed one and stochastic moments would be scaled wrong.
+ */
+class RangedRandomPhaseStates : public StateGenerator {
+public:
+  /**
+   * @brief Construct a generator for rows `[rowBegin, rowEnd)` of the random-phase stream.
+   *
+   * @param dimension      Full Hilbert-space dimension `N_full > 0`.
+   * @param numberOfStates Number of random vectors `R >= 0`.
+   * @param seed           Deterministic `std::mt19937` seed.
+   * @param rowBegin       First row of the slice `0 <= rowBegin < rowEnd`.
+   * @param rowEnd         One past the last row of the slice `rowEnd <= dimension`.
+   *
+   * @warning Throws `std::invalid_argument` on invalid dimensions or ranges.
+   */
+  RangedRandomPhaseStates(Index dimension, Index numberOfStates, unsigned seed, Index rowBegin,
+                          Index rowEnd);
+
+  /**
+   * @brief Return the local slice length `rowEnd - rowBegin`.
+   *
+   * @return Local row count `> 0`.
+   */
+  Index Dimension() const override;
+
+  /**
+   * @brief Return the number of random vectors `R`.
+   *
+   * @return State count `R >= 0`.
+   */
+  Index NumberOfStates() const override;
+
+  /**
+   * @brief Generate the local rows of the next random-phase state into `out`.
+   *
+   * @param out Vector overwritten with `rowEnd - rowBegin` entries.
+   * @return    `true` if generated, `false` if all states have been consumed.
+   */
+  bool Next(Vector& out) override;
+
+  /**
+   * @brief Rewind the counter and re-seed the `std::mt19937` engine.
+   */
+  void Reset() override;
+
+  /**
+   * @brief Advance by `count` states; see `StateGenerator::Skip`.
+   */
+  void Skip(Index count) override;
+
+  /**
+   * @brief Return `"default"` (matching `RandomPhaseStates`).
+   *
+   * @return `"default"`.
+   */
+  std::string Label() const override;
+
+private:
+  Index dimension_;
+  Index numberOfStates_;
+  unsigned seed_;
+  Index rowBegin_;
+  Index rowEnd_;
   Index current_ = 0;
   std::mt19937 rng_;
   std::uniform_real_distribution<double> uni_;
@@ -205,6 +312,11 @@ public:
    * @brief Rewind the site cursor to `0`.
    */
   void Reset() override;
+
+  /**
+   * @brief Advance by `count` states; see `StateGenerator::Skip`.
+   */
+  void Skip(Index count) override;
 
   /**
    * @brief Return `"exact"` iff `sites == 0..N-1`, else `"local"`.
@@ -297,6 +409,11 @@ public:
   void Reset() override;
 
   /**
+   * @brief Advance by `count` states; see `StateGenerator::Skip`.
+   */
+  void Skip(Index count) override;
+
+  /**
    * @brief Return `"exact"`.
    *
    * @return `"exact"`.
@@ -354,12 +471,90 @@ public:
   void Reset() override;
 
   /**
+   * @brief Advance by `count` states; see `StateGenerator::Skip`.
+   */
+  void Skip(Index count) override;
+
+  /**
    * @brief Return `inner.Label()`.
    */
   std::string Label() const override;
 
 private:
   const LinearOperator* transform_;
+  StateGenerator* inner_;
+  Vector scratch_;
+};
+
+/**
+ * @brief State-generator adapter applying a fixed index permutation to an inner generator.
+ *
+ * Solves the problem of evaluating a trace with operators stored in a permuted orbital order
+ * (spatial atom blocking) on the same physical states as the unpermuted evaluation: for
+ * `perm[i]` = original orbital index of permuted index `i`, yields `out[i] = inner[perm[i]]`,
+ * a relabelling that preserves per-state norms and inner products exactly, so stochastic
+ * moments of the two evaluations differ only by floating-point reassociation inside the
+ * operator kernels.
+ *
+ * @warning The inner generator must outlive this adapter and `perm` must be a permutation of
+ *          `0 .. inner.Dimension() - 1` (validated at construction).
+ * @par Pitfall
+ *      `Reset()` forwards to the inner generator so both evaluations replay the same sequence.
+ */
+class PermutedStates : public StateGenerator {
+public:
+  /**
+   * @brief Construct a generator yielding the inner states with components permuted by `perm`.
+   *
+   * @param permutation Permutation array; `perm[i]` is the original index of new index `i`.
+   * @param inner       Wrapped source-state generator (must outlive `*this`).
+   *
+   * @warning Throws `std::invalid_argument` if `permutation` is not a permutation of
+   *          `0 .. inner.Dimension() - 1`.
+   */
+  PermutedStates(std::vector<Index> permutation, StateGenerator& inner);
+
+  /**
+   * @brief Return the vector dimension `N` (the inner dimension).
+   *
+   * @return Dimension `N > 0`.
+   */
+  Index Dimension() const override;
+
+  /**
+   * @brief Return the inner number of states.
+   *
+   * @return State count `R >= 0`.
+   */
+  Index NumberOfStates() const override;
+
+  /**
+   * @brief Draw the next inner state and write it permuted into `out`.
+   *
+   * @param out Output vector of length `Dimension()`.
+   * @return    `true` if a state was produced, `false` when the inner sequence is exhausted.
+   */
+  bool Next(Vector& out) override;
+
+  /**
+   * @brief Rewind the inner generator.
+   */
+  void Reset() override;
+
+  /**
+   * @brief Advance by `count` states; see `StateGenerator::Skip`.
+   */
+  void Skip(Index count) override;
+
+  /**
+   * @brief Return the inner label.
+   *
+   * @return `inner.Label()`.
+   */
+  std::string Label() const override;
+
+private:
+  std::vector<Index> perm_;
   StateGenerator* inner_;
   Vector scratch_;
 };
@@ -416,6 +611,11 @@ public:
    * @brief Rewind the cursor to the first user vector.
    */
   void Reset() override;
+
+  /**
+   * @brief Advance by `count` states; see `StateGenerator::Skip`.
+   */
+  void Skip(Index count) override;
 
   /**
    * @brief Return `"user"`.

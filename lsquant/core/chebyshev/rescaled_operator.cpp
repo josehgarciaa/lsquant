@@ -79,6 +79,35 @@ void RescaledOperator::Multiply(Scalar a, const Vector& x, Scalar b, Vector& y) 
   }
 }
 
+void RescaledOperator::MultiplyBlock(Scalar a, const VectorBlock& x, Scalar b,
+                                     VectorBlock& y) const {
+  if (op_ == nullptr) {
+    rescaled_.MultiplyBlock(a, x, b, y);
+    return;
+  }
+  if (&x == &y) {
+    LinearOperator::MultiplyBlock(a, x, b, y);
+    return;
+  }
+  const Index dim = dimension_;
+  if (x.Rows() != dim || y.Rows() != dim || x.Cols() != y.Cols()) {
+    throw std::invalid_argument("RescaledOperator::MultiplyBlock: block dimension mismatch");
+  }
+
+  const Scalar aScale = a * Scalar(window_.Scale(), 0.0);
+  const Scalar aShift = a * Scalar(window_.Shift(), 0.0);
+  op_->MultiplyBlock(aScale, x, b, y);
+  if (aShift != Scalar(0.0, 0.0)) {
+    const int cols = x.Cols();
+    const Scalar* xPtr = x.Data();
+    Scalar* yPtr = y.Data();
+#pragma omp parallel for schedule(static)
+    for (Index i = 0; i < dim * cols; ++i) {
+      yPtr[i] += aShift * xPtr[i];
+    }
+  }
+}
+
 bool RescaledOperator::IsHermitian() const { return isHermitian_; }
 
 GeneralisedRescaledOperator::GeneralisedRescaledOperator(const SparseMatrix& H,

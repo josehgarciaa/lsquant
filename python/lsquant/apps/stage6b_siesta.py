@@ -25,8 +25,13 @@ SHC_WORD = "Tr[JXSZ delta(E-H) VY dG-(E)/dE]"
 DOS_WORD = "Tr[delta(E-H)]"
 
 
+def _state_block_or_one(value):
+    """Return ``value`` as int; ``"auto"`` is not resolved in this app and maps to 1."""
+    return 1 if isinstance(value, str) else int(value)
+
+
 def prepare_moments(basis, word, *, moments=1024, trace="random", states=16,
-                    seed=12345, window=None, batch=None):
+                    seed=12345, window=None, batch=None, state_block=1):
     """Validate physical operators and compile before any moment execution.
 
     Symbolic source: metric_forms.operator_forms. The compiler checks the
@@ -57,7 +62,8 @@ def prepare_moments(basis, word, *, moments=1024, trace="random", states=16,
     else:
         h = basis.rescaled_hamiltonian(window)
         plan, engine_ops = basis.bind_eigen_trace(plan, engine_ops, trace)
-    engine = _core.MomentEngine(h, engine_ops, generator, moments if batch is None else batch)
+    engine = _core.MomentEngine(h, engine_ops, generator,
+                                moments if batch is None else batch, state_block)
     # Keep all operator owners alive until the prepared engine has run.
     return engine, plan, compiled, generator, window, engine_ops, h
 
@@ -230,7 +236,8 @@ def execute_siesta_runfile(rf, out_dir):
         raise ValueError("Expected positive reconstruction.broadening_meV, got None")
     states = rf.expansion["states"] or 16
     options = dict(moments=rf.expansion["moments"], states=states, trace=rf.expansion["trace"],
-                   seed=rf.expansion["seed"], window=window, batch=rf.expansion["batch"])
+                   seed=rf.expansion["seed"], window=window, batch=rf.expansion["batch"],
+                   state_block=_state_block_or_one(rf.expansion.get("state_block", 1)))
     # Compile every requested production and reference word before moments,
     # reconstruction or oracle. A late reference failure must not waste a run.
     with timing.phase("operators"):

@@ -35,6 +35,52 @@
         "LSQUANT_BUILD_BENCHMARKS": "OFF",
         "LSQUANT_BUILD_INPUT_TOOLS": "OFF"
       }
+    },
+    {
+      "name": "native-mpi",
+      "displayName": "Native + MPI",
+      "description": "Native profile with the MPI distributed operator (LSQUANT_WITH_MPI=ON)",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build/native-mpi",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "LSQUANT_BUILD_PROFILE": "native",
+        "LSQUANT_BUILD_PYTHON": "ON",
+        "LSQUANT_BUILD_DEV_CHECKS": "ON",
+        "LSQUANT_BUILD_BENCHMARKS": "OFF",
+        "LSQUANT_WITH_MPI": "ON"
+      }
+    },
+    {
+      "name": "native-cuda",
+      "displayName": "Native + CUDA",
+      "description": "Native profile with the CUDA atom-block kernel (LSQUANT_WITH_CUDA=ON)",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build/native-cuda",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "LSQUANT_BUILD_PROFILE": "native",
+        "LSQUANT_BUILD_PYTHON": "ON",
+        "LSQUANT_BUILD_DEV_CHECKS": "ON",
+        "LSQUANT_BUILD_BENCHMARKS": "OFF",
+        "LSQUANT_WITH_CUDA": "ON"
+      }
+    },
+    {
+      "name": "full",
+      "displayName": "Native + MPI + CUDA",
+      "description": "Native profile with both the MPI distributed operator and the CUDA atom-block kernel",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build/full",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "LSQUANT_BUILD_PROFILE": "native",
+        "LSQUANT_BUILD_PYTHON": "ON",
+        "LSQUANT_BUILD_DEV_CHECKS": "ON",
+        "LSQUANT_BUILD_BENCHMARKS": "OFF",
+        "LSQUANT_WITH_MPI": "ON",
+        "LSQUANT_WITH_CUDA": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -46,6 +92,21 @@
     {
       "name": "native",
       "configurePreset": "native",
+      "jobs": 8
+    },
+    {
+      "name": "native-mpi",
+      "configurePreset": "native-mpi",
+      "jobs": 8
+    },
+    {
+      "name": "native-cuda",
+      "configurePreset": "native-cuda",
+      "jobs": 8
+    },
+    {
+      "name": "full",
+      "configurePreset": "full",
       "jobs": 8
     }
   ]

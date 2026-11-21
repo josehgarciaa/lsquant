@@ -1487,7 +1487,7 @@ s7chk() {   # <ok 0|1> <text>
 }
 # words and run files live in python/lsquant; the engine knows none of it, and nothing evaluates text
 stage7_grep() {
-  local all hits coms pat='catalogue|runfile|grammar|Tr\[|mcp'
+  local all hits coms pat='catalogue|runfile|grammar|Tr\[|\bmcp\b'
   local com='^[^:]+:[0-9]+:[[:space:]]*(//|\*|/\*)'
   all="$(cd "$REPO" && grep -rnE "$pat" lsquant/core lsquant/io)"
   hits="$(printf '%s\n' "$all" | grep -Ev "$com" | grep -v '^$')"

@@ -76,6 +76,21 @@ public:
    */
   void Multiply(Scalar a, const Vector& x, Scalar b, Vector& y) const override;
 
+  /**
+   * @brief Compute `Y = a * H~ * X + b * Y` on a contiguous `N x b` block.
+   *
+   * Forwards to `SparseMatrix::MultiplyBlock` on the precomputed rescaled matrix, or to
+   * `op_->MultiplyBlock(a * Scale, X, b, Y)` plus the `a * Shift * X` term when wrapping a
+   * general `LinearOperator`. Per column the floating-point operations and their order match
+   * `Multiply` exactly.
+   *
+   * @param a Scalar multiplier for `H~ * X`.
+   * @param x Input block of size `Dimension() x b`.
+   * @param b Scalar multiplier for `Y`.
+   * @param y Input/output block of size `Dimension() x b`.
+   */
+  void MultiplyBlock(Scalar a, const VectorBlock& x, Scalar b, VectorBlock& y) const override;
+
   using LinearOperator::Multiply;
 
   /**

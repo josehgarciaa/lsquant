@@ -12,6 +12,18 @@
 
 namespace lsquant {
 
+void StateGenerator::Skip(Index count) {
+  if (count < 0) {
+    throw std::invalid_argument("StateGenerator::Skip: count must be non-negative");
+  }
+  Vector scratch;
+  for (Index k = 0; k < count; ++k) {
+    if (!Next(scratch)) {
+      throw std::invalid_argument("StateGenerator::Skip: count exceeds the remaining states");
+    }
+  }
+}
+
 RandomPhaseStates::RandomPhaseStates(Index dimension, Index numberOfStates, unsigned seed)
     : dimension_(dimension),
       numberOfStates_(numberOfStates),
@@ -53,6 +65,89 @@ void RandomPhaseStates::Reset() {
 
 std::string RandomPhaseStates::Label() const { return "default"; }
 
+void RandomPhaseStates::Skip(Index count) {
+  if (count < 0 || count > numberOfStates_ - current_) {
+    throw std::invalid_argument("RandomPhaseStates::Skip: count exceeds the remaining states");
+  }
+  // State s starts at uniform draw s * dimension_. The skip must consume draws through the
+  // distribution (uni_), not raw rng_ discards: uniform_real_distribution<double> takes two
+  // 32-bit mt19937 outputs per value, so discarding count * dimension_ raw outputs would land
+  // mid-state. Cost is O(count * dimension_) distribution calls, bit-identical to generating
+  // and throwing the states away.
+  for (Index k = 0; k < count * dimension_; ++k) {
+    (void)uni_(rng_);
+  }
+  current_ += count;
+}
+
+RangedRandomPhaseStates::RangedRandomPhaseStates(Index dimension, Index numberOfStates,
+                                                 unsigned seed, Index rowBegin, Index rowEnd)
+    : dimension_(dimension),
+      numberOfStates_(numberOfStates),
+      seed_(seed),
+      rowBegin_(rowBegin),
+      rowEnd_(rowEnd),
+      current_(0),
+      rng_(static_cast<std::mt19937::result_type>(seed)),
+      uni_(0.0, 1.0) {
+  if (dimension <= 0) {
+    throw std::invalid_argument("RangedRandomPhaseStates: dimension must be positive");
+  }
+  if (numberOfStates < 0) {
+    throw std::invalid_argument("RangedRandomPhaseStates: numberOfStates must be non-negative");
+  }
+  if (rowBegin < 0 || rowEnd > dimension || rowBegin >= rowEnd) {
+    throw std::invalid_argument("RangedRandomPhaseStates: invalid row range");
+  }
+}
+
+Index RangedRandomPhaseStates::Dimension() const { return rowEnd_ - rowBegin_; }
+
+Index RangedRandomPhaseStates::NumberOfStates() const { return numberOfStates_; }
+
+bool RangedRandomPhaseStates::Next(Vector& out) {
+  if (current_ >= numberOfStates_) {
+    return false;
+  }
+  // The stream sits at uniform draw current_ * dimension_; skip to the slice, draw it, skip
+  // the rest. The skips consume draws through the distribution (uni_): a double takes two
+  // 32-bit mt19937 outputs, so raw rng_.discard counts would be off by a factor of two.
+  for (Index i = 0; i < rowBegin_; ++i) {
+    (void)uni_(rng_);
+  }
+  out.resize(static_cast<std::size_t>(rowEnd_ - rowBegin_));
+  const double norm = std::sqrt(static_cast<double>(dimension_));
+  for (auto& x : out) {
+    const double phi = 2.0 * M_PI * uni_(rng_);
+    x = Scalar(std::cos(phi) / norm, std::sin(phi) / norm);
+  }
+  for (Index i = rowEnd_; i < dimension_; ++i) {
+    (void)uni_(rng_);
+  }
+  ++current_;
+  return true;
+}
+
+void RangedRandomPhaseStates::Reset() {
+  current_ = 0;
+  rng_.seed(static_cast<std::mt19937::result_type>(seed_));
+  uni_.reset();
+}
+
+std::string RangedRandomPhaseStates::Label() const { return "default"; }
+
+void RangedRandomPhaseStates::Skip(Index count) {
+  if (count < 0 || count > numberOfStates_ - current_) {
+    throw std::invalid_argument(
+        "RangedRandomPhaseStates::Skip: count exceeds the remaining states");
+  }
+  // Same draw accounting as Next: skip through the distribution, not raw discards.
+  for (Index k = 0; k < count * dimension_; ++k) {
+    (void)uni_(rng_);
+  }
+  current_ += count;
+}
+
 LocalStates::LocalStates(Index dimension, std::vector<Index> sites)
     : dimension_(dimension), sites_(std::move(sites)), current_(0) {
   if (dimension <= 0) {
@@ -91,6 +186,13 @@ bool LocalStates::Next(Vector& out) {
 }
 
 void LocalStates::Reset() { current_ = 0; }
+
+void LocalStates::Skip(Index count) {
+  if (count < 0 || count > static_cast<Index>(sites_.size()) - current_) {
+    throw std::invalid_argument("LocalStates::Skip: count exceeds the remaining states");
+  }
+  current_ += count;
+}
 
 std::string LocalStates::Label() const { return label_; }
 
@@ -132,6 +234,13 @@ bool BlockLocalStates::Next(Vector& out) {
 
 void BlockLocalStates::Reset() { current_ = 0; }
 
+void BlockLocalStates::Skip(Index count) {
+  if (count < 0 || count > blockSize_ - current_) {
+    throw std::invalid_argument("BlockLocalStates::Skip: count exceeds the remaining states");
+  }
+  current_ += count;
+}
+
 std::string BlockLocalStates::Label() const { return "exact"; }
 
 TransformedStates::TransformedStates(const LinearOperator& transform, StateGenerator& inner)
@@ -158,6 +267,8 @@ bool TransformedStates::Next(Vector& out) {
 }
 
 void TransformedStates::Reset() { inner_->Reset(); }
+
+void TransformedStates::Skip(Index count) { inner_->Skip(count); }
 
 std::string TransformedStates::Label() const { return inner_->Label(); }
 
@@ -192,6 +303,53 @@ bool UserStates::Next(Vector& out) {
 
 void UserStates::Reset() { current_ = 0; }
 
+void UserStates::Skip(Index count) {
+  if (count < 0 || count > static_cast<Index>(states_.size()) - current_) {
+    throw std::invalid_argument("UserStates::Skip: count exceeds the remaining states");
+  }
+  current_ += count;
+}
+
 std::string UserStates::Label() const { return "user"; }
+
+
+PermutedStates::PermutedStates(std::vector<Index> permutation, StateGenerator& inner)
+    : perm_(std::move(permutation)), inner_(&inner) {
+  const Index n = inner_->Dimension();
+  if (static_cast<Index>(perm_.size()) != n) {
+    throw std::invalid_argument("PermutedStates: permutation length must equal the dimension");
+  }
+  std::vector<bool> seen(static_cast<std::size_t>(n), false);
+  for (Index value : perm_) {
+    if (value < 0 || value >= n || seen[static_cast<std::size_t>(value)]) {
+      throw std::invalid_argument("PermutedStates: not a permutation of 0 .. N - 1");
+    }
+    seen[static_cast<std::size_t>(value)] = true;
+  }
+}
+
+Index PermutedStates::Dimension() const { return inner_->Dimension(); }
+
+Index PermutedStates::NumberOfStates() const { return inner_->NumberOfStates(); }
+
+bool PermutedStates::Next(Vector& out) {
+  if (!inner_->Next(scratch_)) {
+    return false;
+  }
+  const Index n = Dimension();
+  if (static_cast<Index>(out.size()) != n) {
+    out.resize(static_cast<std::size_t>(n));
+  }
+  for (Index i = 0; i < n; ++i) {
+    out[static_cast<std::size_t>(i)] = scratch_[static_cast<std::size_t>(perm_[i])];
+  }
+  return true;
+}
+
+void PermutedStates::Reset() { inner_->Reset(); }
+
+void PermutedStates::Skip(Index count) { inner_->Skip(count); }
+
+std::string PermutedStates::Label() const { return inner_->Label(); }
 
 }  // namespace lsquant

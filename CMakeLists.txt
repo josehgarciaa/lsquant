@@ -46,10 +46,24 @@ message(STATUS "LSQUANT build profile: ${LSQUANT_BUILD_PROFILE}")
 option(LSQUANT_BUILD_PYTHON     "Build the pybind11 extension module lsquant._core" ON)
 option(LSQUANT_BUILD_BENCHMARKS "Build the C++ kernel benchmark executable stage8_kernels" OFF)
 option(LSQUANT_BUILD_DEV_CHECKS "Build the C++ developer self-check executable stage_1_check" ON)
+option(LSQUANT_WITH_GINKGO      "Build the optional Ginkgo LinearOperator backend (native profile only)" OFF)
+option(LSQUANT_WITH_CUDA        "Build the CUDA atom-block kernel; also enables the Ginkgo CUDA executor when Ginkgo is on (native profile only)" OFF)
+option(LSQUANT_WITH_MPI         "Build the MPI distributed operator (native profile only)" OFF)
+
+if(LSQUANT_WITH_GINKGO AND LSQUANT_BUILD_PROFILE STREQUAL "golden")
+    message(FATAL_ERROR "LSQUANT_WITH_GINKGO requires LSQUANT_BUILD_PROFILE=native "
+                        "(the golden profile must stay on the native SparseMatrix kernels)")
+endif()
+
+if((LSQUANT_WITH_CUDA OR LSQUANT_WITH_MPI) AND LSQUANT_BUILD_PROFILE STREQUAL "golden")
+    message(FATAL_ERROR "LSQUANT_WITH_CUDA/LSQUANT_WITH_MPI require LSQUANT_BUILD_PROFILE=native "
+                        "(the golden profile is OpenMP-only by construction)")
+endif()
 
 # Shared warning flags of the new core.
 add_library(lsquant_warnings INTERFACE)
-target_compile_options(lsquant_warnings INTERFACE -Wall -Wextra -Wpedantic)
+target_compile_options(lsquant_warnings INTERFACE
+    $<$<COMPILE_LANGUAGE:CXX>:-Wall;-Wextra;-Wpedantic>)
 
 # --- Dependencies ------------------------------------------------------------
 # Eigen3: prefer a real config-package (Eigen3::Eigen); fall back to a header dir.
@@ -86,8 +100,21 @@ endif()
 # pybind11 for the new core's Python module (found from the running Python when
 # pybind11_DIR is not given).
 if(LSQUANT_BUILD_NEW_CORE AND LSQUANT_BUILD_PYTHON)
+    # Modern Python discovery avoids pybind11's removed FindPythonInterp/FindPythonLibs
+    # modules on recent CMake, while retaining the project's CMake 3.16 compatibility.
+    if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.18")
+        set(_lsquant_legacy_python "${PYTHON_EXECUTABLE}")
+        if(NOT Python_EXECUTABLE AND _lsquant_legacy_python)
+            set(Python_EXECUTABLE "${_lsquant_legacy_python}")
+        endif()
+        find_package(Python REQUIRED COMPONENTS Interpreter Development.Module)
+        set(PYBIND11_FINDPYTHON ON)
+        set(LSQUANT_PYTHON_EXECUTABLE "${Python_EXECUTABLE}")
+    endif()
     if(NOT pybind11_DIR)
-        find_program(LSQUANT_PYTHON_EXECUTABLE NAMES python3 python)
+        if(NOT LSQUANT_PYTHON_EXECUTABLE)
+            find_program(LSQUANT_PYTHON_EXECUTABLE NAMES python3 python)
+        endif()
         if(LSQUANT_PYTHON_EXECUTABLE)
             execute_process(
                 COMMAND "${LSQUANT_PYTHON_EXECUTABLE}" -m pybind11 --cmakedir

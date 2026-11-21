@@ -198,6 +198,91 @@ void SparseMatrix::MultiplyBatch(Scalar a, const std::vector<Vector>& x, Scalar 
 #endif
 }
 
+void SparseMatrix::MultiplyBlock(Scalar a, const VectorBlock& x, Scalar b, VectorBlock& y) const {
+  const Index n = Dimension();
+  if (&x == &y) {
+    throw std::invalid_argument(
+        "SparseMatrix::MultiplyBlock: input and output blocks must not alias");
+  }
+  if (x.Rows() != n || y.Rows() != n || x.Cols() != y.Cols()) {
+    throw std::invalid_argument("SparseMatrix::MultiplyBlock: block dimension mismatch");
+  }
+  const int cols = x.Cols();
+  if (n == 0 || cols == 0) {
+    return;
+  }
+
+  const Index* const rp = matrix_.outerIndexPtr();
+  const Index* const cl = matrix_.innerIndexPtr();
+  const Scalar* const vl = matrix_.valuePtr();
+  const Scalar* const xp = x.Data();
+  Scalar* const yp = y.Data();
+
+#ifdef LSQUANT_NATIVE_BUILD
+  if (cols == 1) {
+    // Same per-element arithmetic as Multiply (bit-identical), without the per-row
+    // block-accumulator overhead of the general path.
+#pragma omp parallel if(NonZeros() >= SpmvParallelThreshold())
+    {
+      const Index first = RowBoundary(rp, n, omp_get_thread_num(), omp_get_num_threads());
+      const Index last = RowBoundary(rp, n, omp_get_thread_num() + 1, omp_get_num_threads());
+      for (Index i = first; i < last; ++i) {
+        Scalar acc(0.0, 0.0);
+        for (Index p = rp[i]; p < rp[i + 1]; ++p) acc += vl[p] * xp[cl[p]];
+        yp[i] = a * acc + b * yp[i];
+      }
+    }
+    return;
+  }
+  const int width = CacheBatchSize(n, cols);
+#pragma omp parallel if(NonZeros() >= SpmvParallelThreshold())
+  {
+    const Index first = RowBoundary(rp, n, omp_get_thread_num(), omp_get_num_threads());
+    const Index last = RowBoundary(rp, n, omp_get_thread_num() + 1, omp_get_num_threads());
+    Vector sums(static_cast<std::size_t>(width));
+    for (int base = 0; base < cols; base += width) {
+      const int count = std::min(width, cols - base);
+      for (Index row = first; row < last; ++row) {
+        std::fill_n(sums.begin(), count, Scalar(0.0, 0.0));
+        for (Index p = rp[row]; p < rp[row + 1]; ++p) {
+          const Scalar value = vl[p];
+          const Index column = cl[p];
+          for (int j = 0; j < count; ++j) {
+            sums[static_cast<std::size_t>(j)] +=
+                value * xp[static_cast<std::size_t>(base + j) * n + column];
+          }
+        }
+        for (int j = 0; j < count; ++j) {
+          Scalar& out = yp[static_cast<std::size_t>(base + j) * n + row];
+          out = a * sums[static_cast<std::size_t>(j)] + b * out;
+        }
+      }
+    }
+  }
+#else
+#pragma omp parallel
+  {
+    Vector sums(static_cast<std::size_t>(cols));
+#pragma omp for schedule(static)
+    for (Index row = 0; row < n; ++row) {
+      std::fill(sums.begin(), sums.end(), Scalar(0.0, 0.0));
+      for (Index p = rp[row]; p < rp[row + 1]; ++p) {
+        const Scalar value = vl[p];
+        const Index column = cl[p];
+        for (int j = 0; j < cols; ++j) {
+          sums[static_cast<std::size_t>(j)] +=
+              value * xp[static_cast<std::size_t>(j) * n + column];
+        }
+      }
+      for (int j = 0; j < cols; ++j) {
+        Scalar& out = yp[static_cast<std::size_t>(j) * n + row];
+        out = a * sums[static_cast<std::size_t>(j)] + b * out;
+      }
+    }
+  }
+#endif
+}
+
 SparseMatrix SparseMatrix::Rescaled(Scalar a, Scalar b) const {
   const Index n = Dimension();
   Eigen::SparseMatrix<Scalar, Eigen::RowMajor, Index> bID(n, n);
@@ -303,6 +388,11 @@ void SparseMatrixOperator::Multiply(Scalar a, const Vector& x, Scalar b, Vector&
 void SparseMatrixOperator::MultiplyBatch(Scalar a, const std::vector<Vector>& x, Scalar b,
                                         std::vector<Vector>& y) const {
   matrix_->MultiplyBatch(a, x, b, y);
+}
+
+void SparseMatrixOperator::MultiplyBlock(Scalar a, const VectorBlock& x, Scalar b,
+                                         VectorBlock& y) const {
+  matrix_->MultiplyBlock(a, x, b, y);
 }
 
 bool SparseMatrixOperator::IsHermitian() const { return isHermitian_; }

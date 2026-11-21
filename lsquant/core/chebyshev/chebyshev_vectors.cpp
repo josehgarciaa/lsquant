@@ -4,34 +4,21 @@
  */
 #include "core/chebyshev/chebyshev_vectors.hpp"
 
+#include <algorithm>
 #include <stdexcept>
-
-#include "core/algebra/linalg.hpp"
-#include "core/algebra/memory_placement.hpp"
 
 namespace lsquant {
 
 ChebyshevVectors::ChebyshevVectors(Index dimension, int batchSize)
-    : dimension_(dimension),
-      batchSize_(batchSize),
-      firstOrder_(0),
-#ifdef LSQUANT_NATIVE_BUILD
-      vectors_(static_cast<std::size_t>(batchSize > 0 ? batchSize : 0)),
-      scratch_(MakeZeroVector(dimension)) {
-#else
-      vectors_(static_cast<std::size_t>(batchSize > 0 ? batchSize : 0),
-               Vector(static_cast<std::size_t>(dimension > 0 ? dimension : 0), Scalar(0.0, 0.0))),
-      scratch_(static_cast<std::size_t>(dimension > 0 ? dimension : 0), Scalar(0.0, 0.0)) {
-#endif
+    : dimension_(dimension), batchSize_(batchSize), firstOrder_(0) {
   if (dimension <= 0) {
     throw std::invalid_argument("ChebyshevVectors: dimension must be positive");
   }
   if (batchSize <= 0) {
     throw std::invalid_argument("ChebyshevVectors: batchSize must be positive");
   }
-#ifdef LSQUANT_NATIVE_BUILD
-  for (Vector& vector : vectors_) vector = MakeZeroVector(dimension);
-#endif
+  vectors_ = VectorBlock(dimension, batchSize);
+  scratch_ = VectorBlock(dimension, batchSize);
 }
 
 void ChebyshevVectors::Fill(ChebyshevRecursion& recursion) {
@@ -40,7 +27,7 @@ void ChebyshevVectors::Fill(ChebyshevRecursion& recursion) {
   }
   firstOrder_ = recursion.Order();
   for (int m = 0; m < batchSize_; ++m) {
-    linalg::copy(recursion.Current(), vectors_[static_cast<std::size_t>(m)]);
+    std::copy_n(recursion.Current().data(), static_cast<std::size_t>(dimension_), Column(m));
     recursion.Step();
   }
 }
@@ -52,36 +39,21 @@ void ChebyshevVectors::ApplyToAll(const LinearOperator& A) {
   if (A.IsIdentity()) {
     return;
   }
-#ifdef LSQUANT_NATIVE_BUILD
-  if (batchScratch_.empty()) {
-    for (int m = 0; m < batchSize_; ++m) batchScratch_.push_back(MakeZeroVector(dimension_));
-  }
-  A.MultiplyBatch(Scalar(1.0, 0.0), vectors_, Scalar(0.0, 0.0), batchScratch_);
-  vectors_.swap(batchScratch_);
-#else
-  for (int m = 0; m < batchSize_; ++m) {
-    Vector& vec = vectors_[static_cast<std::size_t>(m)];
-    linalg::copy(vec, scratch_);
-    A.Multiply(Scalar(1.0, 0.0), scratch_, Scalar(0.0, 0.0), vec);
-  }
-#endif
+  A.MultiplyBlock(Scalar(1.0, 0.0), vectors_, Scalar(0.0, 0.0), scratch_);
+  vectors_.Swap(scratch_);
 }
 
-Vector& ChebyshevVectors::At(int m) {
-  if (m < 0 || m >= batchSize_) {
-    throw std::out_of_range("ChebyshevVectors::At: index out of range");
-  }
-  return vectors_[static_cast<std::size_t>(m)];
-}
+Scalar* ChebyshevVectors::Column(int m) { return vectors_.Column(m); }
 
-const Vector& ChebyshevVectors::At(int m) const {
-  if (m < 0 || m >= batchSize_) {
-    throw std::out_of_range("ChebyshevVectors::At: index out of range");
-  }
-  return vectors_[static_cast<std::size_t>(m)];
-}
+const Scalar* ChebyshevVectors::Column(int m) const { return vectors_.Column(m); }
+
+VectorBlock& ChebyshevVectors::Block() { return vectors_; }
+
+const VectorBlock& ChebyshevVectors::Block() const { return vectors_; }
 
 int ChebyshevVectors::Size() const { return batchSize_; }
+
+Index ChebyshevVectors::Dimension() const { return dimension_; }
 
 int ChebyshevVectors::FirstOrder() const { return firstOrder_; }
 

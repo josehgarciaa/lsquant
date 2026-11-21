@@ -1,5 +1,6 @@
 add_library(lsquant_core STATIC
     core/algebra/sparse_matrix.cpp
+    core/algebra/atom_block_operator.cpp
     core/algebra/block_diagonal_operator.cpp
     core/algebra/bloch_transform.cpp
     core/algebra/composite_operators.cpp
@@ -13,6 +14,7 @@ add_library(lsquant_core STATIC
     core/chebyshev/chebyshev_vectors.cpp
     core/chebyshev/chebyshev_moments.cpp
     core/chebyshev/moment_engine.cpp
+    core/chebyshev/checkpoint.cpp
     core/chebyshev/contraction.cpp
     core/algebra/fft_moment_contraction.cpp
     io/csr_text.cpp
@@ -35,8 +37,45 @@ target_link_libraries(lsquant_core
         lsquant_warnings
 )
 if(LSQUANT_BUILD_PROFILE STREQUAL "native")
-    target_compile_options(lsquant_core PUBLIC -O3 -march=native -mtune=native -fno-math-errno)
+    target_compile_options(lsquant_core PUBLIC
+        $<$<COMPILE_LANGUAGE:CXX>:-O3;-march=native;-mtune=native;-fno-math-errno>)
     target_compile_definitions(lsquant_core PUBLIC LSQUANT_NATIVE_BUILD=1)
+endif()
+
+if(LSQUANT_WITH_MPI)
+    find_package(MPI REQUIRED COMPONENTS CXX)
+    target_compile_definitions(lsquant_core PUBLIC LSQUANT_WITH_MPI=1)
+    target_link_libraries(lsquant_core PUBLIC MPI::MPI_CXX)
+    message(STATUS "MPI distributed operator enabled")
+endif()
+
+if(LSQUANT_WITH_CUDA)
+    enable_language(CUDA)
+    find_package(CUDAToolkit REQUIRED)
+    target_compile_definitions(lsquant_core PUBLIC LSQUANT_WITH_CUDA=1)
+    target_sources(lsquant_core PRIVATE core/algebra/atom_block_cuda.cu)
+    set_target_properties(lsquant_core PROPERTIES
+        CUDA_ARCHITECTURES "90"
+        CUDA_STANDARD 17
+        CUDA_STANDARD_REQUIRED ON
+        CUDA_POSITION_INDEPENDENT_CODE ON)
+    target_compile_options(lsquant_core PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-O3>)
+    target_link_libraries(lsquant_core PUBLIC CUDA::cudart)
+    message(STATUS "CUDA atom-block kernel enabled")
+endif()
+
+if(LSQUANT_WITH_GINKGO)
+    find_package(Ginkgo REQUIRED)
+    if(LSQUANT_WITH_CUDA)
+        if(NOT GINKGO_BUILD_CUDA)
+            message(FATAL_ERROR "LSQUANT_WITH_CUDA requires a CUDA-enabled Ginkgo installation")
+        endif()
+        target_compile_definitions(lsquant_core PUBLIC LSQUANT_WITH_CUDA=1)
+    endif()
+    target_sources(lsquant_core PRIVATE core/algebra/ginkgo_operator.cpp)
+    target_compile_definitions(lsquant_core PUBLIC LSQUANT_WITH_GINKGO=1)
+    target_link_libraries(lsquant_core PUBLIC Ginkgo::ginkgo)
+    message(STATUS "Ginkgo backend enabled: ${Ginkgo_DIR}")
 endif()
 
 add_executable(stage1_moments apps/stage1_moments.cpp)

@@ -11,6 +11,8 @@
 #define LSQUANT_CORE_ALGEBRA_LINEAR_OPERATOR_HPP_
 
 #include "core/algebra/types.hpp"
+#include "core/algebra/vector_block.hpp"
+#include <algorithm>
 #include <stdexcept>
 
 namespace lsquant {
@@ -81,6 +83,42 @@ public:
                                   std::to_string(x.size()) + " and y=" + std::to_string(y.size()));
     }
     for (std::size_t j = 0; j < x.size(); ++j) Multiply(a, x[j], b, y[j]);
+  }
+
+  /**
+   * @brief Apply `Y = a * O * X + b * Y` across a contiguous column-major `N x b` block.
+   *
+   * Evaluates the fused multiply-accumulate independently on every column of `x`; the result
+   * for column `j` must be exactly the one of `Multiply(a, column_j, b, column_j)`. The
+   * default implementation loops over columns through per-column temporaries; concrete
+   * operators override it to stream their storage once per row for all columns.
+   *
+   * @param a Multiplicative scalar factor applied to `O * X`.
+   * @param x Input block of size `Dimension() x b`.
+   * @param b Multiplicative scalar factor applied to the existing entries of `Y`.
+   * @param y Input/output block of size `Dimension() x b`.
+   *
+   * @warning Throws `std::invalid_argument` if the block dimensions do not match
+   *          `Dimension()` or differ between `x` and `y`.
+   * @par Pitfall
+   *      `x` and `y` must not be the same object.
+   */
+  virtual void MultiplyBlock(Scalar a, const VectorBlock& x, Scalar b, VectorBlock& y) const {
+    if (&x == &y) {
+      throw std::invalid_argument("MultiplyBlock: input and output blocks must not alias");
+    }
+    if (x.Rows() != Dimension() || y.Rows() != Dimension() || x.Cols() != y.Cols()) {
+      throw std::invalid_argument("MultiplyBlock: block dimension mismatch");
+    }
+    const Index n = Dimension();
+    Vector xCol(static_cast<std::size_t>(n));
+    Vector yCol(static_cast<std::size_t>(n));
+    for (int j = 0; j < x.Cols(); ++j) {
+      std::copy_n(x.Column(j), static_cast<std::size_t>(n), xCol.begin());
+      std::copy_n(y.Column(j), static_cast<std::size_t>(n), yCol.begin());
+      Multiply(a, xCol, b, yCol);
+      std::copy_n(yCol.begin(), static_cast<std::size_t>(n), y.Column(j));
+    }
   }
 
   /**
