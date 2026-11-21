@@ -12,6 +12,7 @@ from typing import Any, Mapping, Sequence
 import numpy as np
 
 from . import _core
+from .projection.spectral import resolve_projection
 from .bases import (
     BlochBasis,
     EigenBasis,
@@ -19,10 +20,11 @@ from .bases import (
     make_basis,
     validate_w2s_csr_dir,
 )
-from .models.wannier import WannierModel, load_wannier_model
+from .models.wannier import load_wannier_model
 from .moments import run_plan, window_from_gershgorin
 from .reconstruct import (
     dos_curve,
+    shc,
     kubo_bastin,
     kubo_bastin_sea,
     kubo_bastin_surf,
@@ -39,12 +41,17 @@ ALLOWED_TOP_KEYS: frozenset[str] = frozenset(
         "model",
         "basis",
         "metric",
+        "projection",
         "word",
         "words",
         "expansion",
         "time",
         "reconstruction",
         "output",
+        "receipt",
+        "reference",
+        "build_profile",
+        "runtime",
     }
 )
 
@@ -66,7 +73,7 @@ GENERATOR_CATALOGUE: dict[str, str] = {
     "make_chain": "examples/01_dos_1d_chain/make_chain.py",
     "make_disordered_chain": "examples/02_localization_1d_chain/make_disordered_chain.py",
     "make_haldane": "examples/03_haldane_hall/make_haldane.py",
-    "make_chain_mag": "examples/04_spin_precession_magnetic_chain/lsqspin.py",
+    "make_chain_mag": "examples/04_spin_precession_magnetic_chain/make_chain_mag.py",
     "make_square": "examples/05_charge_transport_square/make_square.py",
     "make_ey": "examples/06_spin_relaxation_square/make_ey.py",
     "make_rashba": "examples/06_spin_relaxation_square/make_rashba.py",
@@ -208,6 +215,11 @@ ALLOWED_RECONSTRUCTION_KEYS: frozenset[str] = frozenset(
         "legacy_text_round_trip",
         "per_site_dos",
         "targets",
+        "num_cells",
+        "cell_area",
+        "energies",
+        "energy_grid",
+        "bastin_backend",
     }
 )
 
@@ -236,8 +248,8 @@ ALLOWED_OUTPUT_KEYS: frozenset[str] = frozenset(
 def default_window_for_basis(basis_name: str) -> str:
     """Return the default spectral window mode for ``basis_name``.
 
-    Defaults to ``"eigen"`` on ``"bloch"`` and ``"eigen"`` bases (Stage 5,
-    review 1) and to ``"gershgorin"`` only on ``"real"``.
+    Defaults to ``"eigen"`` on ``"bloch"`` and ``"eigen"`` bases and to
+    ``"gershgorin"`` only on ``"real"``.
     """
     if basis_name in ("bloch", "eigen"):
         return "eigen"
@@ -337,6 +349,13 @@ def validate_runfile_dict(raw: Mapping[str, Any]) -> None:
         raise ValueError("Run file must be a JSON object")
 
     _check_keys("top-level", raw, ALLOWED_TOP_KEYS)
+    projection = resolve_projection(raw.get("projection"))
+    # Ensure a resolved receipt cannot silently select a different binary profile.
+    if "build_profile" in raw and raw["build_profile"] != _core.build_profile:
+        raise ValueError(
+            f"Run file build_profile={raw['build_profile']!r} differs from "
+            f"loaded engine profile={_core.build_profile!r}"
+        )
 
     for req in ("model", "word", "expansion"):
         if req not in raw:
@@ -347,9 +366,16 @@ def validate_runfile_dict(raw: Mapping[str, Any]) -> None:
         raise ValueError("Run file 'model' must be a JSON object")
     _check_keys("model", model, ALLOWED_MODEL_KEYS)
     kind = str(_get_or(model, "kind", "csr"))
-    if kind not in ("csr", "wannier", "generator"):
+    reference = raw.get("reference")
+    if reference is not None and not isinstance(reference, bool):
+        raise ValueError(f"Expected boolean for 'reference', got {type(reference).__name__}")
+    if reference is not None and kind != "siesta":
+        raise ValueError(f"Expected model.kind='siesta' when 'reference' is set, got {kind!r}")
+    if projection["kind"] != "none" and kind != "siesta":
+        raise ValueError(f"Expected model.kind='siesta' when projection is enabled, got {kind!r}")
+    if kind not in ("csr", "wannier", "siesta", "generator"):
         raise ValueError(
-            f"Unknown model.kind '{kind}'; expected 'csr', 'wannier', or 'generator'"
+            f"Unknown model.kind '{kind}'; expected 'csr', 'wannier', 'siesta', or 'generator'"
         )
     if kind == "csr":
         if not model.get("dir") or not model.get("label"):
@@ -361,6 +387,27 @@ def validate_runfile_dict(raw: Mapping[str, Any]) -> None:
             raise ValueError(
                 "Run file with model.kind='wannier' requires 'dir' and 'seed'"
             )
+    elif kind == "siesta":
+        if not model.get("dir") or not model.get("label"):
+            raise ValueError("SIESTA model requires dir and label")
+        if model.get("params") is not None and not isinstance(model["params"], Mapping):
+            raise ValueError("SIESTA model.params must be a JSON object")
+        _check_keys("model.params (siesta)", model.get("params") or {}, frozenset({
+            "velocity_mode", "oracle", "oracle_degeneracy_tolerance", "bloch_memory_mb",
+            "quadrature_order", "quadrature_max_order", "quadrature_tolerance",
+            "nonorthogonal_disorder"}))
+        if "nonorthogonal_disorder" in (model.get("params") or {}) and not isinstance(
+                model["params"]["nonorthogonal_disorder"], bool):
+            raise ValueError("model.params.nonorthogonal_disorder must be a boolean")
+        degeneracy_tolerance = float((model.get("params") or {}).get("oracle_degeneracy_tolerance", 1e-6))
+        if not np.isfinite(degeneracy_tolerance) or degeneracy_tolerance <= 0:
+            raise ValueError("oracle_degeneracy_tolerance must be positive and finite (eV)")
+        bloch_memory_mb = float((model.get("params") or {}).get("bloch_memory_mb", 256.0))
+        if not np.isfinite(bloch_memory_mb) or bloch_memory_mb <= 0:
+            raise ValueError("bloch_memory_mb must be positive and finite (MiB)")
+        if (model.get("params") or {}).get("velocity_mode", "berry_connection") not in (
+                "bare", "berry_connection", "covariant"):
+            raise ValueError("unknown SIESTA velocity_mode")
     elif kind == "generator":
         gen_name = model.get("name")
         if not gen_name or not isinstance(gen_name, str):
@@ -439,10 +486,12 @@ def validate_runfile_dict(raw: Mapping[str, Any]) -> None:
                 f"Unknown metric.policy '{pol}'; expected 'orthogonal' or 'nonorthogonal'"
             )
         rte = str(_get_or(metric, "route", "lowdin"))
-        if rte not in ("lowdin", "generalised"):
+        if rte not in ("lowdin", "generalised", "anticommutator"):
             raise ValueError(
-                f"Unknown metric.route '{rte}'; expected 'lowdin' or 'generalised'"
+                f"Unknown metric.route '{rte}'; expected 'lowdin', 'generalised' or 'anticommutator'"
             )
+        if rte == "anticommutator" and kind != "siesta":
+            raise ValueError("anticommutator metric is an explicitly approximate SIESTA route")
         app = str(_get_or(metric, "applier", "exact"))
         if app not in ("exact", "chebyshev", "ischo"):
             raise ValueError(
@@ -505,6 +554,24 @@ def validate_runfile_dict(raw: Mapping[str, Any]) -> None:
         if not isinstance(rec, Mapping):
             raise ValueError("Run file 'reconstruction' must be a JSON object")
         _check_keys("reconstruction", rec, ALLOWED_RECONSTRUCTION_KEYS)
+        if rec.get("bastin_backend", "tables") not in ("tables", "folded"):
+            raise ValueError("reconstruction.bastin_backend must be tables or folded")
+        if rec.get("bastin_backend") == "folded" and (
+                raw.get("model", {}).get("kind") != "siesta" or rec.get("fft_grid", False)):
+            raise ValueError("folded run-file reconstruction requires SIESTA and the uniform grid")
+        if rec.get("energies") is not None and rec.get("energy_grid") is not None:
+            raise ValueError("choose reconstruction.energies or energy_grid, not both")
+        if rec.get("energies") is not None:
+            energies = np.asarray(rec["energies"], dtype=float)
+            if energies.ndim != 1 or energies.size == 0 or not np.all(np.isfinite(energies)):
+                raise ValueError("reconstruction.energies must be a nonempty finite list")
+            if np.any(np.diff(energies) <= 0):
+                raise ValueError("reconstruction.energies must be strictly increasing")
+        if rec.get("energy_grid") is not None:
+            grid = np.asarray(rec["energy_grid"], dtype=float)
+            if (grid.shape != (3,) or not np.all(np.isfinite(grid)) or grid[0] >= grid[1]
+                    or grid[2] < 2 or grid[2] != int(grid[2])):
+                raise ValueError("reconstruction.energy_grid must be [E_min, E_max, n], n >= 2")
         for tgt in rec.get("targets") or ():
             if not isinstance(tgt, Mapping):
                 raise ValueError(
@@ -596,7 +663,7 @@ def validate_runfile_dict(raw: Mapping[str, Any]) -> None:
 
 @dataclass
 class RunFile:
-    """Validated and defaults-resolved Stage-7 run configuration."""
+    """Validated and defaults-resolved LSQUANT run configuration."""
 
     model: dict[str, Any]
     basis: dict[str, Any]
@@ -608,6 +675,8 @@ class RunFile:
     reconstruction: dict[str, Any]
     output: dict[str, Any]
     source_path: str | None = field(default=None, repr=False)
+    reference: bool | None = None
+    projection: dict[str, Any] = field(default_factory=lambda: {"kind": "none", "window": None, "radius": None})
 
     @classmethod
     def from_dict(
@@ -631,6 +700,7 @@ class RunFile:
         def _resolve_path(p: str | None) -> str | None:
             if p is None:
                 return None
+            p = os.path.expanduser(p)
             if os.path.isabs(p):
                 return p
             cand = os.path.abspath(os.path.join(root, p))
@@ -748,11 +818,14 @@ class RunFile:
                 else None
             ),
             "fft_grid": bool(_get_or(raw_rec, "fft_grid", False)),
+            **({"bastin_backend": raw_rec["bastin_backend"]} if "bastin_backend" in raw_rec else {}),
             "legacy_text_round_trip": bool(
                 _get_or(raw_rec, "legacy_text_round_trip", False)
             ),
             "per_site_dos": bool(_get_or(raw_rec, "per_site_dos", False)),
             "targets": [dict(t) for t in (raw_rec.get("targets") or [])],
+            **({key: raw_rec[key] for key in ("num_cells", "cell_area") if key in raw_rec}),
+            **({key: raw_rec[key] for key in ("energies", "energy_grid") if key in raw_rec}),
         }
 
         raw_out = dict(raw.get("output") or {})
@@ -793,6 +866,8 @@ class RunFile:
             reconstruction=recon_cfg,
             output=output_cfg,
             source_path=source_path,
+            reference=raw.get("reference"),
+            projection=resolve_projection(raw.get("projection")),
         )
 
     @classmethod
@@ -809,6 +884,12 @@ class RunFile:
     def to_resolved_dict(self) -> dict[str, Any]:
         """Return the fully resolved run-file dictionary written to ``run.resolved.json``."""
         out: dict[str, Any] = {
+            "build_profile": _core.build_profile,
+            # Record effective launch choices without overriding the caller's environment.
+            "runtime": {key: os.environ.get(key) for key in (
+                "OMP_NUM_THREADS", "OMP_PROC_BIND", "OMP_PLACES", "OMP_DYNAMIC",
+                "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "LSQUANT_SPMV_MIN_NNZ",
+                "LSQUANT_KERNEL_BATCH", "LSQUANT_FFT_BACKEND")},
             "model": dict(self.model),
             "basis": dict(self.basis),
             "metric": dict(self.metric),
@@ -818,8 +899,12 @@ class RunFile:
             "reconstruction": dict(self.reconstruction),
             "output": dict(self.output),
         }
+        if self.reference is not None:
+            out["reference"] = self.reference
         if len(self.words) > 1 or self.words != [self.word]:
             out["words"] = list(self.words)
+        if self.projection["kind"] != "none":
+            out["projection"] = dict(self.projection)
         return out
 
 
@@ -854,12 +939,19 @@ def _reconstruct_single_formula(
     *,
     fermi_energies: Sequence[float] = (),
     num_points: int | None = None,
+    num_cells: int | None = None,
+    cell_area: float | None = None,
 ) -> list[tuple[str, str, np.ndarray, np.ndarray]]:
     """Run one named reconstruction formula on ``mu``.
 
     Returns a list of ``(legacy_prefix, legacy_suffix, x_grid, values)`` tuples.
     """
     f = formula.lower()
+    if f == "shc":
+        if num_cells is None or cell_area is None:
+            raise ValueError("shc reconstruction requires num_cells and cell_area in the resolved run file")
+        energies, values = shc(mu, broadening_meV, num_cells, cell_area)
+        return [("SpinHall_", "JACKSON.dat", energies, values)]
     if f in ("dos", "dos_curve"):
         energies, values = dos_curve(mu, broadening_meV)
         return [("mean", "JACKSON.dat", energies, values)]
@@ -1095,6 +1187,16 @@ def execute_runfile(
         out_dir_override if out_dir_override is not None else rf.output["dir"]
     )
     kind = str(rf.model["kind"])
+    if kind == "siesta":
+        if rf.projection["kind"] != "none":
+            from .projection.runfile import execute_projection_runfile
+            return execute_projection_runfile(rf, out_dir)
+        if (rf.model["params"].get("nonorthogonal_disorder", False) or
+                rf.basis["name"] == "real" or rf.basis["disorder"]["W"] != 0):
+            from .apps.stage6c_disorder import execute_disorder_runfile
+            return execute_disorder_runfile(rf, out_dir)
+        from .apps.stage6b_siesta import execute_siesta_runfile
+        return execute_siesta_runfile(rf, out_dir)
     if kind == "wannier":
         basis_name = str(rf.basis["name"])
         csr_dir_val = rf.model.get("csr_dir")
@@ -1813,12 +1915,22 @@ def reconstruct_target(
         else:
             formula = "dos"
 
+    shc_metadata = {}
+    resolved_path = os.path.join(os.path.dirname(abs_target), "run.resolved.json")
+    if formula == "shc" and os.path.isfile(resolved_path):
+        with open(resolved_path, encoding="utf-8") as fh:
+            reconstruction = json.load(fh).get("reconstruction", {})
+        shc_metadata = {key: reconstruction.get(key) for key in ("num_cells", "cell_area")}
     written_curves: list[str] = []
     for c_pref, c_suf, x_arr, y_arr in _reconstruct_single_formula(
-        formula, mu, eff_broad, fermi_energies=eff_fermi
+        formula, mu, eff_broad, fermi_energies=eff_fermi, **shc_metadata
     ):
         c_path = os.path.join(dest_dir, f"{c_pref}{stem}{c_suf}")
-        _core.WriteCurveText(c_path, x_arr, y_arr)
+        if formula == "shc":
+            np.savetxt(c_path, np.column_stack((x_arr, y_arr)), fmt="%.17g",
+                       header="energy_eV sigma_z_xy [e^2/h, sigma_z Pauli]")
+        else:
+            _core.WriteCurveText(c_path, x_arr, y_arr)
         written_curves.append(c_path)
 
     return {

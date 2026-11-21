@@ -12,13 +12,37 @@
 
 namespace lsquant {
 
+namespace {
+// Tag non-golden builds on the first header line while keeping golden output byte-identical.
+void WriteProfileTag(std::ostream& out, const ChebyshevMoments& moments) {
+  if (moments.buildProfile != "golden") {
+    out << " # build_profile=" << moments.buildProfile;
+  }
+}
+
+std::string ReadProfileTag(const std::string& headerTail) {
+  const std::string marker = "# build_profile=";
+  const auto pos = headerTail.find(marker);
+  if (pos == std::string::npos) return "golden";
+  std::istringstream value(headerTail.substr(pos + marker.size()));
+  std::string profile;
+  value >> profile;
+  if (profile != "native" && profile != "golden") {
+    throw std::runtime_error("ReadChebmom: unknown build profile: " + profile);
+  }
+  return profile;
+}
+}  // namespace
+
 void WriteChebmom(const std::string& filename, const ChebyshevMoments& moments) {
   std::ofstream out(filename);
   if (!out.is_open()) {
     throw std::runtime_error("WriteChebmom: cannot open file for writing: " + filename);
   }
   out.precision(17);
-  out << "chebmom 1\n";
+  out << "chebmom 1";
+  WriteProfileTag(out, moments);
+  out << "\n";
   out << "rank " << moments.Rank() << "\n";
   out << "dims";
   for (int d : moments.Dims()) {
@@ -57,6 +81,8 @@ ChebyshevMoments ReadChebmom(const std::string& filename) {
     if (!(in >> version) || version != 1) {
       throw std::runtime_error("ReadChebmom: unsupported chebmom version in: " + filename);
     }
+    std::string profileTail;
+    std::getline(in, profileTail);
 
     std::string key;
     int rank = 0;
@@ -75,6 +101,7 @@ ChebyshevMoments ReadChebmom(const std::string& filename) {
     }
 
     ChebyshevMoments moments(dims);
+    moments.buildProfile = ReadProfileTag(profileTail);
 
     if (!(in >> key >> moments.window.lower >> moments.window.upper) || key != "window") {
       throw std::runtime_error("ReadChebmom: invalid window line in: " + filename);
@@ -162,6 +189,7 @@ ChebyshevMoments ReadChebmom(const std::string& filename) {
   }
 
   ChebyshevMoments moments(dims);
+  moments.buildProfile = ReadProfileTag(restOfLine1);
   moments.systemSize = systemSize;
   moments.window.lower = bandCenter - 0.5 * bandWidth;
   moments.window.upper = bandCenter + 0.5 * bandWidth;
@@ -209,7 +237,9 @@ void WriteLegacyChebmom1D(const std::string& filename, const ChebyshevMoments& m
   const double bandCenter = (moments.window.upper + moments.window.lower) * 0.5;
 
   outputfile.precision(std::numeric_limits<double>::digits10);
-  outputfile << moments.systemSize << " " << bandWidth << " " << bandCenter << std::endl;
+  outputfile << moments.systemSize << " " << bandWidth << " " << bandCenter;
+  WriteProfileTag(outputfile, moments);
+  outputfile << std::endl;
   outputfile << moments.Dims()[0] << std::endl;
   for (const auto& mom : moments.Data()) {
     outputfile << mom.real() << " " << mom.imag() << std::endl;
@@ -232,7 +262,9 @@ void WriteLegacyChebmom2D(const std::string& filename, const ChebyshevMoments& m
   const double bandCenter = (moments.window.upper + moments.window.lower) * 0.5;
 
   outputfile.precision(std::numeric_limits<double>::digits10);
-  outputfile << moments.systemSize << " " << bandWidth << "  " << bandCenter << std::endl;
+  outputfile << moments.systemSize << " " << bandWidth << "  " << bandCenter;
+  WriteProfileTag(outputfile, moments);
+  outputfile << std::endl;
   for (int x : moments.Dims()) {
     outputfile << x << " ";
   }
@@ -262,7 +294,9 @@ void WriteLegacyChebmomTD(const std::string& filename, const ChebyshevMoments& m
 
   outputfile.precision(std::numeric_limits<double>::digits10);
   outputfile << moments.systemSize << " " << bandWidth << " " << bandCenter << " " << maxTimeStep
-             << " " << moments.timeStep << " " << std::endl;
+             << " " << moments.timeStep << " ";
+  WriteProfileTag(outputfile, moments);
+  outputfile << std::endl;
   outputfile << numMoms << " " << maxTimeStep << " " << std::endl;
   for (const auto& mom : moments.Data()) {
     outputfile << mom.real() << " " << mom.imag() << std::endl;

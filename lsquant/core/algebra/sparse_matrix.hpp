@@ -157,12 +157,14 @@ public:
    *      rows causes a data race and mathematical corruption.
    */
   void Multiply(Scalar a, const Vector& x, Scalar b, Vector& y) const;
+  void MultiplyBatch(Scalar a, const std::vector<Vector>& x, Scalar b,
+                     std::vector<Vector>& y) const;
 
   /**
    * @brief Return a new sparse matrix equal to the affine transformation `a * M + b * I`.
    *
-   * Evaluates the exact Eigen sparse expression `a * matrix_ + bID` used by legacy
-   * `SparseMatrixType::Rescale`, without mutating `*this`. Complexity is `O(dim + nnz)`.
+   * Evaluates the exact Eigen sparse expression `a * matrix_ + bID` used by the
+   * legacy CSR rescaling path, without mutating `*this`. Complexity is `O(dim + nnz)`.
    *
    * @param a Multiplicative scale factor applied to `M`.
    * @param b Additive shift factor multiplying the identity matrix `I`.
@@ -194,8 +196,8 @@ public:
   /**
    * @brief Return the Hermitian fold `0.5 * (M + M^+)` using the legacy Eigen expression.
    *
-   * Evaluates `transp = matrix_.adjoint(); result = 0.5 * (transp + matrix_)` exactly as
-   * legacy `SparseMatrixType::ConvertFromCSR` does. This is the legacy CSR-reader convention
+   * Evaluates `transp = matrix_.adjoint(); result = 0.5 * (transp + matrix_)` matching
+   * the legacy CSR-reader convention
    * that enforces exact self-adjointness and normalises IEEE-754 `-0.0` components to `+0.0`
    * when paired with `+0.0` in the conjugate transpose. Complexity is `O(dim + nnz)`.
    *
@@ -237,6 +239,9 @@ public:
   const Eigen::SparseMatrix<Scalar, Eigen::RowMajor, Index>& Eigen() const;
 
 private:
+#ifdef LSQUANT_NATIVE_BUILD
+  void PlaceOnThreads();
+#endif
   Eigen::SparseMatrix<Scalar, Eigen::RowMajor, Index> matrix_;
 };
 
@@ -280,6 +285,8 @@ public:
    * @param y Input/output vector of length `Dimension()`.
    */
   void Multiply(Scalar a, const Vector& x, Scalar b, Vector& y) const override;
+  void MultiplyBatch(Scalar a, const std::vector<Vector>& x, Scalar b,
+                     std::vector<Vector>& y) const override;
 
   using LinearOperator::Multiply;
 

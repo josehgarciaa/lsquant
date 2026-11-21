@@ -41,6 +41,8 @@ The `lsquant` Python package drives the core from Python:
 - \subpage bases: real-space, Bloch and eigen bases built from one Wannier model;
 - \subpage nonorthogonal: an overlap matrix S, the Löwdin and generalised routes, the
   overlap appliers.
+- \subpage materials: SIESTA Hamiltonians, spin Hall conductivity, disorder in a
+  non-orthogonal basis, projection and downfolding.
 
 ## Run files and the command line
 

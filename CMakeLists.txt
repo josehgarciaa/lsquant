@@ -9,10 +9,15 @@ cmake_minimum_required(VERSION 3.16)
 
 project(LSQUANT VERSION 2.0.0 LANGUAGES CXX)
 
+include(GNUInstallDirs)
+
 # --- Language / build type ---------------------------------------------------
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+# The legacy drivers (src/) build as C++11; the new core (lsquant/) requires C++17 on its
+# targets (target_compile_features cxx_std_17, PUBLIC).
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
@@ -29,6 +34,22 @@ option(LSQUANT_BUILD_NEW_CORE    "Build the new C++ core (lsquant/) next to the 
 option(LSQUANT_BUILD_INPUT_TOOLS "Fetch + build the external wannier2sparse for tests" ON)
 # OFF by default: normal builds and the test suite never touch Doxygen/Graphviz.
 option(BUILD_DOCS                "Build the Doxygen documentation (needs doxygen + graphviz)" OFF)
+
+# New core: numerical build profile and components.
+set(LSQUANT_BUILD_PROFILE "golden" CACHE STRING
+    "Numerical build profile: 'golden' (portable IEEE, no -march=native or -ffast-math) or 'native' (-O3 -march=native -mtune=native -fno-math-errno, defines LSQUANT_NATIVE_BUILD=1)")
+set_property(CACHE LSQUANT_BUILD_PROFILE PROPERTY STRINGS golden native)
+if(NOT LSQUANT_BUILD_PROFILE MATCHES "^(golden|native)$")
+    message(FATAL_ERROR "LSQUANT_BUILD_PROFILE must be 'golden' or 'native' (got '${LSQUANT_BUILD_PROFILE}')")
+endif()
+message(STATUS "LSQUANT build profile: ${LSQUANT_BUILD_PROFILE}")
+option(LSQUANT_BUILD_PYTHON     "Build the pybind11 extension module lsquant._core" ON)
+option(LSQUANT_BUILD_BENCHMARKS "Build the C++ kernel benchmark executable stage8_kernels" OFF)
+option(LSQUANT_BUILD_DEV_CHECKS "Build the C++ developer self-check executable stage_1_check" ON)
+
+# Shared warning flags of the new core.
+add_library(lsquant_warnings INTERFACE)
+target_compile_options(lsquant_warnings INTERFACE -Wall -Wextra -Wpedantic)
 
 # --- Dependencies ------------------------------------------------------------
 # Eigen3: prefer a real config-package (Eigen3::Eigen); fall back to a header dir.
@@ -60,6 +81,33 @@ find_library(FFTW3_OMP_LIBRARY fftw3_omp)
 if(NOT FFTW3_OMP_LIBRARY)
     message(STATUS "libfftw3_omp not found; building without threaded FFTW")
     set(FFTW3_OMP_LIBRARY "")
+endif()
+
+# pybind11 for the new core's Python module (found from the running Python when
+# pybind11_DIR is not given).
+if(LSQUANT_BUILD_NEW_CORE AND LSQUANT_BUILD_PYTHON)
+    if(NOT pybind11_DIR)
+        find_program(LSQUANT_PYTHON_EXECUTABLE NAMES python3 python)
+        if(LSQUANT_PYTHON_EXECUTABLE)
+            execute_process(
+                COMMAND "${LSQUANT_PYTHON_EXECUTABLE}" -m pybind11 --cmakedir
+                OUTPUT_VARIABLE _pybind11_cmakedir
+                OUTPUT_STRIP_TRAILING_WHITESPACE
+                ERROR_QUIET
+                RESULT_VARIABLE _pybind11_rc
+            )
+            if(_pybind11_rc EQUAL 0 AND EXISTS "${_pybind11_cmakedir}")
+                list(APPEND CMAKE_PREFIX_PATH "${_pybind11_cmakedir}")
+            endif()
+        endif()
+    endif()
+    find_package(pybind11 CONFIG QUIET)
+    if(NOT pybind11_FOUND)
+        message(FATAL_ERROR
+            "pybind11 not found (required when LSQUANT_BUILD_PYTHON=ON). "
+            "Install pybind11 ('pip install pybind11' or 'apt install pybind11-dev') "
+            "or pass -Dpybind11_DIR=$(python3 -m pybind11 --cmakedir).")
+    endif()
 endif()
 
 include_directories(${PROJECT_SOURCE_DIR}/include)

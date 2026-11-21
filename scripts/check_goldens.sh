@@ -95,7 +95,11 @@
 #            (non-zero exit, stderr, no output dir), the greps of stages 1 to 5 and the stage-7
 #            greps. Totals per golden and thread count.
 #            S7_KEEP=<dir> keeps the run-file outputs (figures/stage_7.py). Stages "7aux" (MCP and
-#            refusals) and "7tail" (MCP, refusals, greps) run one part. S7_SET=list runs the run files named in S7_LIST. S7_SET=quick runs the
+#            refusals) and "7tail" (MCP, refusals, greps) run one part.
+#            Stage "7runs" runs the run-file part alone (setup, the run files of S7_SET at
+#            S7_THREADS, the per-golden comparison, totals; no MCP, refusals or greps):
+#            independent "7runs" invocations with disjoint S7_LIST plus one "7tail" make up "7".
+#            S7_SET=list runs the run files named in S7_LIST. S7_SET=quick runs the
 #            closure subset (g1 g2 g3 g4 g4c g5 g7_s{x,y,z}
 #            g9_graphene_{real,eigen} g10_haldane_real_generalised tutorial01 tutorial03
 #            tutorial04) at 16 threads; S7_SET=all (default) runs every run file.
@@ -117,6 +121,8 @@
 #     and never smaller than the noise floor 1e-12 * max |golden value| of that curve;
 #   every other file (JSON, TSV, CSR, index files): non-numeric text identical, every number within
 #     one unit of the last printed significant digit as above.
+#   captured/index.tsv (sha1 column): an entry whose sha1 does not match passes if the produced
+#     capture passes the rule above against the golden capture of the same name.
 # Totals report byte-identical and tolerance-PASS counts separately.
 #
 # Output: one line per compared file, IDENTICAL or DIFFERS; for DIFFERS the first
@@ -962,7 +968,7 @@ stage6() {
       if [ -z "$f" ]; then
         NCMP=$((NCMP + 1)); NFAIL=$((NFAIL + 1)); echo "DIFFERS   [T=1 vs T=$T6] $tag (no T=$T6 output)"
       else
-        compare "$W/T1/$(basename "$f")" "$f" "[T=1 vs T=$T6] $tag/$(basename "$f")"
+        FORCE_BYTE=1; compare "$W/T1/$(basename "$f")" "$f" "[T=1 vs T=$T6] $tag/$(basename "$f")"; FORCE_BYTE=0
       fi
     done
   fi
@@ -1026,7 +1032,7 @@ S7_REF6="${S7_REF6:-}"
 s7skip() { [ "$1" = "${S7_THREADS%% *}" ] && return 1; case " $S7_T1_SKIP " in *" $2 "*) return 0 ;; esac; return 1; }
 S7_RUNS="$REPO/runs/goldens"
 G1F2=NonEqOpVX-VXchain1dKPM_M64x64_stateexact.chebmom2D
-declare -A S7I S7D S7ORDER
+declare -A S7I S7D S7ORDER S7B S7T
 # S7_SET=all (default): every run file. S7_SET=quick: the stage-7 closure subset (16 threads
 # by default; g6, g7, the other g9 and g10 files, tutorial02 and tutorial05 deferred to the final run).
 # S7_SET=list: the run files named in S7_LIST (space separated), at S7_THREADS.
@@ -1040,14 +1046,20 @@ s7want() {
 
 # captured/index.tsv: every line "<NNNN_name> <sha1> <source>" must name a produced capture with that sha1
 s7idx() {   # <group> <produced captured dir> <golden index.tsv> <tag>
-  local g="$1" d="$2" idx="$3" tag="$4" bad=0 n=0 name sha
+  local g="$1" d="$2" idx="$3" tag="$4" bad=0 n=0 tp=0 name sha t
   [ -n "${S7ORDER[$g]:-}" ] || { S7ORDER[$g]=1; S7GROUPS+=("$g"); }
   NCMP=$((NCMP + 1))
   while IFS=$'\t' read -r name sha _; do
     n=$((n + 1))
-    [ -f "$d/$name" ] && [ "$(sha1sum "$d/$name" | cut -d' ' -f1)" = "$sha" ] || { bad=$((bad + 1)); echo "          index.tsv line $n: $name sha1 $sha not matched by $d/$name"; }
+    [ -f "$d/$name" ] && [ "$(sha1sum "$d/$name" | cut -d' ' -f1)" = "$sha" ] && continue
+    if [ "$GOLDEN_TOL" = 1 ] && [ -f "$d/$name" ] && [ -f "$(dirname "$idx")/$name" ] \
+       && t="$(python3 "$TOLCMP" "$d/$name" "$(dirname "$idx")/$name" 2>&1)"; then
+      tp=$((tp + 1)); echo "          index.tsv line $n: $name sha1 differs, capture within tolerance: ${t#* }"; continue
+    fi
+    bad=$((bad + 1)); echo "          index.tsv line $n: $name sha1 $sha not matched by $d/$name"
   done <"$idx"
-  if [ $bad -eq 0 ] && [ $n -gt 0 ]; then echo "IDENTICAL $tag ($n entries, every sha1 matches)"; S7I[$g]=$(( ${S7I[$g]:-0} + 1 ))
+  if [ $bad -eq 0 ] && [ $tp -eq 0 ] && [ $n -gt 0 ]; then echo "IDENTICAL $tag ($n entries, every sha1 matches)"; S7I[$g]=$(( ${S7I[$g]:-0} + 1 )); S7B[$g]=$(( ${S7B[$g]:-0} + 1 )); NBYTE=$((NBYTE + 1))
+  elif [ $bad -eq 0 ] && [ $n -gt 0 ]; then echo "TOLPASS   $tag ($n entries: $((n - tp)) sha1 match, $tp captures within tolerance)"; S7I[$g]=$(( ${S7I[$g]:-0} + 1 )); S7T[$g]=$(( ${S7T[$g]:-0} + 1 )); NTOLP=$((NTOLP + 1))
   else echo "DIFFERS   $tag ($bad of $n entries do not match)"; NFAIL=$((NFAIL + 1)); S7D[$g]=$(( ${S7D[$g]:-0} + 1 )); fi
 }
 S7GROUPS=()
@@ -1057,6 +1069,7 @@ s7cmp() {   # <group> <new> <golden> <tag>   (compare(), plus a per-group tally)
   [ -n "${S7ORDER[$g]:-}" ] || { S7ORDER[$g]=1; S7GROUPS+=("$g"); }
   compare "$2" "$3" "$4"
   if [ "$NFAIL" -eq "$before" ]; then S7I[$g]=$(( ${S7I[$g]:-0} + 1 )); else S7D[$g]=$(( ${S7D[$g]:-0} + 1 )); fi
+  case "$CMP_LAST" in IDENTICAL) S7B[$g]=$(( ${S7B[$g]:-0} + 1 )) ;; TOLPASS) S7T[$g]=$(( ${S7T[$g]:-0} + 1 )) ;; esac
 }
 
 # max relative difference as the stage-6 gate defines it:
@@ -1443,7 +1456,11 @@ stage7_setup() {
 s7_totals() {
   local g
   echo "== stage 7 totals per golden (IDENTICAL or PASS / DIFFERS or FAIL)"
-  for g in "${S7GROUPS[@]}"; do printf "   %-26s %4d identical  %4d differ\n" "$g" "${S7I[$g]:-0}" "${S7D[$g]:-0}"; done
+  for g in "${S7GROUPS[@]}"; do
+    if [ "$GOLDEN_TOL" = 1 ]; then
+      printf "   %-26s %4d pass (%4d byte-identical, %4d tolerance-PASS)  %4d differ\n" "$g" "${S7I[$g]:-0}" "${S7B[$g]:-0}" "${S7T[$g]:-0}" "${S7D[$g]:-0}"
+    else printf "   %-26s %4d identical  %4d differ\n" "$g" "${S7I[$g]:-0}" "${S7D[$g]:-0}"; fi
+  done
 }
 
 stage7() {
@@ -1493,6 +1510,9 @@ case "$STAGE" in
   7) stage7; core_grep; stage2_grep; stage3_grep; stage4_grep; stage5_grep; stage7_grep ;;
   7tail) stage7_setup; s7_mcp; s7_refusals; s7_totals; core_grep; stage2_grep; stage3_grep; stage4_grep; stage5_grep; stage7_grep ;;
   7aux) stage7_setup; s7_mcp; s7_refusals; s7_totals ;;
+  7runs) stage7_setup; echo "== stage 7 (run files only): S7_SET=$S7_SET${S7_LIST:+ S7_LIST=$S7_LIST}, threads: $S7_THREADS"
+         for T in $S7_THREADS; do s7_goldens $T; done; s7_totals
+         [ -z "${S7_KEEP:-}" ] || { rm -rf "$S7_KEEP"; cp -r "$TMP/s7" "$S7_KEEP"; echo "   stage-7 outputs kept in $S7_KEEP"; } ;;
   *) echo "ERROR: stage $STAGE has no gate defined yet"; exit 2 ;;
 esac
 
