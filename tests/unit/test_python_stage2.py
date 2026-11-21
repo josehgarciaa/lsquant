@@ -94,13 +94,13 @@ def test_delta_table_sympy_matches_legacy():
 
 # ------------------------------------------------------------------ plans
 def test_dos_plan_structure():
-    plan = lsq.dos_plan(8, 4)
+    plan = lsq.dos_plan(8, 4, word="1 delta")
     assert plan.word == "1 delta"
     assert len(plan.code) == 2
 
 
 def test_kubo_plan_structure():
-    plan = lsq.kubo_plan(8)
+    plan = lsq.kubo_plan(8, left_index=0, right_index=0, word="VX delta VX delta")
     assert plan.word == "VX delta VX delta"
     assert len(plan.code) == 6
 
@@ -108,12 +108,12 @@ def test_kubo_plan_structure():
 @pytest.mark.parametrize("args", [(0, 4), (8, 0), (-1, 1)])
 def test_dos_plan_rejects_bad_input(args):
     with pytest.raises(ValueError):
-        lsq.dos_plan(*args)
+        lsq.dos_plan(*args, word="1 delta")
 
 
 def test_kubo_plan_rejects_bad_input():
     with pytest.raises(ValueError):
-        lsq.kubo_plan(0)
+        lsq.kubo_plan(0, left_index=0, right_index=0, word="VX delta VX delta")
 
 
 # ------------------------------------------------------------------ run_plan
@@ -124,7 +124,7 @@ def test_dos_moments_against_dense_diagonalisation():
     lo, hi = eps.min() - 0.5, eps.max() + 0.5
     window = _core.SpectralWindow(lo, hi)
     states = _core.LocalStates(n, list(range(n)))
-    mu = lsq.run_plan(lsq.dos_plan(m_tot, n), dense_to_core(h), window, states)
+    mu = lsq.run_plan(lsq.dos_plan(m_tot, n, word="1 delta"), dense_to_core(h), window, states)
     x = eps * window.scale + window.shift           # H~ = (H - c)/a: scale = 1/a, shift = -c/a
     assert np.all(np.abs(x) < 1.0)
     ref = np.array([np.sum(np.cos(m * np.arccos(x))) for m in range(m_tot)])
@@ -139,8 +139,8 @@ def test_golden_chain_plans_are_identical_to_g1_g2():
     dim = ham.dimension
     window = _core.SpectralWindow(-2.0, 2.0)
     states = _core.LocalStates(dim, list(range(dim)))
-    mu_dos = lsq.run_plan(lsq.dos_plan(64, dim), ham, window, states, batch_size=64)
-    mu_kubo = lsq.run_plan(lsq.kubo_plan(64), ham, window, states, operators=[vx],
+    mu_dos = lsq.run_plan(lsq.dos_plan(64, dim, word="1 delta"), ham, window, states, batch_size=64)
+    mu_kubo = lsq.run_plan(lsq.kubo_plan(64, left_index=0, right_index=0, word="VX delta VX delta"), ham, window, states, operators=[vx],
                            batch_size=64, symmetrise=True)
     assert np.array_equal(mu_dos.data, _core.ReadChebmom(G1).data)
     assert np.array_equal(mu_kubo.data, _core.ReadChebmom(G2).data)
