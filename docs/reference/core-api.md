@@ -13,10 +13,13 @@ from lsquant import _core
 Import it through `lsquant`, as above, rather than as a top-level `_core`.
 Importing `lsquant` first sets each of `OMP_PROC_BIND`, `OMP_PLACES` and
 `OMP_NUM_THREADS`, but only if that variable is unset
-(`python/lsquant/runtime.py:30–33`). In native builds
-(`build_profile == "native"`), it then calls `ConfigurePerformance` with the
-values of `LSQUANT_SPMV_MIN_NNZ` and `LSQUANT_KERNEL_BATCH` (defaults `16384`
-and `0`; `runtime.py:36–42`).
+(`python/lsquant/runtime.py:30–33`). In every build it then calls
+`ConfigureEngineDiagnostics` with the settings of `LSQ_ENGINE_MEM`,
+`LSQ_ENGINE_TIMING` and `LSQ_CHECKPOINT_ABORT_AFTER` (`runtime.py:44–49`). In
+native builds (`build_profile == "native"`), it also calls
+`ConfigurePerformance` with the values of `LSQUANT_SPMV_MIN_NNZ` and
+`LSQUANT_KERNEL_BATCH` (defaults `16384` and `0`; `runtime.py:50–54`). The
+engine receives these settings only through the two calls.
 
 The source of truth is `lsquant/api/bindings.cpp`. The type stub
 `python/lsquant/_core.pyi` is incomplete; differences are listed in
@@ -50,6 +53,7 @@ Call these once, before any engine runs.
 | Function | Meaning |
 |---|---|
 | `ConfigurePerformance(spmv_min_nnz=16384, kernel_batch=0)` | Sets two process-wide kernel settings. `spmv_min_nnz`: a sparse product runs in an OpenMP parallel region only when the operator has at least this many non-zeros (atom pairs for `AtomBlockOperator`). `kernel_batch`: maximum number of vectors per cache micro-batch in block products; `0` lets the kernel choose from a 512 KiB L2 budget. Both must be ≥ 0, otherwise `ValueError`. Returns `None`. |
+| `ConfigureEngineDiagnostics(memory_report=False, phase_timing=False, checkpoint_abort_after=-1)` | Sets three process-wide diagnostic settings. `memory_report` and `phase_timing` print the allocation and the phase timings of the native rank-2 path to stderr. `checkpoint_abort_after = k` stops a checkpointed run right after the k-th checkpoint write; `-1` never stops. A value below `-1` raises `ValueError`. Returns `None`. |
 | `ConfigureBenchmarkThreads(count)` | Calls `omp_set_num_threads(count)` and returns `omp_get_max_threads()`. `count` ≤ 0 raises `ValueError`. |
 
 `import lsquant` makes this call in native builds, as described at the top of
@@ -305,11 +309,11 @@ keeps `rescaled_h`, `operators` and `states` alive.
 > In a `native` build that path ignores `batch_size` for static rank-2 words.
 > The defaults also differ between layers: `MomentEngine` uses
 > `left_window=32, right_window=0`, while `lsquant.moments.run_plan` uses 16
-> and 16 (`python/lsquant/moments.py:496–497`).
+> and 16 (`python/lsquant/moments.py:504–505`).
 
 > **Known limitation.** A rank-2 plan with `Trace([1])` returns raw sums over
 > the states. Call `ApplyKpmWeights` afterwards, as `run_plan` does
-> (`python/lsquant/moments.py:589–590`).
+> (`python/lsquant/moments.py:597–598`).
 
 ### `ApplyKpmWeights(moments, num_states, symmetrise)` → `None`
 

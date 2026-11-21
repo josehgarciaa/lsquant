@@ -30,8 +30,11 @@ module (`runtime.py`, called from `__init__.py:14` and `__init__.py:25`).
 | `OMP_PROC_BIND` | Set to `spread` if not already set. | `runtime.py:30` |
 | `OMP_PLACES` | Set to `cores` if not already set. | `runtime.py:31` |
 | `OMP_NUM_THREADS` | Set to the number of physical cores in the process CPU affinity if not already set. | `runtime.py:32–33` |
-| `LSQUANT_SPMV_MIN_NNZ` | Read once (default `16384`) and passed to `_core.ConfigurePerformance`, `native` builds only. | `runtime.py:36–42` |
-| `LSQUANT_KERNEL_BATCH` | Read once (default `0`) and passed to `_core.ConfigurePerformance`, `native` builds only. | `runtime.py:36–42` |
+| `LSQ_ENGINE_MEM` | Any value turns on the allocation report of the native rank-2 path, on stderr. Passed to `_core.ConfigureEngineDiagnostics`. | `runtime.py:44–49` |
+| `LSQ_ENGINE_TIMING` | Any value turns on the phase timings of the native rank-2 path, on stderr. Passed to `_core.ConfigureEngineDiagnostics`. | `runtime.py:44–49` |
+| `LSQ_CHECKPOINT_ABORT_AFTER` | `k` stops a checkpointed run right after the k-th checkpoint write (default `-1`, never). Used by the resume test. Passed to `_core.ConfigureEngineDiagnostics`. | `runtime.py:44–49` |
+| `LSQUANT_SPMV_MIN_NNZ` | Read once (default `16384`) and passed to `_core.ConfigurePerformance`, `native` builds only. | `runtime.py:50–54` |
+| `LSQUANT_KERNEL_BATCH` | Read once (default `0`) and passed to `_core.ConfigurePerformance`, `native` builds only. | `runtime.py:50–54` |
 
 Set these variables before the first `import lsquant`. A change after the
 import has no effect on the OpenMP runtime.
@@ -90,7 +93,7 @@ Returns a dictionary:
 | `curve_files` | `list[str]` | Curve files written (`.dat`). |
 | `written_files` | `list[str]` | Every file written. For SIESTA runs: every file in the output directory. |
 
-Dispatch by `model.kind` (`runfile.py:1469–1480`): a SIESTA model with
+Dispatch by `model.kind` (`runfile.py:1480–1491`): a SIESTA model with
 `projection.kind != "none"` goes to the projection executor; a SIESTA model with
 `basis.name = "real"`, `basis.disorder.W != 0` or
 `model.params.nonorthogonal_disorder` goes to the disordered executor; any other
@@ -99,7 +102,7 @@ SIESTA model goes to the clean executor. See the
 
 Raises `ValueError` for an invalid run file. Raises `FileNotFoundError` when
 `<label>.HAM.CSR` of a `csr` model is missing, or when `<label>.S.CSR` is
-missing and the metric is non-orthogonal (`runfile.py:1491–1504`).
+missing and the metric is non-orthogonal (`runfile.py:1502–1515`).
 
 A relative `output.dir` (or `out_dir_override`) is taken relative to the current
 working directory (`runfile.py:1465–1467`). Relative model paths are resolved
@@ -107,7 +110,7 @@ as described in [Path resolution](run-file.md#path-resolution).
 
 > **Known limitation: operator names.** Before it runs each word,
 > `execute_runfile` compiles it with `basis={"name": ...}` only
-> (`runfile.py:1536`). The compiler then checks the operators against the
+> (`runfile.py:1547`). The compiler then checks the operators against the
 > built-in list `DEFAULT_KNOWN_OPERATORS` (`words/compiler.py:28`, fallback at
 > `words/compiler.py:393–394`) and raises `ValueError("Unknown operator ...")`
 > (`words/compiler.py:405`). A custom name listed in `model.operators` passes
@@ -126,7 +129,7 @@ class RunFile:
     numerics: dict = {}
 ```
 
-A validated run file with every default filled in (`runfile.py:854`). Each
+A validated run file with every default filled in (`runfile.py:864`). Each
 field holds one section of the run file, as listed in the
 [run-file reference](run-file.md).
 
@@ -151,7 +154,7 @@ directory. This is the function behind `python -m lsquant reconstruct`.
 | Parameter | Type | Default | Meaning |
 |---|---|---|---|
 | `target_path` | `str` | — | A moment file, or a directory with moment files. |
-| `formula` | `str` or `None` | `None` | Reconstruction formula. `None`: `time_correlation` for time-dependent moments, `bastin` for rank 2, `dos` for rank 1 (`runfile.py:2412–2418`). |
+| `formula` | `str` or `None` | `None` | Reconstruction formula. `None`: `time_correlation` for time-dependent moments, `bastin` for rank 2, `dos` for rank 1 (`runfile.py:2423–2429`). |
 | `broadening_meV` | `float` or `None` | `None` | Broadening in meV. `None`: for a directory, `reconstruction.broadening_meV` of its `run.resolved.json`, else 10.0; for a file, 10.0. |
 | `fermi_energies` | sequence of `float` or `None` | `None` | Fermi energies (eV) for `time_correlation`. `None`: for a directory, the value in `run.resolved.json`, else `[0.0]`; for a file, `[0.0]`. |
 | `out_dir` | `str` or `None` | `None` | Where to write the curves. `None`: next to the moments. |
@@ -160,9 +163,9 @@ Returns, for a file: `moment_file`, `output_dir`, `formula`, `broadening_meV`,
 `fermi_energies`, `curve_files`. For a directory: `output_dir`, `curve_files`.
 
 For a directory, it reads `*.chebmom1D`, `*.chebmom2D` and `*.chebmomTD`, and
-only if there are none, `*.chebmom` (`runfile.py:2353–2361`). For `shc`, it
+only if there are none, `*.chebmom` (`runfile.py:2364–2372`). For `shc`, it
 takes `num_cells` and `cell_area` from the `run.resolved.json` next to the
-moment file (`runfile.py:2420–2425`).
+moment file (`runfile.py:2431–2436`).
 
 Raises `FileNotFoundError` if the path or the moment files are missing.
 
@@ -253,7 +256,7 @@ For `BlochBasis` at W = 0 and `EigenBasis`, `states("exact")` returns
 `_core.BlockLocalStates(num_cells, num_wann)`: `num_wann` state vectors that
 together give the exact trace over the whole k mesh. `execute_runfile` then sets
 `mu.number_of_states = basis.dimension` on the moments
-(`runfile.py:1669–1670`). Do the same when you call `run_plan` yourself, as
+(`runfile.py:1680–1681`). Do the same when you call `run_plan` yourself, as
 example 17 does.
 
 ### `BlochMetricBasis`, `EigenMetricBasis`
@@ -317,7 +320,7 @@ Rank-2 moments get the KPM weights (`_core.ApplyKpmWeights`).
 
 Raises `ValueError` if `state_block`, `left_window` or `right_window` is below 1.
 With `state_block > 1`, issues a `RuntimeWarning` when the estimated working set
-exceeds 80 % of `MemAvailable` (`moments.py:560–574`).
+exceeds 80 % of `MemAvailable` (`moments.py:568–582`).
 
 ### Plan builders
 
