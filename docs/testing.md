@@ -23,7 +23,7 @@ every file.
 | tutorials | `tutorials/01..06/` | the six `examples/` tutorials | every data file each tutorial script reads to draw its figure |
 
 The `operators/` subdirectories hold the input Hamiltonians and operators in LSQUANT's CSR
-text format, so the gate uses these inputs directly.
+text format, so the gate reads them directly and runs without a model generator.
 
 ## Running the gate
 
@@ -147,7 +147,7 @@ It writes under `--out` and its work directory, leaving `examples/` and `goldens
 
 The gate and the localiser have their own unit tests under `tests/unit/`. The gate tests
 replace the six legacy drivers by small fake executables that copy (or corrupt, or omit)
-the golden files, so they run in a few seconds using the fake executables:
+the golden files, so they run without a build, in a few seconds:
 
 ```bash
 python3 -m pytest tests/unit -v
@@ -160,8 +160,8 @@ of its last digit and moments off by 1e-13 pass while five units or 1e-9 fail.
 
 ## Rules
 
-- Preserve existing goldens. Add a new golden in a new directory, with its provenance,
-  in the change that needs it.
-- The gate fixes seeds (`KPM_SEED=12345`) and tolerances.
+- Do not edit, regenerate or delete an existing golden. Add a new golden in a new
+  directory, with its provenance, in the change that needs it.
+- The gate fixes seeds (`KPM_SEED=12345`) and tolerances; the caller cannot change them.
 - A pull request that changes numerical code states which gate stages it ran and pastes
   the final `GATE PASS` line.
