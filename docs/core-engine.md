@@ -87,11 +87,14 @@ M = 64, exact trace) and rebuilds the DOS:
 examples/core_engine/run.sh build
 ```
 
-The command it runs for each word is:
+The commands it runs are:
 
 ```bash
 build/lsquant_core/stage1_moments --operators goldens/stage0/chain1d/operators \
     --label chain1d --window -2 2 --trace exact --states 2048 --moments 64 \
+    --word kubo --out out/
+build/lsquant_core/stage1_moments --operators goldens/stage0/chain1d/operators \
+    --label chain1d --window -2.5 2.5 --trace exact --states 2048 --moments 64 \
     --word dos --out out/
 ```
 
