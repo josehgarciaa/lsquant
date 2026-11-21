@@ -180,7 +180,7 @@ ALLOWED_BASIS_KEYS: frozenset[str] = frozenset(
     {"name", "supercell", "disorder"}
 )
 
-ALLOWED_DISORDER_KEYS: frozenset[str] = frozenset({"W", "seed"})
+ALLOWED_DISORDER_KEYS: frozenset[str] = frozenset({"W", "seed", "kind"})
 
 ALLOWED_METRIC_KEYS: frozenset[str] = frozenset(
     {
@@ -286,7 +286,7 @@ DEFAULT_RUNFILE_DEFAULTS: dict[str, Any] = {
     "basis": {
         "name": "real",
         "supercell": [1, 1, 1],
-        "disorder": {"W": 0.0, "seed": 7},
+        "disorder": {"W": 0.0, "seed": 7, "kind": "scalar"},
     },
     "metric": {
         "policy": "orthogonal",
@@ -498,6 +498,16 @@ def validate_runfile_dict(raw: Mapping[str, Any]) -> None:
             _check_keys("basis.disorder", dis, ALLOWED_DISORDER_KEYS)
             if float(_get_or(dis, "W", 0.0)) < 0.0:
                 raise ValueError("basis.disorder.W must be non-negative")
+            dkind = str(_get_or(dis, "kind", "scalar"))
+            if dkind not in ("scalar", "magnetic", "independent"):
+                raise ValueError(
+                    f"Unknown basis.disorder.kind '{dkind}'; expected 'scalar', 'magnetic' or 'independent'"
+                )
+            if dkind != "scalar" and str(_get_or(raw.get("model") or {}, "kind", "csr")) != "siesta":
+                raise ValueError(
+                    f"basis.disorder.kind='{dkind}' needs the spinor layout of a SIESTA model; "
+                    "csr, wannier and generator models take kind 'scalar' (one value per basis function)"
+                )
 
     if "metric" in raw and raw["metric"] is not None:
         metric = raw["metric"]
@@ -952,6 +962,7 @@ class RunFile:
             "disorder": {
                 "W": float(_get_or(raw_dis, "W", 0.0)),
                 "seed": int(_get_or(raw_dis, "seed", 7)),
+                "kind": str(_get_or(raw_dis, "kind", "scalar")),
             },
         }
 

@@ -23,10 +23,35 @@ def _transform(model, supercell):
                                 _core.BlochDirection.RealToBloch)
 
 
-def _values(dimension, width, seed, values):
+DISORDER_KINDS = ("scalar", "magnetic", "independent")
+
+
+def spinor_disorder_values(dimension, width, seed, kind="scalar"):
+    """Anderson values for an interleaved spinor basis (index 2i spin up, 2i+1 spin down).
+
+    ``scalar``: one value u_i per orbital, uniform in [-W/2, W/2], on both spin components
+    (a spin-independent on-site potential). ``magnetic``: one value h_i per orbital, uniform
+    in [-W/2, W/2], as +h_i on spin up and -h_i on spin down (a random Zeeman field along z).
+    ``independent``: one value per spinor coefficient (make_anderson_disorder), which mixes a
+    scalar and a magnetic part of variance W^2/24 each.
+    """
+    if kind not in DISORDER_KINDS:
+        raise ValueError(f"disorder kind must be one of {DISORDER_KINDS}, got {kind!r}")
+    if kind == "independent":
+        return make_anderson_disorder(dimension, width, seed)
+    if dimension % 2:
+        raise ValueError(f"disorder kind {kind!r} needs an interleaved spinor basis (even dimension)")
+    u = np.real(make_anderson_disorder(dimension // 2, width, seed))
+    w = np.empty(dimension, dtype=np.complex128)
+    w[0::2] = u
+    w[1::2] = u if kind == "scalar" else -u
+    return w
+
+
+def _values(dimension, width, seed, values, kind="scalar"):
     if not np.isfinite(width) or width < 0:
         raise ValueError("disorder W must be nonnegative and finite")
-    w = make_anderson_disorder(dimension, width, seed) if values is None else np.asarray(values)
+    w = spinor_disorder_values(dimension, width, seed, kind) if values is None else np.asarray(values)
     if w.shape != (dimension,) or not np.all(np.isfinite(w)) or np.any(w.imag != 0):
         raise ValueError("disorder must be a finite real vector with one value per coefficient")
     return np.ascontiguousarray(w, dtype=np.complex128)
@@ -112,12 +137,17 @@ class DisorderedBlochMetricBasis(BlochMetricBasis):
     """
 
     def __init__(self, model, supercell, *, disorder_w=0., disorder_seed=7,
-                 disorder=None, velocity_mode="covariant", route="lowdin", seed=12345):
+                 disorder=None, disorder_kind="scalar", velocity_mode="covariant", route="lowdin", seed=12345):
         if route not in ("lowdin", "generalised"):
             raise ValueError(f"Expected route in ('lowdin', 'generalised'), got {route!r}")
         super().__init__(model, supercell, velocity_mode=velocity_mode, route=route, seed=seed)
         self.disorder_w, self.disorder_seed = float(disorder_w), int(disorder_seed)
-        self.disorder_values = _values(self.dimension, self.disorder_w, self.disorder_seed, disorder)
+        if disorder_kind != "independent" and getattr(model, "physical_spin", None) is not None:
+            raise ValueError("disorder kinds 'scalar' and 'magnetic' need the interleaved SIESTA spinor "
+                             "layout; this model defines physical_spin, use kind 'independent'")
+        self.disorder_kind = disorder_kind
+        self.disorder_values = _values(self.dimension, self.disorder_w, self.disorder_seed, disorder,
+                                       disorder_kind)
         self.has_disorder = bool(np.any(self.disorder_values))
         self.transform = _transform(model, self.supercell)
         self.identity = _core.IdentityOperator(self.dimension)
@@ -214,7 +244,7 @@ class RealSpaceMetricBasis:
     name = "real"
 
     def __init__(self, model, supercell, *, disorder_w=0., disorder_seed=7, disorder=None,
-                 velocity_mode="covariant", route="lowdin", seed=12345,
+                 disorder_kind="scalar", velocity_mode="covariant", route="lowdin", seed=12345,
                  applier="exact", order=256, coeff_tol=1e-14, max_dim=4096, tol=1e-11):
         if route not in ("lowdin", "generalised") or applier not in ("exact", "chebyshev"):
             raise ValueError(
@@ -236,7 +266,12 @@ class RealSpaceMetricBasis:
         self.velocity_mode, self.route, self.seed = velocity_mode, route, int(seed)
         self.applier = applier
         self.disorder_w, self.disorder_seed = float(disorder_w), int(disorder_seed)
-        self.disorder_values = _values(self.dimension, self.disorder_w, self.disorder_seed, disorder)
+        if disorder_kind != "independent" and getattr(model, "physical_spin", None) is not None:
+            raise ValueError("disorder kinds 'scalar' and 'magnetic' need the interleaved SIESTA spinor "
+                             "layout; this model defines physical_spin, use kind 'independent'")
+        self.disorder_kind = disorder_kind
+        self.disorder_values = _values(self.dimension, self.disorder_w, self.disorder_seed, disorder,
+                                       disorder_kind)
         self.has_disorder = bool(np.any(self.disorder_values))
         self.transform = _transform(model, self.supercell)
         self.identity = _core.IdentityOperator(self.dimension)
