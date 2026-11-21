@@ -25,3 +25,8 @@ Haldane Hall, spin precession, charge transport, and spin relaxation). Each
 example carries its own `README.md` explaining the physics it demonstrates and
 how to run it.
 
+
+## Testing
+
+Every numerical result is checked against committed golden masters; see
+\subpage testing for the gate, how to read its output and the unit tests.
