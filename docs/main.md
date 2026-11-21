@@ -26,6 +26,11 @@ example carries its own `README.md` explaining the physics it demonstrates and
 how to run it.
 
 
+## Core engine
+
+The new C++ core computes every KPM quantity by running a small instruction list (a
+*plan*) over trace vectors; see \subpage core_engine.
+
 ## Testing
 
 Every numerical result is checked against committed golden masters; see

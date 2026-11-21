@@ -10,9 +10,14 @@
 #   stage 0  legacy build (build_dir holds the inline_* drivers): reruns the G1, G2
 #            (chain1d, exact trace, M = 64) and G5 (Haldane, exact trace, M = 128)
 #            pipelines at OMP_NUM_THREADS=16, then G1 and G2 again at 1 and 64 threads.
+#   stage 1  new core (build_dir/lsquant_core/stage1_moments): G1 and G2 at
+#            OMP_NUM_THREADS = 1, 8, 64; G2 again with --batch 16 at 8 threads (the
+#            batched result must equal the unbatched G2); random-phase determinism
+#            (two runs, cmp); grep for "basis|std::cout|getenv" under lsquant/core
+#            (must be empty: the core knows no basis, prints nothing and reads no
+#            environment variable).
 #
-#   Later stages (the new core and its Python layer) add their own case to the
-#   dispatch at the end of this file when they are merged.
+#   Later stages add their own case to the dispatch at the end of this file.
 #
 # Tolerance mode (GOLDEN_TOL=1; final validation on a machine that is not byte-identical to the
 # machine where the goldens were written, e.g. one with gcc 9.4, Eigen 3.4, glibc 2.31).
@@ -35,7 +40,7 @@
 # differing bytes (cmp -l | head -5) and the numeric localisation of
 # scripts/golden_diff.py (first differing line, element index, both values, max
 # relative difference over the file). Exit code 0 only if every file is IDENTICAL
-# (or, with GOLDEN_TOL=1, IDENTICAL or TOLPASS).
+# (or, with GOLDEN_TOL=1, IDENTICAL or TOLPASS) and, for stage 1, the grep is empty.
 #
 # KPM_SEED=12345 always. Seeds, tolerances and goldens are never changed here.
 set -uo pipefail
@@ -236,8 +241,69 @@ stage0() {
   legacy_chain1d 64 "$TMP/g12_T64"
 }
 
+# ---------------------------------------------------------------- stage 1 (new core)
+stage1() {
+  local EXE="$BUILD/lsquant_core/stage1_moments" T W w R
+  [ -x "$EXE" ] || EXE="$BUILD/lsquant/stage1_moments"
+  [ -x "$EXE" ] || { echo "ERROR: stage1_moments not found under $BUILD/lsquant_core or $BUILD/lsquant"; exit 2; }
+  echo "== stage 1: $EXE vs goldens/stage0/chain1d (KPM_SEED=$KPM_SEED)"
+  for T in 1 8 64; do
+    W="$TMP/s1_T$T"; mkdir -p "$W"
+    for w in dos kubo; do
+      OMP_NUM_THREADS=$T "$EXE" --operators "$GOLD/chain1d/operators" --label chain1d --window -2 2 \
+        --trace exact --states 2048 --moments 64 --word $w --out "$W" >"$W/$w.log" 2>&1 \
+        || echo "          [T=$T] stage1_moments --word $w exited non-zero: $(tail -1 "$W/$w.log")"
+    done
+    compare "$W/SpectralOp1chain1dKPM_M64_stateexact.chebmom1D" \
+            "$GOLD/chain1d/SpectralOp1chain1dKPM_M64_stateexact.chebmom1D" \
+            "[T=$T] chain1d/SpectralOp1chain1dKPM_M64_stateexact.chebmom1D (G1)"
+    compare "$W/NonEqOpVX-VXchain1dKPM_M64x64_stateexact.chebmom2D" \
+            "$GOLD/chain1d/NonEqOpVX-VXchain1dKPM_M64x64_stateexact.chebmom2D" \
+            "[T=$T] chain1d/NonEqOpVX-VXchain1dKPM_M64x64_stateexact.chebmom2D (G2)"
+  done
+  # G2 with batching (batchSize 16 < M = 64), T = 8: must equal the unbatched G2
+  W="$TMP/s1_batch16"; mkdir -p "$W"
+  OMP_NUM_THREADS=8 "$EXE" --operators "$GOLD/chain1d/operators" --label chain1d --window -2 2 \
+    --trace exact --seed 12345 --states 2048 --moments 64 --word kubo --batch 16 --out "$W" >"$W/kubo.log" 2>&1 \
+    || echo "          [T=8 batch 16] stage1_moments --word kubo exited non-zero: $(tail -1 "$W/kubo.log")"
+  compare "$W/NonEqOpVX-VXchain1dKPM_M64x64_stateexact.chebmom2D" \
+          "$GOLD/chain1d/NonEqOpVX-VXchain1dKPM_M64x64_stateexact.chebmom2D" \
+          "[T=8, batch 16] chain1d/NonEqOpVX-VXchain1dKPM_M64x64_stateexact.chebmom2D (G2, batched)"
+  # random-phase determinism: no golden; two identical runs are the criterion
+  for R in 1 2; do
+    W="$TMP/s1_random$R"; mkdir -p "$W"
+    for w in dos kubo; do
+      OMP_NUM_THREADS=8 "$EXE" --operators "$GOLD/chain1d/operators" --label chain1d --window -2 2 \
+        --trace random --seed 12345 --states 4 --moments 64 --word $w --out "$W" >"$W/$w.log" 2>&1 \
+        || echo "          [random run $R] stage1_moments --word $w exited non-zero: $(tail -1 "$W/$w.log")"
+    done
+  done
+  local n=0 f
+  for f in "$TMP/s1_random1"/*.chebmom*; do
+    [ -f "$f" ] || continue; n=$((n + 1))
+    compare "$TMP/s1_random2/$(basename "$f")" "$f" "[random, run2 vs run1] $(basename "$f")"
+  done
+  [ "$n" -gt 0 ] || { echo "DIFFERS   [random] no .chebmom output produced"; NFAIL=$((NFAIL + 1)); }
+}
+
+core_grep() {
+  local hits
+  if [ ! -d "$REPO/lsquant/core" ]; then
+    echo "GREP      lsquant/core missing"; NFAIL=$((NFAIL + 1)); return
+  fi
+  hits="$(cd "$REPO" && grep -rn "basis\|std::cout\|getenv" lsquant/core)"
+  if [ -z "$hits" ]; then
+    echo "GREP      grep -rn \"basis\\|std::cout\\|getenv\" lsquant/core: empty"
+  else
+    echo "GREP      grep -rn \"basis\\|std::cout\\|getenv\" lsquant/core: FOUND"
+    echo "$hits" | sed 's/^/          /'
+    NFAIL=$((NFAIL + 1))
+  fi
+}
+
 case "$STAGE" in
   0) stage0 ;;
+  1) stage1; core_grep ;;
   *) echo "ERROR: stage $STAGE has no gate defined yet"; exit 2 ;;
 esac
 
