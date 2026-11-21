@@ -10,9 +10,32 @@
 #   stage 0  legacy build (build_dir holds the inline_* drivers): reruns the G1, G2
 #            (chain1d, exact trace, M = 64) and G5 (Haldane, exact trace, M = 128)
 #            pipelines at OMP_NUM_THREADS=16, then G1 and G2 again at 1 and 64 threads.
+#   stage 1  new core (build_dir/lsquant_core/stage1_moments): G1 and G2 at
+#            OMP_NUM_THREADS = 1, 8, 64; G2 again with --batch 16 at 8 threads (the
+#            batched result must equal the unbatched G2); random-phase determinism
+#            (two runs, cmp); grep for "basis|std::cout|getenv" under lsquant/core
+#            (must be empty: the core knows no basis, prints nothing and reads no
+#            environment variable).
 #
-#   Later stages (the new core and its Python layer) add their own case to the
-#   dispatch at the end of this file when they are merged.
+#   stage 2  Python binding (build_dir/lsquant_core/_core*.so): stage 1 in full, then
+#            python3 -m lsquant.apps.stage2_dos in its two forms at OMP_NUM_THREADS = 1
+#            and 16 (PYTHONPATH=build_dir/lsquant_core:python): (a) --moments G1 ->
+#            JACKSON.dat vs G3; (b) --operators -> .chebmom1D vs G1 and JACKSON.dat vs
+#            G3; grep for "delta|DOS|Kubo|basis|std::cout|getenv" under lsquant/core and
+#            lsquant/io on code lines only (comment lines are excluded and listed; the
+#            code-line result must be empty).
+#
+#   stage 3  rank-2 reconstruction: stages 1 and 2 in full, then
+#            python3 -m lsquant.apps.stage3_kubo at OMP_NUM_THREADS = 16 and 1:
+#            G5 moments (Haldane VX-VY and VX-VX, window [-4.5, 4.5], exact trace,
+#            512 states, M = 128) vs goldens/stage0/haldane; G5 curves bastin, sea,
+#            surf (VX-VY) and greenwood (VX-VX) at 10 meV from the golden moment
+#            files; G4 moments (graphene VX-VX, --window gershgorin, random phase
+#            seed 12345, 1 state, M = 64); G4 curves bastin at 64 meV, sea and surf
+#            at 10 meV (sea_surf/), greenwood_fft and bastin_fft at 10 meV
+#            (fft_grid/); grep -rn "compat/" lsquant/core lsquant/io must be empty.
+#
+#   Later stages add their own case to the dispatch at the end of this file.
 #
 # Tolerance mode (GOLDEN_TOL=1; final validation on a machine that is not byte-identical to the
 # machine where the goldens were written, e.g. one with gcc 9.4, Eigen 3.4, glibc 2.31).
@@ -35,7 +58,7 @@
 # differing bytes (cmp -l | head -5) and the numeric localisation of
 # scripts/golden_diff.py (first differing line, element index, both values, max
 # relative difference over the file). Exit code 0 only if every file is IDENTICAL
-# (or, with GOLDEN_TOL=1, IDENTICAL or TOLPASS).
+# (or, with GOLDEN_TOL=1, IDENTICAL or TOLPASS) and, for stage 1, the grep is empty.
 #
 # KPM_SEED=12345 always. Seeds, tolerances and goldens are never changed here.
 set -uo pipefail
@@ -236,8 +259,199 @@ stage0() {
   legacy_chain1d 64 "$TMP/g12_T64"
 }
 
+# ---------------------------------------------------------------- stage 1 (new core)
+stage1() {
+  local EXE="$BUILD/lsquant_core/stage1_moments" T W w R
+  [ -x "$EXE" ] || EXE="$BUILD/lsquant/stage1_moments"
+  [ -x "$EXE" ] || { echo "ERROR: stage1_moments not found under $BUILD/lsquant_core or $BUILD/lsquant"; exit 2; }
+  echo "== stage 1: $EXE vs goldens/stage0/chain1d (KPM_SEED=$KPM_SEED)"
+  for T in 1 8 64; do
+    W="$TMP/s1_T$T"; mkdir -p "$W"
+    for w in dos kubo; do
+      OMP_NUM_THREADS=$T "$EXE" --operators "$GOLD/chain1d/operators" --label chain1d --window -2 2 \
+        --trace exact --states 2048 --moments 64 --word $w --out "$W" >"$W/$w.log" 2>&1 \
+        || echo "          [T=$T] stage1_moments --word $w exited non-zero: $(tail -1 "$W/$w.log")"
+    done
+    compare "$W/SpectralOp1chain1dKPM_M64_stateexact.chebmom1D" \
+            "$GOLD/chain1d/SpectralOp1chain1dKPM_M64_stateexact.chebmom1D" \
+            "[T=$T] chain1d/SpectralOp1chain1dKPM_M64_stateexact.chebmom1D (G1)"
+    compare "$W/NonEqOpVX-VXchain1dKPM_M64x64_stateexact.chebmom2D" \
+            "$GOLD/chain1d/NonEqOpVX-VXchain1dKPM_M64x64_stateexact.chebmom2D" \
+            "[T=$T] chain1d/NonEqOpVX-VXchain1dKPM_M64x64_stateexact.chebmom2D (G2)"
+  done
+  # G2 with batching (batchSize 16 < M = 64), T = 8: must equal the unbatched G2
+  W="$TMP/s1_batch16"; mkdir -p "$W"
+  OMP_NUM_THREADS=8 "$EXE" --operators "$GOLD/chain1d/operators" --label chain1d --window -2 2 \
+    --trace exact --seed 12345 --states 2048 --moments 64 --word kubo --batch 16 --out "$W" >"$W/kubo.log" 2>&1 \
+    || echo "          [T=8 batch 16] stage1_moments --word kubo exited non-zero: $(tail -1 "$W/kubo.log")"
+  compare "$W/NonEqOpVX-VXchain1dKPM_M64x64_stateexact.chebmom2D" \
+          "$GOLD/chain1d/NonEqOpVX-VXchain1dKPM_M64x64_stateexact.chebmom2D" \
+          "[T=8, batch 16] chain1d/NonEqOpVX-VXchain1dKPM_M64x64_stateexact.chebmom2D (G2, batched)"
+  # random-phase determinism: no golden; two identical runs are the criterion
+  for R in 1 2; do
+    W="$TMP/s1_random$R"; mkdir -p "$W"
+    for w in dos kubo; do
+      OMP_NUM_THREADS=8 "$EXE" --operators "$GOLD/chain1d/operators" --label chain1d --window -2 2 \
+        --trace random --seed 12345 --states 4 --moments 64 --word $w --out "$W" >"$W/$w.log" 2>&1 \
+        || echo "          [random run $R] stage1_moments --word $w exited non-zero: $(tail -1 "$W/$w.log")"
+    done
+  done
+  local n=0 f
+  for f in "$TMP/s1_random1"/*.chebmom*; do
+    [ -f "$f" ] || continue; n=$((n + 1))
+    compare "$TMP/s1_random2/$(basename "$f")" "$f" "[random, run2 vs run1] $(basename "$f")"
+  done
+  [ "$n" -gt 0 ] || { echo "DIFFERS   [random] no .chebmom output produced"; NFAIL=$((NFAIL + 1)); }
+}
+
+core_grep() {
+  local hits
+  if [ ! -d "$REPO/lsquant/core" ]; then
+    echo "GREP      lsquant/core missing"; NFAIL=$((NFAIL + 1)); return
+  fi
+  hits="$(cd "$REPO" && grep -rn "basis\|std::cout\|getenv" lsquant/core)"
+  if [ -z "$hits" ]; then
+    echo "GREP      grep -rn \"basis\\|std::cout\\|getenv\" lsquant/core: empty"
+  else
+    echo "GREP      grep -rn \"basis\\|std::cout\\|getenv\" lsquant/core: FOUND"
+    echo "$hits" | sed 's/^/          /'
+    NFAIL=$((NFAIL + 1))
+  fi
+}
+
+# ---------------------------------------------------------------- stage 2 (Python binding)
+G1F=SpectralOp1chain1dKPM_M64_stateexact.chebmom1D
+G3F=meanSpectralOp1chain1dKPM_M64_stateexactJACKSON.dat
+
+stage2() {
+  local PYDIR="$BUILD/lsquant_core" T W rc
+  ls "$PYDIR"/_core*.so >/dev/null 2>&1 || PYDIR="$BUILD/lsquant"
+  ls "$PYDIR"/_core*.so >/dev/null 2>&1 || { echo "ERROR: _core*.so not found under $BUILD/lsquant_core or $BUILD/lsquant"; exit 2; }
+  echo "== stage 2: python3 -m lsquant.apps.stage2_dos, PYTHONPATH=$PYDIR:python, vs goldens/stage0/chain1d (KPM_SEED=$KPM_SEED)"
+  for T in 1 16; do
+    # form (a): reconstruct the G3 curve from the committed G1 moment file
+    W="$TMP/s2_T${T}_a"; mkdir -p "$W"
+    ( cd "$REPO" && OMP_NUM_THREADS=$T PYTHONPATH="$PYDIR:$REPO/python" python3 -m lsquant.apps.stage2_dos \
+        --moments "$GOLD/chain1d/$G1F" --broadening-meV 120 --out "$W" ) >"$W/run.log" 2>&1; rc=$?
+    [ $rc -eq 0 ] || echo "          [T=$T] stage2_dos form (a) exited $rc: $(tail -1 "$W/run.log")"
+    sed "s|$W/||; s|^|          [T=$T] (a) printed: |" "$W/run.log"
+    compare "$W/$G3F" "$GOLD/chain1d/$G3F" "[T=$T] (a) --moments G1 -> chain1d/$G3F (G3)"
+    # form (b): moments through MomentEngine from the golden operators, then reconstruct
+    W="$TMP/s2_T${T}_b"; mkdir -p "$W"
+    ( cd "$REPO" && OMP_NUM_THREADS=$T PYTHONPATH="$PYDIR:$REPO/python" python3 -m lsquant.apps.stage2_dos \
+        --operators "$GOLD/chain1d/operators" --label chain1d --window -2 2 --trace exact --states 2048 \
+        --moments 64 --broadening-meV 120 --out "$W" ) >"$W/run.log" 2>&1; rc=$?
+    [ $rc -eq 0 ] || echo "          [T=$T] stage2_dos form (b) exited $rc: $(tail -1 "$W/run.log")"
+    sed "s|$W/||; s|^|          [T=$T] (b) printed: |" "$W/run.log"
+    compare "$W/$G1F" "$GOLD/chain1d/$G1F" "[T=$T] (b) --operators -> chain1d/$G1F (G1)"
+    compare "$W/$G3F" "$GOLD/chain1d/$G3F" "[T=$T] (b) --operators -> chain1d/$G3F (G3)"
+  done
+}
+
+# physics names and side channels in the engine, on code lines only: a line whose first
+# non-blank characters are //, * or /* is a comment (e.g. the notation delta_{m0}) and is
+# excluded from the verdict, but listed below it.
+stage2_grep() {
+  local all hits coms pat='delta\|DOS\|Kubo\|basis\|std::cout\|getenv'
+  local com='^[^:]+:[0-9]+:[[:space:]]*(//|\*|/\*)'
+  if [ ! -d "$REPO/lsquant/core" ] || [ ! -d "$REPO/lsquant/io" ]; then
+    echo "GREP      lsquant/core or lsquant/io missing"; NFAIL=$((NFAIL + 1)); return
+  fi
+  all="$(cd "$REPO" && grep -rn "$pat" lsquant/core lsquant/io)"
+  hits="$(printf '%s\n' "$all" | grep -Ev "$com" | grep -v '^$')"
+  coms="$(printf '%s\n' "$all" | grep -E "$com")"
+  if [ -z "$hits" ]; then
+    echo "GREP      grep -rn \"$pat\" lsquant/core lsquant/io, code lines: empty"
+  else
+    echo "GREP      grep -rn \"$pat\" lsquant/core lsquant/io, code lines: FOUND"
+    echo "$hits" | sed 's/^/          /'
+    NFAIL=$((NFAIL + 1))
+  fi
+  [ -z "$coms" ] || echo "$coms" | sed 's/^/          excluded comment line: /'
+}
+
+# ---------------------------------------------------------------- stage 3 (rank-2 reconstruction)
+# One stage3_kubo invocation in its own directory; prints the app's output lines.
+run_s3() {   # <threads> <workdir> <tag> <args...>
+  local T="$1" W="$2" tag="$3" rc; shift 3
+  mkdir -p "$W"
+  ( cd "$REPO" && OMP_NUM_THREADS=$T PYTHONPATH="$PYDIR3:$REPO/python" python3 -m lsquant.apps.stage3_kubo \
+      "$@" --out "$W" ) >"$W/run.log" 2>"$W/err.log"; rc=$?
+  [ $rc -eq 0 ] || echo "          [T=$T] $tag exited $rc: $(tail -1 "$W/err.log")"
+  sed "s|$W/||; s|^|          [T=$T] $tag printed: |" "$W/run.log"
+}
+
+G5XY=NonEqOpVX-VYhaldaneKPM_M128x128_stateexact
+G5XX=NonEqOpVX-VXhaldaneKPM_M128x128_stateexact
+G4XX=NonEqOpVX-VXgraphene_goldenKPM_M64x64_statedefault
+
+stage3() {
+  local T W G
+  PYDIR3="$BUILD/lsquant_core"
+  ls "$PYDIR3"/_core*.so >/dev/null 2>&1 || PYDIR3="$BUILD/lsquant"
+  ls "$PYDIR3"/_core*.so >/dev/null 2>&1 || { echo "ERROR: _core*.so not found under $BUILD/lsquant_core or $BUILD/lsquant"; exit 2; }
+  echo "== stage 3: python3 -m lsquant.apps.stage3_kubo, PYTHONPATH=$PYDIR3:python, vs goldens/stage0/{haldane,graphene}"
+  for T in 16 1; do
+    # 1. G5 moments: Haldane, exact trace over the 512 sites, M = 128, window [-4.5, 4.5]
+    W="$TMP/s3_T${T}_g5m"
+    run_s3 $T "$W" "G5 VX-VY moments" --operators "$GOLD/haldane/operators" --label haldane --left VX --right VY \
+      --window -4.5 4.5 --trace exact --states 512 --moments 128
+    run_s3 $T "$W" "G5 VX-VX moments" --operators "$GOLD/haldane/operators" --label haldane --left VX --right VX \
+      --window -4.5 4.5 --trace exact --states 512 --moments 128
+    compare "$W/$G5XY.chebmom2D" "$GOLD/haldane/$G5XY.chebmom2D" "[T=$T] haldane/$G5XY.chebmom2D (G5 moments)"
+    compare "$W/$G5XX.chebmom2D" "$GOLD/haldane/$G5XX.chebmom2D" "[T=$T] haldane/$G5XX.chebmom2D (G5 moments)"
+    # 2. G5 curves from the committed golden moment files, 10 meV
+    W="$TMP/s3_T${T}_g5c"
+    run_s3 $T "$W" "G5 bastin"    --moments "$GOLD/haldane/$G5XY.chebmom2D" --formula bastin    --broadening-meV 10
+    run_s3 $T "$W" "G5 sea"       --moments "$GOLD/haldane/$G5XY.chebmom2D" --formula sea       --broadening-meV 10
+    run_s3 $T "$W" "G5 surf"      --moments "$GOLD/haldane/$G5XY.chebmom2D" --formula surf      --broadening-meV 10
+    run_s3 $T "$W" "G5 greenwood" --moments "$GOLD/haldane/$G5XX.chebmom2D" --formula greenwood --broadening-meV 10
+    for G in KuboBastin_$G5XY KuboBastinSea_$G5XY KuboBastinSurf_$G5XY KuboGreenWood_$G5XX; do
+      compare "$W/${G}JACKSON.dat" "$GOLD/haldane/${G}JACKSON.dat" "[T=$T] haldane/${G}JACKSON.dat (G5 curve)"
+    done
+    # 3. G4 moments: graphene, random phase seed 12345, 1 state, M = 64, Gershgorin window (pad 0.10)
+    W="$TMP/s3_T${T}_g4m"
+    run_s3 $T "$W" "G4 VX-VX moments" --operators "$GOLD/graphene/operators" --label graphene_golden --left VX --right VX \
+      --window gershgorin --trace random --seed 12345 --states 1 --moments 64
+    compare "$W/$G4XX.chebmom2D" "$GOLD/graphene/$G4XX.chebmom2D" "[T=$T] graphene/$G4XX.chebmom2D (G4 moments)"
+    # 4. G4 curves from the committed golden moment file
+    W="$TMP/s3_T${T}_g4c"
+    run_s3 $T "$W" "G4 bastin 64 meV"     --moments "$GOLD/graphene/$G4XX.chebmom2D" --formula bastin        --broadening-meV 64
+    run_s3 $T "$W" "G4 sea 10 meV"        --moments "$GOLD/graphene/$G4XX.chebmom2D" --formula sea           --broadening-meV 10
+    run_s3 $T "$W" "G4 surf 10 meV"       --moments "$GOLD/graphene/$G4XX.chebmom2D" --formula surf          --broadening-meV 10
+    run_s3 $T "$W" "G4 greenwood_fft 10 meV" --moments "$GOLD/graphene/$G4XX.chebmom2D" --formula greenwood_fft --broadening-meV 10
+    run_s3 $T "$W" "G4 bastin_fft 10 meV" --moments "$GOLD/graphene/$G4XX.chebmom2D" --formula bastin_fft    --broadening-meV 10
+    compare "$W/KuboBastin_${G4XX}JACKSON.dat" "$GOLD/graphene/KuboBastin_${G4XX}JACKSON.dat" \
+            "[T=$T] graphene/KuboBastin_${G4XX}JACKSON.dat (G4 curve, 64 meV)"
+    compare "$W/KuboBastinSea_${G4XX}JACKSON.dat" "$GOLD/graphene/sea_surf/KuboBastinSea_${G4XX}JACKSON.dat" \
+            "[T=$T] graphene/sea_surf/KuboBastinSea_${G4XX}JACKSON.dat (G4 curve, 10 meV)"
+    compare "$W/KuboBastinSurf_${G4XX}JACKSON.dat" "$GOLD/graphene/sea_surf/KuboBastinSurf_${G4XX}JACKSON.dat" \
+            "[T=$T] graphene/sea_surf/KuboBastinSurf_${G4XX}JACKSON.dat (G4 curve, 10 meV)"
+    compare "$W/KuboGreenWood_${G4XX}JACKSON_FFTgrid.dat" "$GOLD/graphene/fft_grid/KuboGreenWood_${G4XX}JACKSON_FFTgrid.dat" \
+            "[T=$T] graphene/fft_grid/KuboGreenWood_${G4XX}JACKSON_FFTgrid.dat (G4 curve, 10 meV)"
+    compare "$W/KuboBastin_${G4XX}JACKSON_FFTgrid.dat" "$GOLD/graphene/fft_grid/KuboBastin_${G4XX}JACKSON_FFTgrid.dat" \
+            "[T=$T] graphene/fft_grid/KuboBastin_${G4XX}JACKSON_FFTgrid.dat (G4 curve, 10 meV)"
+  done
+}
+
+# lsquant/compat holds legacy formulas for the gate only; nothing in core/ or io/ may include it.
+stage3_grep() {
+  local hits
+  hits="$(cd "$REPO" && grep -rn "compat/" lsquant/core lsquant/io)"
+  if [ -z "$hits" ]; then
+    echo "GREP      grep -rn \"compat/\" lsquant/core lsquant/io: empty"
+  else
+    echo "GREP      grep -rn \"compat/\" lsquant/core lsquant/io: FOUND"
+    echo "$hits" | sed 's/^/          /'
+    NFAIL=$((NFAIL + 1))
+  fi
+}
+
 case "$STAGE" in
   0) stage0 ;;
+  1) stage1; core_grep ;;
+  2) stage1; core_grep; stage2; stage2_grep ;;
+  3) stage1; core_grep; stage2; stage2_grep; stage3; stage3_grep ;;
   *) echo "ERROR: stage $STAGE has no gate defined yet"; exit 2 ;;
 esac
 
