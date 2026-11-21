@@ -1,0 +1,115 @@
+site_name: LSQuant
+site_description: Linear-scaling quantum transport for large materials models
+site_url: https://josehgarciaa.github.io/lsquant/
+repo_url: https://github.com/josehgarciaa/lsquant
+repo_name: josehgarciaa/lsquant
+edit_uri: ""
+docs_dir: ../build/site_src
+site_dir: ../build/site
+
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.indexes
+    - search.highlight
+    - content.code.copy
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      toggle: {icon: material/brightness-7, name: Dark mode}
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      toggle: {icon: material/brightness-4, name: Light mode}
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc: {permalink: true}
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight
+  - pymdownx.arithmatex: {generic: true}
+
+extra_javascript:
+  - assets/mathjax.js
+  - https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js
+extra_css:
+  - assets/extra.css
+
+not_in_nav: |
+  /examples/**
+  /docs/**
+
+nav:
+  - Home: index.md
+  - Get started:
+      - Overview and quickstart: quickstart.md
+      - Install: docs/how-to/install.md
+      - First calculation: docs/tutorials/getting-started.md
+  - Tutorials:
+      - Hall conductivity of the Haldane model: docs/tutorials/haldane-hall.md
+      - Spin Hall conductivity from SIESTA: docs/tutorials/spin-hall-siesta.md
+  - Examples:
+      - DOS of a 1D chain: examples/01_dos_1d_chain/README.md
+      - Anderson localisation: examples/02_localization_1d_chain/README.md
+      - Quantized Hall plateau: examples/03_haldane_hall/README.md
+      - Spin precession: examples/04_spin_precession_magnetic_chain/README.md
+      - Charge transport in a disordered metal: examples/05_charge_transport_square/README.md
+      - Spin relaxation: examples/06_spin_relaxation_square/README.md
+      - Spin Hall of a Bi(111) bilayer: examples/07_spin_hall_bi_bilayer/README.md
+      - Spin Hall of a PdSe2 monolayer: examples/08_spin_hall_pdse2_monolayer/README.md
+      - Use cases:
+          - Reuse moments at several broadenings: examples/09_inspect_reconstruct/README.md
+          - One Hamiltonian, three bases: examples/10_bases_compare/README.md
+          - Non-orthogonal basis: examples/11_nonorthogonal_toy/README.md
+          - Disorder with an overlap matrix: examples/12_disorder_nonorthogonal/README.md
+          - Fermi-sea and Fermi-surface terms: examples/13_bastin_sea_surface/README.md
+          - A Wannier90 model: examples/14_wannier/README.md
+          - Layer projectors and diffusion: examples/15_spatial_operators/README.md
+          - Spectral projection: examples/16_projection_downfold/README.md
+          - LSQuant from Python: examples/17_python_api/README.md
+          - An AI assistant through MCP: examples/18_mcp_session/README.md
+          - Scalar and magnetic disorder: examples/disorder_kinds/README.md
+  - How-to:
+      - Run a calculation: docs/how-to/run-lsquant.md
+      - Use a SIESTA calculation: docs/how-to/use-siesta.md
+      - Run on a cluster: docs/how-to/run-on-a-cluster.md
+      - Connect an AI assistant: docs/how-to/mcp-server.md
+  - Background:
+      - The kernel polynomial method: docs/explanation/kpm.md
+      - Kubo formulas: docs/explanation/kubo-formulas.md
+      - Time evolution: docs/explanation/time-evolution.md
+      - Non-orthogonal bases: docs/explanation/nonorthogonal-bases.md
+  - Reference:
+      - Run file: docs/reference/run-file.md
+      - Command line: docs/reference/cli.md
+      - Observables: docs/reference/observable-words.md
+      - Output files: docs/reference/output-files.md
+      - Python API: docs/reference/python-api.md
+      - Build presets: docs/reference/build-presets.md
+      - MCP tools: docs/reference/mcp-tools.md
+  - Developers:
+      - Architecture: docs/explanation/architecture.md
+      - Check a build: docs/how-to/testing.md
+      - C++ binding API: docs/reference/core-api.md
+      - Design notes:
+          - Golden masters and the gate: docs/testing.md
+          - Core engine: docs/core-engine.md
+          - Python layer: docs/python-layer.md
+          - Kubo moments: docs/kubo.md
+          - Time evolution: docs/time-evolution.md
+          - Bases: docs/bases.md
+          - Non-orthogonal metric: docs/nonorthogonal.md
+          - Run files: docs/run-files.md
+          - Materials: docs/materials.md
+          - Performance: docs/performance.md
+          - Build: docs/build.md
+      - Legacy pages: docs/legacy/README.md
+      - C++ API (Doxygen): https://josehgarciaa.github.io/lsquant/api/
