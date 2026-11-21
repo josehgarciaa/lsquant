@@ -49,10 +49,12 @@ The Green-function coefficient tables are SymPy expressions, `GreenRetarded` and
 `GreenRetardedDerivative`. `legacy_green_tables` gives the same tables in the legacy
 operation order (< 1e-12 apart), and the reconstructions use it for byte identity.
 
-**Energy axis.** The uniform-grid functions use the legacy axis E = x/scale + shift, like
+**Energy axis.** The uniform-grid functions map E = x/scale + shift = a·x − c/a, like
 `dos_curve` (see \ref python_layer). This axis is exact for windows centred on 0, as in
-every golden and in the example. `kubo_fft_grid` maps E = a·x + c, exact for every
-window. The time-evolution PR corrects the uniform-grid axis.
+every golden and in the example. For an off-centre window it differs both from the exact
+axis a·x + c and from the legacy uniform-grid axis a·x + c/a (legacy defect D2).
+`kubo_fft_grid` maps E = a·x + c, exact for every window, as the legacy FFT path does. The
+time-evolution PR corrects the uniform-grid axis.
 
 ## Example: the Haldane model across its transition
 
