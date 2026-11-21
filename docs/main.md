@@ -33,15 +33,19 @@ The new C++ core computes every KPM quantity by running a small instruction list
 
 ## Python layer
 
-The `lsquant` Python package drives the core from Python and reconstructs the density of
-states; see \subpage python_layer.
-Kubo-Greenwood and Kubo-Bastin conductivities from rank-2 moments are covered in \subpage kubo.
-Time evolution (mean-square displacement, projected operators, time correlations) is
-covered in \subpage time_evolution.
-The real-space, Bloch and eigen bases built from one Wannier model are covered in
-\subpage bases.
-Non-orthogonal bases (an overlap matrix S, the Löwdin and generalised routes, the overlap
-appliers) are covered in \subpage nonorthogonal.
+The `lsquant` Python package drives the core from Python:
+
+- \subpage python_layer: the pybind11 module, the plans and the density of states;
+- \subpage kubo: Kubo-Greenwood and Kubo-Bastin conductivities from rank-2 moments;
+- \subpage time_evolution: mean-square displacement, projected operators, time correlations;
+- \subpage bases: real-space, Bloch and eigen bases built from one Wannier model;
+- \subpage nonorthogonal: an overlap matrix S, the Löwdin and generalised routes, the
+  overlap appliers.
+
+## Run files and the command line
+
+Calculations are JSON run files written with observable words; the command line tool and
+the MCP server are covered in \subpage run_files.
 
 ## Testing
 
