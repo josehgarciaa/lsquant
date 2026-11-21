@@ -24,12 +24,13 @@ All presets set `CMAKE_BUILD_TYPE=Release`, build the Python module
 (`LSQUANT_BUILD_PYTHON=ON`) and the developer self-check executable
 (`LSQUANT_BUILD_DEV_CHECKS=ON`), and skip the benchmarks.
 
-> **Known limitation: CUDA architecture.** `native-cuda` and `full` compile the
-> CUDA kernel for compute capability 9.0 only (Hopper, for example H100 or
-> H200). The value is set on the target in `lsquant/CMakeLists.txt:58`
-> (`CUDA_ARCHITECTURES "90"`), so `-DCMAKE_CUDA_ARCHITECTURES=…` on the command
-> line does not change it. On other GPUs, such as the RTX A6000 (8.6), edit
-> that line before you build.
+**CUDA architecture.** `native-cuda` and `full` compile the CUDA kernel for the
+compute capabilities in the cache variable `LSQUANT_CUDA_ARCHITECTURES`. The default
+is `90` (Hopper, for example H100 or H200). Only 90 is tested; other values are
+passed to the CUDA compiler unchanged. For another GPU, give its compute capability
+(for example `86`), a list such as `"80;86;90"`, or `native` for the GPU of the build
+machine.
+`CMAKE_CUDA_ARCHITECTURES` does not change the kernel; use the variable above.
 
 A `native` build produces numbers that differ from the `golden` build in the
 last digits, so check a `native` build against the golden files with

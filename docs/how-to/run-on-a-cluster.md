@@ -115,8 +115,9 @@ energies, k-meshes) over nodes with your batch system. To average over
 disorder seeds, submit one job per seed, or a job array with one run file per
 seed, rather than one job with many threads.
 
-The `native-cuda` preset builds the GPU code for compute capability 9.0 only;
-see the [known limitation](../reference/build-presets.md). A run uses the GPU
+The `native-cuda` preset builds the GPU code for compute capability 9.0 by
+default; set `LSQUANT_CUDA_ARCHITECTURES` for other GPUs (see
+[CUDA architecture](../reference/build-presets.md#presets)). A run uses the GPU
 only with a real-space `csr` model and `numerics.operator = "atom_block"`,
 `numerics.execution = "cuda"` (see
 [the atom-block layout](#use-the-atom-block-layout-for-large-real-space-models)

@@ -275,10 +275,9 @@ cmake --build --preset native-cuda
 
 After the import, `_core.cuda_available` is `True`.
 
-The GPU code is compiled for compute capability 9.0 only, and
-`-DCMAKE_CUDA_ARCHITECTURES` does not change it. Read the
-[known limitation on the CUDA architecture](../reference/build-presets.md#presets)
-before you build for another GPU.
+The GPU code is compiled for compute capability 9.0 (H100 class) by default.
+Only 90 is tested. For another GPU, set `LSQUANT_CUDA_ARCHITECTURES`; see
+[CUDA architecture](../reference/build-presets.md#presets).
 
 The GPU is used by two run-file settings, both for real-space `csr` models.
 The first is the atom-block layout, `numerics.operator = "atom_block"` with
