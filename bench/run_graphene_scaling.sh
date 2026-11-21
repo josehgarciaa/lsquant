@@ -7,7 +7,7 @@
 # GB/s for the SpMV stream is reported as % of the measured STREAM read roofline.
 set -u
 cd "$(dirname "$0")"
-LSQ=/home/jgarcia/lsquant/build/lsquant
+LSQ=${LSQ:-../build/lsquant}   # path to the lsquant executable; override with LSQ=...
 GEN="python3 make_graphene.py"
 WORK=gr; mkdir -p "$WORK"
 OUT_T=graphene_threads.csv
