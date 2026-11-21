@@ -75,9 +75,21 @@ shows the residual $\sigma^z_{xy,\mathrm{KPM}} - \sigma^z_{xy,\mathrm{oracle}}$.
 On a `24x24x1` mesh with the `covariant` velocity and the `lowdin` metric,
 with the states restricted to a window of $\pm 5$ eV (projection `shift`) and a
 Gaussian of 1 meV, the exact diagonalisation gives
-$\sigma^z_{xy} = 1.987\ e^2/h$ at $E = 1.052\ \mathrm{eV}$, in the upper gap. The converged KPM value of the
-production setting at $E_F = 0$ is still pending: a difference from the
-reference is under study.
+$\sigma^z_{xy} = 1.987\ e^2/h$ at $E = 1.052\ \mathrm{eV}$, the middle of the
+upper gap. The converged KPM value of the production setting at $E_F = 0$ is
+still pending: a difference from the reference is under study.
+
+On the quick mesh, `spin_chern.json` gives a trivial insulator: both spin
+sectors have Chern number 0, $\mathbb{Z}_2 = 0$, and 100 bands are occupied.
+$E_F = 0$ lies in the 1.175 eV gap between the valence-band maximum at
+$-0.972$ eV and the conduction-band minimum at $+0.203$ eV, close to the
+conduction band. The structure of the oracle between $+0.2$ and $+0.5$ eV in
+panel (b) comes from the first conduction bands. The upper gap lies between
+1.014 and 1.090 eV. The oracle curve of the quick run ends near $+0.5$ eV.
+With $M = 256$ the KPM curves resolve about 0.6 eV, so the spin Hall curve is
+nearly flat and the DOS shows no gap; the quick run checks the workflow, and
+the production setting is the one to converge.
+<!-- source: spin_chern.json of the quick run on the main code (energy_gap = max band 100 - min band 101 over the 24x24 mesh, oracle/spin_hall.py); band edges from a diagonalisation of H(k)c = E S(k)c of the committed model on the same mesh -->
 
 ## Runtime
 
