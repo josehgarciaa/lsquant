@@ -1,0 +1,51 @@
+{
+  "model": {
+    "kind": "csr",
+    "dir": "examples/19_observable_words/operators",
+    "label": "km_L16",
+    "operators": [
+      "VX",
+      "VY",
+      "SZ",
+      "JXSZ"
+    ]
+  },
+  "basis": {
+    "name": "real"
+  },
+  "metric": {
+    "policy": "orthogonal"
+  },
+  "word": "Tr[delta(E-H)]",
+  "words": [
+    "Tr[delta(E-H)]",
+    "Tr[SZ delta(E-H)]",
+    "Tr[VX delta(E-H) VX delta(E-H)]",
+    "Tr[VX delta(E-H) VY dG-(E)/dE]",
+    "Tr[JXSZ delta(E-H) VY dG-(E)/dE]"
+  ],
+  "expansion": {
+    "moments": 512,
+    "window": [
+      -4.0,
+      4.0
+    ],
+    "trace": "exact"
+  },
+  "reconstruction": {
+    "kernel": "jackson",
+    "broadening_meV": 20.0,
+    "formulas": [
+      "dos",
+      "greenwood",
+      "bastin"
+    ],
+    "num_cells": 256,
+    "cell_area": 2.598076211353316
+  },
+  "output": {
+    "dir": "examples/19_observable_words/out",
+    "legacy_layout": false,
+    "write_chebmom": true
+  }
+}
