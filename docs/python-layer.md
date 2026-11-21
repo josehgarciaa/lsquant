@@ -51,11 +51,12 @@ when the plan has yet to apply them.
 Divide by `moments.system_size` to get ρ per site.
 
 **Energy axis.** The window [E_min, E_max] has half-width a and centre c, so
-scale = 1/a and shift = −c/a. `dos_curve` keeps the legacy formula E = x/scale + shift
-for byte identity with G3, which gives E = a·x − c/a:
+scale = 1/a and shift = −c/a. `dos_curve` computes E = x/scale + shift = a·x − c/a:
 - for a window centred on 0 (c = 0, as in every golden and in the example) this is the
-  exact energy a·x;
-- for an off-centre window the axis is displaced by −c(1 + 1/a).
+  exact energy a·x, and the output is byte-identical to the legacy drivers (G3);
+- for an off-centre window the axis is displaced by −c(1 + 1/a). The legacy drivers write
+  a·x + c/a, displaced by −c(1 − 1/a) (legacy defect D2), so off-centre output matches
+  neither the exact axis nor the legacy one.
 
 The time-evolution PR corrects the axis to E = a·x + c and adds the off-centre golden G4c.
 Until then, use a window centred on 0. `test_dos_curve_energy_axis_for_centred_and_offset_windows`

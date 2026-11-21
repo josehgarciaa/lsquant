@@ -165,11 +165,12 @@ def test_dos_curve_sum_rule():
 
 
 def test_dos_curve_energy_axis_for_centred_and_offset_windows():
-    """dos_curve maps x to E = x / scale + shift (legacy formula, kept for byte identity).
+    """dos_curve maps x to E = x / scale + shift = a x - c/a.
 
-    For a window centred on 0 this is E = a x, the exact inverse of the rescaling. For a
-    window with centre c it gives a x - c/a instead of a x + c; the time-evolution stage
-    corrects the axis (golden G4c). The test pins both cases.
+    For a window centred on 0 this is E = a x, the exact inverse of the rescaling, and the
+    output equals the legacy one. For a window with centre c it gives a x - c/a instead of
+    a x + c (the legacy drivers give a x + c/a); the time-evolution stage corrects the axis
+    (golden G4c). The test pins both cases.
     """
     for lo, hi in ((-2.0, 2.0), (-1.0, 3.0)):
         mu = _core.ReadChebmom(G1)
