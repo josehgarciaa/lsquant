@@ -11,7 +11,7 @@ step is explicitly taken.
 Since rev 1, the other agent landed Sanitize Phases A–D. What changed and how this
 plan adapts:
 
-- **Pruned planning docs.** `ROADMAP.md`, `FLAVOR_INVENTORY.md`, `HANDOFF_*`, and
+- **Pruned planning docs.** `ROADMAP.md`, `FLAVOR_INVENTORY.md`, the hand-over notes and
   `test/TEST_PLAN.md` were removed (Phase A). Earlier rev-1 references to
   `ROADMAP.md` are now re-anchored to the live policy in
   [`legacy/README.md`](legacy/README.md) and `README.md`.

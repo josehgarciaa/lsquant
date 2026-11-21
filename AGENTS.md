@@ -3,7 +3,7 @@
 This file defines how an agent **behaves**, not what any one project contains.
 Drop the same file into every repo; per-project facts live in that repo's own
 context doc (see §1), never here. Auto-read by Claude Code; symlink
-`CLAUDE.md -> AGENTS.md` and point other agents (Kimi, etc.) at it explicitly.
+`CLAUDE.md -> AGENTS.md` and point other agents at it explicitly.
 **Read it fully before acting.**
 
 ---
@@ -35,7 +35,7 @@ they are the source of truth for all project facts (backends, placeholders,
 conventions, banned files, phases). On conflict: **this file governs behavior,
 the project docs govern facts.** A missing doc → say so, don't invent state.
 
-Expect **one living doc per role**, not a pile of overlapping handoffs:
+Expect **one living doc per role**, not a pile of overlapping hand-over notes:
 
 | Role | Holds | When |
 |------|-------|------|
