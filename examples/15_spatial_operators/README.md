@@ -71,7 +71,7 @@ moments:
 > `lsquant run` fails with `Unknown operator`. The cause is that the per-word
 > compile does not receive the model's operators. Catalogue names such as `A`,
 > `B`, `O`, `P`, `PX`, `SX` and `VX` work.
-> <!-- source: python/lsquant/runfile.py:1535; words/compiler.py:28, 393-394, 405 -->
+> <!-- source: python/lsquant/runfile.py:1546; words/compiler.py:28, 393-394, 405 -->
 
 The run is started with:
 

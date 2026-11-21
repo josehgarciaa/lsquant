@@ -63,7 +63,7 @@ $\mathrm{cond}(S)\,\varepsilon \approx 8\times10^{-13}$. The residual we
 measure, $1.4\times10^{-13}$, is of that rounding size. The default
 $10^{-13}$ therefore asks for more than double precision guarantees for this
 overlap.
-<!-- source: python/lsquant/disorder_bases.py:280-284 (metric probe vs tol) -->
+<!-- source: python/lsquant/disorder_bases.py:315-319 (metric probe vs tol) -->
 
 ```json
 "metric": {"policy": "nonorthogonal", "route": "lowdin", "applier": "exact", "tol": 1e-10}
