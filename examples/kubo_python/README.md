@@ -53,5 +53,4 @@ status 1 when |C| differs from its expected value by more than 0.05.
 - **σ_xx.** It vanishes in the gap of both phases, about 1e-6 of its maximum in the bands,
   as it must for an insulator.
 
-The window is centred on 0, as the uniform-grid reconstructions require at this stage (see
-*Energy axis* in `docs/kubo.md`).
+

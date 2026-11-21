@@ -165,13 +165,8 @@ def test_dos_curve_sum_rule():
 
 
 def test_dos_curve_energy_axis_for_centred_and_offset_windows():
-    """dos_curve maps x to E = x / scale + shift = a x - c/a.
-
-    For a window centred on 0 this is E = a x, the exact inverse of the rescaling, and the
-    output equals the legacy one. For a window with centre c it gives a x - c/a instead of
-    a x + c (the legacy drivers give a x + c/a); the time-evolution stage corrects the axis
-    (golden G4c). The test pins both cases.
-    """
+    """dos_curve maps x to E = (x - shift) / scale = a x + c, the exact inverse of the
+    rescaling, for centred and off-centre windows (corrected in the time-evolution stage)."""
     for lo, hi in ((-2.0, 2.0), (-1.0, 3.0)):
         mu = _core.ReadChebmom(G1)
         mu.window = _core.SpectralWindow(lo, hi)
@@ -179,9 +174,7 @@ def test_dos_curve_energy_axis_for_centred_and_offset_windows():
         a, c = 0.5 * (hi - lo), 0.5 * (hi + lo)
         m_eff = len(e) // 30
         x = np.array([-0.95 + i * 1.9 / (30 * m_eff - 1) for i in range(30 * m_eff)])
-        assert np.max(np.abs(e - (a * x - c / a))) < 1e-12
-        if c == 0.0:
-            assert np.max(np.abs(e - (a * x + c))) < 1e-12
+        assert np.max(np.abs(e - (a * x + c))) < 1e-12
 
 
 def test_dos_curve_rejects_bad_input():

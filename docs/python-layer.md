@@ -45,22 +45,15 @@ when the plan has yet to apply them.
 η = 2·broadening/(E_max − E_min) and M_eff = min(⌈π/η⌉, M). It then:
 - damps the first M_eff moments with the Jackson kernel;
 - evaluates the series on 30·M_eff uniform points in x ∈ [−α, α];
-- returns E = x/scale + shift together with N·ρ(E), the extensive density of states of
+- returns E = (x − shift)/scale together with N·ρ(E), the extensive density of states of
   the legacy files.
 
 Divide by `moments.system_size` to get ρ per site.
 
 **Energy axis.** The window [E_min, E_max] has half-width a and centre c, so
-scale = 1/a and shift = −c/a. `dos_curve` computes E = x/scale + shift = a·x − c/a:
-- for a window centred on 0 (c = 0, as in every golden and in the example) this is the
-  exact energy a·x, and the output is byte-identical to the legacy drivers (G3);
-- for an off-centre window the axis is displaced by −c(1 + 1/a). The legacy drivers write
-  a·x + c/a, displaced by −c(1 − 1/a) (legacy defect D2), so off-centre output matches
-  neither the exact axis nor the legacy one.
-
-The time-evolution PR corrects the axis to E = a·x + c and adds the off-centre golden G4c.
-Until then, use a window centred on 0. `test_dos_curve_energy_axis_for_centred_and_offset_windows`
-pins both cases.
+scale = 1/a and shift = −c/a. `dos_curve` maps E = (x − shift)/scale = a·x + c, the exact
+inverse of the rescaling, for every window. The off-centre golden G4c covers this axis in
+the gate, and `test_dos_curve_energy_axis_for_centred_and_offset_windows` pins it.
 
 ## Example
 
