@@ -1,7 +1,7 @@
 \page testing Testing: golden masters and the regression gate
 
 LSQUANT is tested against **golden masters**: output files written once by a known-good
-build, committed under `goldens/`, and never edited afterwards. A change is accepted only
+build and committed under `goldens/` as permanent references. A change is accepted only
 if the programs it touches still reproduce those files. This page explains what the
 goldens contain, how to run the gate that compares against them, how to read its output,
 and how to run the unit tests of the gate itself.
@@ -23,14 +23,14 @@ every file.
 | tutorials | `tutorials/01..06/` | the six `examples/` tutorials | every data file each tutorial script reads to draw its figure |
 
 The `operators/` subdirectories hold the input Hamiltonians and operators in LSQUANT's CSR
-text format, so the gate needs no model generator.
+text format, so the gate uses these inputs directly.
 
 ## Running the gate
 
 The gate is `scripts/check_goldens.sh <stage> [build_dir]`. Stage 0 checks the legacy
 pipeline: it reruns G1 and G2 at 16 threads, G5 at 16 threads, and G1 and G2 again at 1
-and 64 threads (the moments must not depend on the thread count). Each run happens in a
-temporary directory; `goldens/` is never written.
+and 64 threads (the moments must remain identical across thread counts). Each run happens in a
+temporary directory, leaving `goldens/` unchanged.
 
 Example session, from a clean checkout:
 
@@ -62,14 +62,14 @@ The exit code is 0 only when every file is byte-identical, 1 when at least one d
 
 The goldens were written on one machine with one compiler (see `PROVENANCE.md`). On a
 different compiler, C library or Eigen version the floating-point operations can be
-reordered, and a few printed values change in their last digit while the physics does not.
+reordered, and a few printed values change in their last digit while the physics stays the same.
 For that case the gate has a tolerance mode:
 
 ```bash
 GOLDEN_TOL=1 scripts/check_goldens.sh 0 build
 ```
 
-Every file that is not byte-identical is then classified:
+The gate then classifies each file that differs byte for byte:
 
 - **moment files** (`*.chebmom*`, 15 significant digits): the header lines must be
   identical and max_k |new_k − gold_k| ≤ 1e-12 · max_k |gold_k|;
@@ -99,9 +99,8 @@ TOLPASS   [T=16] haldane/KuboBastinSea_NonEqOpVX-VYhaldaneKPM_M128x128_stateexac
 GATE PASS (stage 0)
 ```
 
-Without `GOLDEN_TOL=1` the same run reports those two files as `DIFFERS`. The default is the
-strict byte comparison; tolerance mode is for checking a build on a new machine, not for
-accepting a code change.
+With the default strict byte comparison, the same run reports those two files as `DIFFERS`.
+Use tolerance mode to check a build on a new machine; code changes require strict comparison.
 
 ## Reading a failure
 
@@ -142,27 +141,27 @@ records model, size, number of moments and seed:
 python3 figures/stage_0.py --build build --out figures/out/stage_0
 ```
 
-It writes only under `--out` and its work directory, never into `examples/` or `goldens/`.
+It writes under `--out` and its work directory, leaving `examples/` and `goldens/` unchanged.
 
 ## Unit tests of the gate
 
 The gate and the localiser have their own unit tests under `tests/unit/`. The gate tests
 replace the six legacy drivers by small fake executables that copy (or corrupt, or omit)
-the golden files, so they need no build and run in a few seconds:
+the golden files, so they run in a few seconds using the fake executables:
 
 ```bash
 python3 -m pytest tests/unit -v
 ```
 
 They check that the gate passes on identical outputs, fails and localises a corrupted
-moment, reports a file that was not produced, stops with exit code 2 when a driver is
-missing, and never modifies `goldens/`; and, in tolerance mode, that a curve off by one unit
+moment, reports a missing output file, stops with exit code 2 when a driver is
+missing, and leaves `goldens/` unchanged; and, in tolerance mode, that a curve off by one unit
 of its last digit and moments off by 1e-13 pass while five units or 1e-9 fail.
 
 ## Rules
 
-- Goldens are never edited, regenerated in place or deleted. A new golden is added in a new
-  directory, with its provenance, by the change that needs it.
-- Seeds (`KPM_SEED=12345`) and tolerances are fixed by the gate, not by the caller.
+- Preserve existing goldens. Add a new golden in a new directory, with its provenance,
+  in the change that needs it.
+- The gate fixes seeds (`KPM_SEED=12345`) and tolerances.
 - A pull request that changes numerical code states which gate stages it ran and pastes
   the final `GATE PASS` line.
