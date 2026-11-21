@@ -89,8 +89,8 @@ jobs.
 For small matrices, extra threads in a `golden` build add only
 synchronisation cost. Use one thread, or a `native` build.
 
-The `native` build reads two tuning variables when `lsquant` is imported:
-<!-- source: python/lsquant/runtime.py:36-42 -->
+In a `native` build, `lsquant` reads two tuning variables when it is imported:
+<!-- source: python/lsquant/runtime.py:50-54 -->
 
 | Variable | Default | Meaning |
 |---|---|---|
