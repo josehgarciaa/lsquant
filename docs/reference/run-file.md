@@ -109,7 +109,7 @@ Allowed keys in `model.params`:
 
 | Key | Type | Allowed values | Default | Meaning |
 |---|---|---|---|---|
-| `velocity_mode` | string | `"bare"`, `"berry_connection"`, `"covariant"` | `"berry_connection"` (clean and projected runs); `"covariant"` (disordered and real-space runs) | How velocity operators are built from H, S and the dipoles. See [Bases and metrics](bases-and-metrics.md). |
+| `velocity_mode` | string | `"bare"`, `"berry_connection"`, `"covariant"` | `"berry_connection"` (clean and projected runs); `"covariant"` (disordered and real-space runs) | How velocity operators are built from H, S and the dipoles. See [Non-orthogonal bases](../explanation/nonorthogonal-bases.md). |
 | `oracle` | boolean | — | `false` | Clean runs: also compute the exact per-k spin Hall oracle (`exact_shc.json`, `spin_chern.json`). Disordered runs refuse `true`. |
 | `oracle_degeneracy_tolerance` | number | positive, finite | `1e-6` | Degeneracy tolerance of the oracle, in eV. |
 | `bloch_memory_mb` | number | positive, finite | `256.0` | Workspace limit of the Bloch sums, in MiB (clean runs). |
@@ -184,7 +184,7 @@ i[H, X_a]).
 
 | Key | Type | Allowed values | Default | Meaning |
 |---|---|---|---|---|
-| `name` | string | `"real"`, `"bloch"`, `"eigen"` | `"real"` | Representation of H. See [Bases and metrics](bases-and-metrics.md). |
+| `name` | string | `"real"`, `"bloch"`, `"eigen"` | `"real"` | Representation of H. See [The representation](../how-to/run-lsquant.md#the-representation-supercell-or-k-mesh). |
 | `supercell` | list of 3 integers | positive | `[1, 1, 1]` | Supercell size (`real`) or k-point mesh (`bloch`, `eigen`) for `wannier` and `siesta`. Not used by `csr` or `generator`. |
 | `disorder.W` | number | ≥ 0 | `0.0` | Width of the uniform Anderson disorder, in eV. Used by `wannier` and `siesta`; not used by `csr`; refused for `generator`. |
 | `disorder.seed` | integer | — | `7` | Seed of the disorder draw. |
@@ -564,5 +564,5 @@ Defaults that this file leaves to the resolver: `expansion.batch` = 256,
 - [Command-line interface](cli.md)
 - [Output files](output-files.md)
 - [Observable words](observable-words.md)
-- [Bases and metrics](bases-and-metrics.md)
+- [Non-orthogonal bases](../explanation/nonorthogonal-bases.md)
 - [Build presets](build-presets.md)

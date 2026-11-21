@@ -1,4 +1,4 @@
-# Check a build against the golden files
+# Check a build against the reference outputs
 
 This guide shows you how to check that your LSQuant build reproduces the
 reference outputs. These reference outputs are the golden files under

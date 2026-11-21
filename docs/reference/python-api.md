@@ -276,7 +276,7 @@ builds S⁻¹ and S^(−1/2) per k block once.
 | `route` | `lowdin`, `generalised`, `anticommutator` | Metric route. |
 | `bloch` | a `BlochMetricBasis` | `EigenMetricBasis` reuses its cached eigenvectors. |
 
-See [Bases and metrics](bases-and-metrics.md).
+See the [`basis` and `metric` keys of the run file](run-file.md#basis).
 
 ### Other names
 

@@ -10,7 +10,7 @@ the C++ side keeps only the contraction helpers of the reconstruction and the
 legacy table evaluators in `lsquant/compat/`.
 
 This page describes the parts and why they are arranged this way. How
-observables become traces is explained in [How LSQuant works](unifying-idea.md).
+observables become traces is explained in [The kernel polynomial method](kpm.md).
 
 ## The C++ moment engine
 

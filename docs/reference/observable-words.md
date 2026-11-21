@@ -180,5 +180,5 @@ example `<label>.A.CSR` for a layer projector, as
 | Spin precession of a projected state | `Tr[P:PX U(t)^+ SX U(t) delta(E-H) P:PX]` | `row_m0`, `time_correlation` |
 | Time correlation of two operators | `Tr[A delta(E-H) U(t)^+ B U(t)]` | `time_correlation` |
 
-[How we run LSQuant](../how-to/run-lsquant.md#choose-the-word-and-the-formula)
+[How we run LSQuant](../how-to/run-lsquant.md#the-quantity)
 points to a use case for each of these.
