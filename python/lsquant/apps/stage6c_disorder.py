@@ -116,6 +116,7 @@ def execute_disorder_runfile(rf, out_dir):
                                   quadrature_tolerance=float(params.get("quadrature_tolerance", 1e-5)),
                                   phase=timing.phase)
     options = dict(disorder_w=rf.basis["disorder"]["W"], disorder_seed=rf.basis["disorder"]["seed"],
+                   disorder_kind=rf.basis["disorder"].get("kind", "scalar"),
                    velocity_mode=mode, route=rf.metric["route"], seed=rf.expansion["seed"])
     with timing.phase("metric and Hamiltonian build", layout=rf.basis["name"]):
         if rf.basis["name"] == "bloch":
@@ -136,8 +137,11 @@ def execute_disorder_runfile(rf, out_dir):
     provenance = dict(model.metadata, layout=basis.name, route=basis.route,
                       metric_applier=rf.metric["applier"], metric_residuals=basis.metric_residuals,
                       disorder=dict(W_eV=basis.disorder_w, seed=basis.disorder_seed,
+                                    kind=getattr(basis, "disorder_kind", "scalar"),
                                     sha256=hashlib.sha256(basis.disorder_values.astype("<c16").tobytes()).hexdigest(),
-                                    distribution="numpy.default_rng uniform(-W/2,W/2), one draw per spinor coefficient",
+                                    distribution={"scalar": "numpy.default_rng uniform(-W/2,W/2), one draw per orbital on both spin components",
+                                                  "magnetic": "numpy.default_rng uniform(-W/2,W/2), one draw h per orbital, +h spin up, -h spin down",
+                                                  "independent": "numpy.default_rng uniform(-W/2,W/2), one draw per spinor coefficient"}[getattr(basis, "disorder_kind", "scalar")],
                                     potential="(D S+S D)/2", overlap_unchanged=True,
                                     layout="n1 fastest, cell major, orbital/spinor inside cell"),
                       window=[float(window.lower), float(window.upper)],

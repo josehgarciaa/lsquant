@@ -70,18 +70,32 @@ formula with `num_cells` and `cell_area` unset. To get the curve, give `num_cell
 
 ## Disorder in a non-orthogonal basis
 
-With `nonorthogonal_disorder = true` and `basis.disorder = {"W": ..., "seed": ...}`, the
-on-site Anderson term becomes, in the non-orthogonal basis,
+```json
+"basis": {"name": "bloch", "supercell": [24, 24, 1],
+          "disorder": {"W": 0.5, "seed": 7, "kind": "scalar"}}
+```
+
+With `W > 0` (or `nonorthogonal_disorder = true`) the on-site Anderson term becomes, in the
+non-orthogonal basis,
 
 V_ij = (w_i + w_j) S_ij / 2
 
 (`lsquant.models.disorder.anderson_potential`). For a uniform w this equals w·S, the
-identity operator in this basis. The values w_i are drawn uniformly in [−W/2, W/2], one per
-spinor coefficient, in the layout of the real-space basis. Up and down components of an
-orbital therefore get independent values: the disorder carries a random spin-dependent
-part, a Zeeman-like field along z. `lsquant.disorder_bases` provides the disordered Bloch
-basis (FFT sandwich) and the real-space basis with the overlap, and both give the same
-moments for the same seed.
+identity operator in this basis. `basis.disorder.kind` selects the values w_i on the
+interleaved spinor basis of a SIESTA model (index 2i spin up, 2i+1 spin down), with draws
+uniform in [−W/2, W/2]:
+
+| `kind` | Values | Physics |
+|---|---|---|
+| `scalar` (default) | one value u_i per orbital, on both spin components | a spin-independent random potential; time-reversal symmetric |
+| `magnetic` | one value h_i per orbital, +h_i on spin up and −h_i on spin down | a random Zeeman field along z, h_i σ_z on each orbital; breaks time-reversal symmetry |
+| `independent` | one value per spinor coefficient | both parts at once: a scalar and a magnetic part, each of variance W²/24; the layout of earlier versions |
+
+`scalar` and `magnetic` use the same draw for the same seed, so the two runs differ only in
+the sign on spin down. csr, wannier and generator models take `kind = "scalar"` only: their
+disorder is one value per basis function, and the run file refuses the other kinds.
+`lsquant.disorder_bases` provides the disordered Bloch basis (FFT sandwich) and the
+real-space basis with the overlap; both give the same moments for the same seed and kind.
 
 ## Projection and downfolding
 
