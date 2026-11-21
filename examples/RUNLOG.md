@@ -71,6 +71,7 @@ and are marked "OMP 4".
 | 16 | check | `python3 examples/16_projection_downfold/check_projection.py out/omp1/ex16b/projection_shift` | 1 | 0.3 s | 0 | **PASS**: exact DOS projected vs unprojected 2.8e-14; ∫DOS = 71.998, ∫WINDOW-DOS = 4.5312 (mean kept 4.53125) |
 | 17 | Python API | `python3 examples/17_python_api/python_api.py out/omp1/ex17/level1` | 1 | 2.8 s | 0 | **PASS**: level 1 (dict) vs level 2 (blocks): moments and curves identical (0.0) |
 | 18 | MCP session | `python3 examples/18_mcp_session/mcp_session.py` | 1 | 4.9 s | 0 | all 5 tools answered; background run succeeded in 2.0 s; root guard refused `/etc` |
+| 19 | Observable words | `python3 -m lsquant run examples/19_observable_words/run_words.json`, then `reconstruct --formula shc` | 8 | 172 s (+4 s) | 0 | **PASS**: σ^z_xy plateau −2.021 vs exact −2.018 e²/h; σ_xy max deviation 0.16 e²/h over −3.5…3.5 eV; DOS integral 4.000 per cell |
 
 The first attempts that failed and were then fixed (all recorded in
 `SUMMARY.txt`):
