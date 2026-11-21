@@ -1,5 +1,7 @@
 # LSQuant: linear-scaling quantum transport
 
+**Documentation, examples and gallery: <https://josehgarciaa.github.io/lsquant/>**
+
 LSQuant computes the spectral and transport properties of systems too large to
 diagonalise. It gives the total and projected density of states, the
 longitudinal conductivity σ_xx from the Kubo–Greenwood formula, and the Hall
