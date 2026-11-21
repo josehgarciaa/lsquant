@@ -38,6 +38,8 @@ states; see \subpage python_layer.
 Kubo-Greenwood and Kubo-Bastin conductivities from rank-2 moments are covered in \subpage kubo.
 Time evolution (mean-square displacement, projected operators, time correlations) is
 covered in \subpage time_evolution.
+The real-space, Bloch and eigen bases built from one Wannier model are covered in
+\subpage bases.
 
 ## Testing
 
