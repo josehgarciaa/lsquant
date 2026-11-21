@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import glob
+import hashlib
 import json
 import os
 import shutil
@@ -52,6 +53,7 @@ ALLOWED_TOP_KEYS: frozenset[str] = frozenset(
         "reference",
         "build_profile",
         "runtime",
+        "numerics",
     }
 )
 
@@ -66,6 +68,11 @@ ALLOWED_MODEL_KEYS: frozenset[str] = frozenset(
         "name",
         "tutorial",
         "params",
+        "positions",
+        "orbitals_per_atom",
+        "atom_map",
+        "hr_file",
+        "supercell",
     }
 )
 
@@ -197,12 +204,23 @@ ALLOWED_EXPANSION_KEYS: frozenset[str] = frozenset(
         "seed",
         "batch",
         "state_label",
+        "state_block",
+        "left_window",
+        "right_window",
+        "state_block_rule",
+        "checkpoint",
     }
 )
 
 ALLOWED_TIME_KEYS: frozenset[str] = frozenset(
     {"steps", "tmax", "dt", "bessel"}
 )
+
+ALLOWED_NUMERICS_KEYS: frozenset[str] = frozenset(
+    {"backend", "operator", "domain_atoms", "execution"}
+)
+
+ALLOWED_BACKEND_KEYS: frozenset[str] = frozenset({"name", "executor", "format"})
 
 ALLOWED_RECONSTRUCTION_KEYS: frozenset[str] = frozenset(
     {
@@ -288,6 +306,8 @@ DEFAULT_RUNFILE_DEFAULTS: dict[str, Any] = {
         "seed": 12345,
         "batch": None,
         "state_label": None,
+        "state_block": 1,
+        "left_window": None,
     },
     "time": None,
     "reconstruction": {
@@ -378,7 +398,11 @@ def validate_runfile_dict(raw: Mapping[str, Any]) -> None:
             f"Unknown model.kind '{kind}'; expected 'csr', 'wannier', 'siesta', or 'generator'"
         )
     if kind == "csr":
-        if not model.get("dir") or not model.get("label"):
+        if model.get("hr_file"):
+            operator_config = raw.get("numerics") or {}
+            if not isinstance(operator_config, Mapping) or operator_config.get("operator") != "atom_block":
+                raise ValueError("model.hr_file requires numerics.operator='atom_block'")
+        if not model.get("hr_file") and (not model.get("dir") or not model.get("label")):
             raise ValueError(
                 "Run file with model.kind='csr' requires 'dir' and 'label'"
             )
@@ -513,6 +537,26 @@ def validate_runfile_dict(raw: Mapping[str, Any]) -> None:
         raise ValueError(
             f"Unknown expansion.trace '{tr}'; expected 'exact' or 'random'"
         )
+    sb_raw = _get_or(exp, "state_block", 1)
+    if isinstance(sb_raw, str):
+        if sb_raw != "auto":
+            raise ValueError(
+                f"Unknown expansion.state_block '{sb_raw}'; expected a positive integer or 'auto'"
+            )
+    elif int(sb_raw) <= 0:
+        raise ValueError("expansion.state_block must be a positive integer or 'auto'")
+    lw_raw = _get_or(exp, "left_window", None)
+    if lw_raw is not None and int(lw_raw) <= 0:
+        raise ValueError("expansion.left_window must be a positive integer")
+    ckpt_raw = _get_or(exp, "checkpoint", False)
+    if not isinstance(ckpt_raw, bool):
+        raise ValueError("expansion.checkpoint must be a boolean")
+    rw_raw = _get_or(exp, "right_window", 16)
+    if isinstance(rw_raw, str):
+        if rw_raw != "all":
+            raise ValueError("expansion.right_window must be a positive integer or 'all'")
+    elif int(rw_raw) <= 0:
+        raise ValueError("expansion.right_window must be a positive integer or 'all'")
     if "window" in exp and exp["window"] is not None:
         win = exp["window"]
         if isinstance(win, str):
@@ -584,6 +628,151 @@ def validate_runfile_dict(raw: Mapping[str, Any]) -> None:
         if not isinstance(out, Mapping):
             raise ValueError("Run file 'output' must be a JSON object")
         _check_keys("output", out, ALLOWED_OUTPUT_KEYS)
+
+    if "numerics" in raw and raw["numerics"] is not None:
+        numerics = raw["numerics"]
+        if not isinstance(numerics, Mapping):
+            raise ValueError("Run file 'numerics' must be a JSON object")
+        _check_keys("numerics", numerics, ALLOWED_NUMERICS_KEYS)
+        backend = numerics.get("backend")
+        if backend is not None:
+            if not isinstance(backend, Mapping):
+                raise ValueError("Run file 'numerics.backend' must be a JSON object")
+            _check_keys("numerics.backend", backend, ALLOWED_BACKEND_KEYS)
+            bname = str(_get_or(backend, "name", "native"))
+            if bname not in ("native", "ginkgo"):
+                raise ValueError(
+                    f"Unknown numerics.backend.name '{bname}'; expected 'native' or 'ginkgo'"
+                )
+            if bname == "ginkgo":
+                if _core.build_profile != "native":
+                    raise ValueError(
+                        "numerics.backend ginkgo is only available in the native build "
+                        f"profile (loaded profile is {_core.build_profile!r})"
+                    )
+                if not getattr(_core, "ginkgo_available", False):
+                    raise ValueError(
+                        "numerics.backend ginkgo requested but this build has "
+                        "LSQUANT_WITH_GINKGO=OFF"
+                    )
+                bexec = str(_get_or(backend, "executor", "omp"))
+                if bexec not in ("omp", "cuda"):
+                    raise ValueError(
+                        f"Unknown numerics.backend.executor '{bexec}'; expected 'omp' or 'cuda'"
+                    )
+                if bexec == "cuda" and not getattr(_core, "cuda_available", False):
+                    raise ValueError("executor cuda requested but LSQUANT_WITH_CUDA=OFF")
+                bfmt = str(_get_or(backend, "format", "csr"))
+                if bfmt not in ("csr", "sellp", "ell", "hybrid", "coo"):
+                    raise ValueError(
+                        f"Unknown numerics.backend.format '{bfmt}'; expected csr, sellp, "
+                        "ell, hybrid, or coo"
+                    )
+                backend_basis = str(_get_or(raw.get("basis") or {}, "name", "real"))
+                if kind != "csr" or backend_basis != "real":
+                    raise ValueError(
+                        "numerics.backend ginkgo applies to real-space csr models "
+                        f"(basis.name='real'), got kind={kind!r} basis={backend_basis!r}"
+                    )
+                pol = str(_get_or(raw.get("metric") or {}, "policy", "orthogonal"))
+                if pol != "orthogonal" and bexec == "cuda":
+                    raise ValueError("metric composites not supported on cuda")
+        op_kind = str(_get_or(numerics, "operator", "csr"))
+        if op_kind not in ("csr", "atom_block"):
+            raise ValueError(
+                f"Unknown numerics.operator '{op_kind}'; expected 'csr' or 'atom_block'"
+            )
+        if op_kind == "atom_block":
+            if _core.build_profile != "native":
+                raise ValueError(
+                    "numerics.operator='atom_block' is only available in the native build "
+                    f"profile (loaded profile is {_core.build_profile!r})"
+                )
+            if kind != "csr":
+                raise ValueError(
+                    f"numerics.operator='atom_block' requires model.kind='csr', got {kind!r}"
+                )
+            backend_cfg = numerics.get("backend")
+            if isinstance(backend_cfg, Mapping) and str(
+                _get_or(backend_cfg, "name", "native")
+            ) != "native":
+                raise ValueError(
+                    "numerics.operator='atom_block' cannot be combined with "
+                    "numerics.backend ginkgo"
+                )
+            basis_for_op = str(_get_or(raw.get("basis") or {}, "name", "real"))
+            if basis_for_op != "real":
+                raise ValueError(
+                    "numerics.operator='atom_block' requires basis.name='real', "
+                    f"got {basis_for_op!r}"
+                )
+            pol_for_op = str(_get_or(raw.get("metric") or {}, "policy", "orthogonal"))
+            if pol_for_op != "orthogonal":
+                raise ValueError(
+                    "numerics.operator='atom_block' requires metric.policy='orthogonal', "
+                    f"got {pol_for_op!r}"
+                )
+            if model.get("positions") is None:
+                raise ValueError(
+                    "numerics.operator='atom_block' requires model.positions "
+                    "(path or array of orbital positions)"
+                )
+            if model.get("orbitals_per_atom") is None and model.get("atom_map") is None:
+                raise ValueError(
+                    "numerics.operator='atom_block' requires model.orbitals_per_atom "
+                    "or model.atom_map"
+                )
+            if model.get("hr_file") is not None:
+                sc = model.get("supercell")
+                if (
+                    not isinstance(sc, (list, tuple))
+                    or len(sc) != 2
+                    or any(int(v) <= 0 for v in sc)
+                ):
+                    raise ValueError(
+                        "model.hr_file requires model.supercell = [L1, L2] of positive ints"
+                    )
+                win_for_hr = _get_or(raw.get("expansion") or {}, "window", None)
+                if not isinstance(win_for_hr, (list, tuple)):
+                    raise ValueError(
+                        "model.hr_file requires an explicit expansion.window "
+                        "([lower, upper]; Gershgorin needs a CSR Hamiltonian)"
+                    )
+        if numerics.get("domain_atoms") is not None:
+            da = int(numerics["domain_atoms"])
+            if da <= 0:
+                raise ValueError("numerics.domain_atoms must be a positive integer")
+        execution = str(_get_or(numerics, "execution", "openmp"))
+        if execution not in ("openmp", "cuda", "mpi", "mpi+cuda"):
+            raise ValueError(
+                f"Unknown numerics.execution '{execution}'; expected openmp, cuda, "
+                "mpi, or mpi+cuda"
+            )
+        if execution != "openmp":
+            if _core.build_profile != "native":
+                raise ValueError(
+                    f"numerics.execution='{execution}' is only available in the native "
+                    f"build profile (loaded profile is {_core.build_profile!r})"
+                )
+            if op_kind != "atom_block":
+                raise ValueError(
+                    f"numerics.execution='{execution}' requires "
+                    "numerics.operator='atom_block'"
+                )
+            if execution in ("cuda", "mpi+cuda") and not getattr(
+                _core, "cuda_available", False
+            ):
+                raise ValueError(
+                    f"numerics.execution='{execution}' requested but this build has "
+                    "LSQUANT_WITH_CUDA=OFF"
+                )
+            if execution in ("mpi", "mpi+cuda") and not getattr(
+                _core, "mpi_available", False
+            ):
+                raise ValueError(
+                    f"numerics.execution='{execution}' requested but this build has "
+                    "LSQUANT_WITH_MPI=OFF"
+                )
 
     # Validate word(s) syntax, catalogue membership, basis consistency, and time requirements
     word_str = raw["word"]
@@ -677,6 +866,7 @@ class RunFile:
     source_path: str | None = field(default=None, repr=False)
     reference: bool | None = None
     projection: dict[str, Any] = field(default_factory=lambda: {"kind": "none", "window": None, "radius": None})
+    numerics: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_dict(
@@ -733,6 +923,23 @@ class RunFile:
             "name": str(gen_name) if gen_name is not None else None,
             "tutorial": raw_model.get("tutorial"),
             "params": dict(raw_model.get("params") or {}),
+            "positions": (
+                _resolve_path(raw_model.get("positions"))
+                if isinstance(raw_model.get("positions"), str)
+                else raw_model.get("positions")
+            ),
+            "orbitals_per_atom": raw_model.get("orbitals_per_atom"),
+            "atom_map": (
+                _resolve_path(raw_model.get("atom_map"))
+                if isinstance(raw_model.get("atom_map"), str)
+                else raw_model.get("atom_map")
+            ),
+            "hr_file": _resolve_path(raw_model.get("hr_file")),
+            "supercell": (
+                [int(v) for v in raw_model["supercell"]]
+                if raw_model.get("supercell") is not None
+                else None
+            ),
         }
 
         raw_basis = dict(raw.get("basis") or {})
@@ -784,6 +991,18 @@ class RunFile:
                 else moments_val
             ),
             "state_label": raw_exp.get("state_label"),
+            "state_block": _get_or(raw_exp, "state_block", 1),
+            "left_window": (
+                int(raw_exp["left_window"])
+                if raw_exp.get("left_window") is not None
+                else 32
+            ),
+            "checkpoint": bool(raw_exp.get("checkpoint", False)),
+            "right_window": (
+                None
+                if raw_exp.get("right_window") == "all"
+                else int(_get_or(raw_exp, "right_window", 16))
+            ),
         }
 
         time_cfg: dict[str, Any] | None = None
@@ -868,6 +1087,36 @@ class RunFile:
             source_path=source_path,
             reference=raw.get("reference"),
             projection=resolve_projection(raw.get("projection")),
+            numerics=(
+                {
+                    **(
+                        {
+                            "backend": {
+                                "name": str(
+                                    _get_or(raw["numerics"]["backend"], "name", "native")
+                                ),
+                                "executor": str(
+                                    _get_or(raw["numerics"]["backend"], "executor", "omp")
+                                ),
+                                "format": str(
+                                    _get_or(raw["numerics"]["backend"], "format", "csr")
+                                ),
+                            }
+                        }
+                        if isinstance(raw["numerics"].get("backend"), Mapping)
+                        else {}
+                    ),
+                    "operator": str(_get_or(raw["numerics"], "operator", "csr")),
+                    "execution": str(_get_or(raw["numerics"], "execution", "openmp")),
+                    **(
+                        {"domain_atoms": int(raw["numerics"]["domain_atoms"])}
+                        if raw["numerics"].get("domain_atoms") is not None
+                        else {}
+                    ),
+                }
+                if isinstance(raw.get("numerics"), Mapping)
+                else {}
+            ),
         )
 
     @classmethod
@@ -905,6 +1154,8 @@ class RunFile:
             out["words"] = list(self.words)
         if self.projection["kind"] != "none":
             out["projection"] = dict(self.projection)
+        if self.numerics:
+            out["numerics"] = dict(self.numerics)
         return out
 
 
@@ -917,6 +1168,35 @@ def _compute_padded_overlap_bounds(
     lower = max(0.5 * float(ritz.lower), float(ritz.lower) - 0.05 * span)
     upper = float(ritz.upper) + 0.05 * span
     return _core.SpectralBounds(lower, upper)
+
+
+def _resolve_state_block(
+    expansion: dict[str, Any], dim: int, num_moments: int, num_states: int
+) -> int:
+    """Resolve ``expansion["state_block"]`` (a positive integer or ``"auto"``) to an integer.
+
+    ``"auto"`` applies the memory rule of :func:`lsquant.moments.choose_state_block` in the
+    native profile and resolves to 1 in the golden profile; the resolved value and the reason are
+    recorded back into ``expansion`` (``state_block``, ``state_block_rule``) so the run
+    receipt carries them.
+    """
+    sb = expansion.get("state_block", 1)
+    if not isinstance(sb, str):
+        return int(sb)
+    if _core.build_profile != "native":
+        expansion["state_block"] = 1
+        expansion["state_block_rule"] = "auto -> 1 (golden profile keeps the serial path)"
+        return 1
+    from .moments import choose_state_block
+
+    left_window = int(expansion.get("left_window") or 16)
+    right_window = expansion.get("right_window")
+    s, reason = choose_state_block(
+        dim, num_moments, num_states, left_window, right_window=right_window
+    )
+    expansion["state_block"] = s
+    expansion["state_block_rule"] = f"auto -> {s}: {reason}"
+    return s
 
 
 def _discover_csr_operators(model_dir: str, label: str) -> list[str]:
@@ -1208,7 +1488,7 @@ def execute_runfile(
                 model_dir=str(rf.model["dir"]),
                 operators=("VX",),
             )
-    elif kind == "csr":
+    elif kind == "csr" and not rf.model.get("hr_file"):
         model_dir = str(rf.model["dir"])
         label = str(rf.model["label"])
         ham_path = os.path.join(model_dir, f"{label}.HAM.CSR")
@@ -1337,6 +1617,10 @@ def execute_runfile(
         num_states = int(state_gen.number_of_states)
         num_moments = int(rf.expansion["moments"])
         batch_size = int(rf.expansion["batch"] or num_moments)
+        left_window = int(rf.expansion.get("left_window") or 16)
+        state_block = _resolve_state_block(
+            rf.expansion, int(basis_obj.dimension), num_moments, num_states
+        )
 
         concrete_ops: dict[str, _core.LinearOperator] = {}
         for op_name in ("VX", "VY", "VZ"):
@@ -1379,6 +1663,8 @@ def execute_runfile(
                 batch_size=batch_size,
                 symmetrise=symmetrise,
                 dt=compiled.dt,
+                state_block=state_block,
+                left_window=left_window,
             )
             if trace_mode == "exact":
                 mu.number_of_states = basis_obj.dimension
@@ -1476,13 +1762,27 @@ def execute_runfile(
 
     else:
         # kind == "csr"
-        model_dir = str(rf.model["dir"])
-        label = str(rf.model["label"])
-        ham_path = os.path.join(model_dir, f"{label}.HAM.CSR")
-        if not os.path.isfile(ham_path):
-            raise FileNotFoundError(f"Hamiltonian CSR file not found: {ham_path}")
-        ham = _core.ReadCsrText(ham_path)
-        dim = int(ham.dimension)
+        model_dir = str(rf.model.get("dir") or "")
+        label = str(rf.model.get("label") or "")
+        operator_kind = str((rf.numerics or {}).get("operator", "csr"))
+        use_atom_block = operator_kind == "atom_block"
+        hr_file = rf.model.get("hr_file") if use_atom_block else None
+        if use_atom_block and _core.build_profile != "native":
+            raise ValueError(
+                "numerics.operator='atom_block' is refused in the golden build profile"
+            )
+        ham: _core.SparseMatrix | None = None
+        if hr_file is not None:
+            if not os.path.isfile(hr_file):
+                raise FileNotFoundError(f"H(R) file not found: {hr_file}")
+            sc_l1, sc_l2 = (int(v) for v in rf.model["supercell"])
+            dim = sc_l1 * sc_l2 * int(rf.model["orbitals_per_atom"])
+        else:
+            ham_path = os.path.join(model_dir, f"{label}.HAM.CSR")
+            if not os.path.isfile(ham_path):
+                raise FileNotFoundError(f"Hamiltonian CSR file not found: {ham_path}")
+            ham = _core.ReadCsrText(ham_path)
+            dim = int(ham.dimension)
 
         win_spec = rf.expansion["window"]
         if win_spec == "eigen":
@@ -1491,6 +1791,11 @@ def execute_runfile(
                 "(no k blocks; use gershgorin or an explicit window)"
             )
         elif win_spec == "gershgorin":
+            if ham is None:
+                raise ValueError(
+                    "expansion.window='gershgorin' needs a CSR Hamiltonian; "
+                    "model.hr_file requires an explicit [lower, upper] window"
+                )
             window = window_from_gershgorin(ham)
         elif isinstance(win_spec, (list, tuple)):
             window = _core.SpectralWindow(float(win_spec[0]), float(win_spec[1]))
@@ -1520,7 +1825,92 @@ def execute_runfile(
                 rf.expansion.get("state_label") or state_gen.label
             )
 
+        # Spatial atom-block operator assembly (native profile, numerics.operator)
+        perm: np.ndarray | None = None
+        spatial_receipt: dict[str, Any] | None = None
+        ham_block_op: _core.AtomBlockOperator | None = None
+        op_block_arrays: dict[str, dict[str, Any]] = {}
+        if use_atom_block:
+            from . import spatial
+            import time
+
+            spatial_started = time.perf_counter()
+            positions = spatial.read_positions(rf.model["positions"])
+            if positions.shape[0] != dim:
+                raise ValueError(
+                    f"model.positions holds {positions.shape[0]} orbitals, expected {dim}"
+                )
+            amap = spatial.atom_map_from_spec(
+                dim, rf.model.get("orbitals_per_atom"), rf.model.get("atom_map")
+            )
+            state_block_est = _resolve_state_block(
+                rf.expansion, dim, int(rf.expansion["moments"]), num_states
+            )
+            da = int(
+                (rf.numerics or {}).get("domain_atoms")
+                or spatial.default_domain_atoms(
+                    int(np.bincount(amap).max()), state_block_est, 3
+                )
+            )
+            atom_counts = np.bincount(amap).astype(np.float64)
+            atom_pos = np.zeros((len(atom_counts), 3))
+            np.add.at(atom_pos, amap, positions)
+            atom_pos /= atom_counts[:, None]
+            if hr_file is not None:
+                if sc_l1 < 2 or sc_l2 < 2:
+                    raise ValueError("model.supercell entries must both be >= 2")
+                hops = spatial.read_hr_file(hr_file)
+                w_atom = int(rf.model["orbitals_per_atom"])
+                # lattice vectors from adjacent cells of the position array (cell-major
+                # natural order: cell (i1, i2) sits at flat index i1*L2 + i2)
+                lattice32 = np.zeros((3, 2))
+                lattice32[:, 0] = positions[w_atom * sc_l2] - positions[0]
+                lattice32[:, 1] = positions[w_atom] - positions[0]
+                h_arrays, perm, spatial_info = spatial.blocks_from_hoppings(
+                    hops, (sc_l1, sc_l2), positions, w_atom, da
+                )
+                spatial_receipt = {"source": "hoppings", "hr_file": hr_file}
+            else:
+                rp, cl, ham_values = ham.csr_arrays()
+                rows_h = np.repeat(np.arange(dim, dtype=np.int64), np.diff(rp))
+                pa, pb = amap[rows_h], amap[cl]
+                link = pa != pb
+                atom_order, spatial_info = spatial.spatial_permutation(
+                    atom_pos, pa[link], pb[link], da
+                )
+                perm = spatial.orbital_permutation(atom_order, amap)
+                h_arrays = spatial.blocks_from_csr(rp, cl, ham_values, amap, perm)
+                spatial_receipt = {"source": "csr", "dir": model_dir, "label": label}
+            execution_mode = str((rf.numerics or {}).get("execution", "openmp"))
+            if execution_mode in ("mpi", "mpi+cuda"):
+                raise ValueError(
+                    f"numerics.execution='{execution_mode}' is not wired yet "
+                    "(the MPI execution path, DistributedOperator, is not wired into run files yet)"
+                )
+            if execution_mode == "cuda":
+                ham_block_op = spatial.to_core_cuda(h_arrays, hermitian=True)
+            else:
+                ham_block_op = spatial.to_core(h_arrays, hermitian=True)
+            spatial_receipt.update(
+                {
+                    "operator": "atom_block",
+                    "domain_atoms": da,
+                    "spatial": spatial_info,
+                    "hamiltonian": {
+                        "atoms": int(ham_block_op.num_atoms),
+                        "pairs": int(ham_block_op.num_pairs),
+                        "dictionary": int(ham_block_op.dictionary_size),
+                    },
+                }
+            )
+            state_gen = _core.PermutedStates(perm, state_gen)
+            spatial_receipt["construction_s"] = time.perf_counter() - spatial_started
+
         # Metric policy setup (orthogonal or nonorthogonal)
+        backend_cfg = (rf.numerics or {}).get("backend") or {}
+        use_ginkgo = backend_cfg.get("name") == "ginkgo"
+        ginkgo_executor = str(backend_cfg.get("executor", "omp"))
+        ginkgo_format = str(backend_cfg.get("format", "csr"))
         policy_name = str(rf.metric["policy"])
         route_name = str(rf.metric["route"])
         applier_name = str(rf.metric["applier"])
@@ -1528,9 +1918,20 @@ def execute_runfile(
         s_mat: _core.SparseMatrix | None = None
         if policy_name == "orthogonal":
             metric_obj = _core.OrthogonalMetric(dim)
-            rescaled_h: _core.LinearOperator = _core.RescaledOperator(
-                ham, window
-            )
+            if use_atom_block:
+                rescaled_h = _core.RescaledOperator(ham_block_op, window)
+            elif use_ginkgo:
+                rescaled_h = _core.GinkgoOperator(
+                    ham.rescaled(
+                        complex(window.scale, 0.0), complex(window.shift, 0.0)
+                    ),
+                    ginkgo_executor,
+                    ginkgo_format,
+                )
+            else:
+                rescaled_h: _core.LinearOperator = _core.RescaledOperator(
+                    ham, window
+                )
         else:
             s_path = os.path.join(model_dir, f"{label}.S.CSR")
             if not os.path.isfile(s_path):
@@ -1588,10 +1989,51 @@ def execute_runfile(
             else _discover_csr_operators(model_dir, label)
         )
         raw_csr_mats: dict[str, _core.SparseMatrix] = {}
-        for op_n in discovered_ops:
-            op_p = os.path.join(model_dir, f"{label}.{op_n}.CSR")
-            if os.path.isfile(op_p):
-                raw_csr_mats[op_n] = _core.ReadCsrText(op_p)
+        if use_atom_block:
+            for op_n in discovered_ops:
+                operator_started = time.perf_counter()
+                operator_load_s = 0.0
+                if hr_file is not None:
+                    axis = {"VX": 0, "VY": 1, "VZ": 2}.get(op_n)
+                    if axis is None:
+                        raise ValueError(
+                            f"operator '{op_n}' cannot be built from H(R) + positions "
+                            "(only VX, VY, VZ as i[H, X_a])"
+                        )
+                    op_block_arrays[op_n] = spatial.velocity_arrays_from_hoppings(
+                        hops, h_arrays, positions[:w_atom], lattice32, axis
+                    )
+                else:
+                    op_p = os.path.join(model_dir, f"{label}.{op_n}.CSR")
+                    if not os.path.isfile(op_p):
+                        raise FileNotFoundError(
+                            f"Operator CSR file not found: {op_p} "
+                            "(atom_block never silently skips a missing operator)"
+                        )
+                    orp, ocl, ovl = _core.ReadCsrText(op_p).csr_arrays()
+                    operator_load_s = time.perf_counter() - operator_started
+                    op_block_arrays[op_n] = spatial.blocks_from_csr(orp, ocl, ovl, amap, perm)
+                spatial_receipt[f"operator:{op_n}"] = {
+                    "dictionary": int(len(op_block_arrays[op_n]["dict_rows"])),
+                    "construction_s": time.perf_counter() - operator_started - operator_load_s,
+                    "csr_load_s": operator_load_s,
+                }
+        else:
+            for op_n in discovered_ops:
+                op_p = os.path.join(model_dir, f"{label}.{op_n}.CSR")
+                if os.path.isfile(op_p):
+                    raw_csr_mats[op_n] = _core.ReadCsrText(op_p)
+
+        if use_atom_block and spatial_receipt is not None:
+            perm_path = os.path.join(out_dir, "permutation.npy")
+            np.save(perm_path, perm)
+            spatial_receipt["permutation_file"] = "permutation.npy"
+            rec_path = os.path.join(out_dir, "spatial_receipt.json")
+            with open(rec_path, "w", encoding="utf-8") as fh:
+                json.dump(spatial_receipt, fh, indent=2)
+                fh.write("\n")
+            written_files.append(rec_path)
+            written_files.append(perm_path)
 
         num_moments = int(rf.expansion["moments"])
         batch_size = int(rf.expansion["batch"] or num_moments)
@@ -1601,11 +2043,42 @@ def execute_runfile(
             parsed_w = parse_word(w_str)
             # For MSD, the velocity operator passed to the engine is RescaledOperator(V, window)
             concrete_ops = {}
+            atom_op_refs: list[Any] = []
+            if use_atom_block:
+                for op_n, arrays in op_block_arrays.items():
+                    op_core = (
+                        spatial.to_core_cuda(arrays, hermitian=True)
+                        if execution_mode == "cuda"
+                        else spatial.to_core(arrays, hermitian=True)
+                    )
+                    atom_op_refs.append(op_core)
+                    is_velocity = any(
+                        getattr(s, "velocity_operator", None) == op_n
+                        for s in parsed_w.slots
+                    )
+                    if is_velocity:
+                        res_op = _core.RescaledOperator(op_core, window)
+                        atom_op_refs.append(res_op)
+                        concrete_ops[op_n] = res_op
+                    else:
+                        concrete_ops[op_n] = op_core
             for op_n, mat in raw_csr_mats.items():
-                if any(
+                is_velocity = any(
                     getattr(s, "velocity_operator", None) == op_n
                     for s in parsed_w.slots
-                ):
+                )
+                if use_ginkgo:
+                    gko_mat = (
+                        mat.rescaled(
+                            complex(window.scale, 0.0), complex(window.shift, 0.0)
+                        )
+                        if is_velocity
+                        else mat
+                    )
+                    concrete_ops[op_n] = _core.GinkgoOperator(
+                        gko_mat, ginkgo_executor, ginkgo_format
+                    )
+                elif is_velocity:
                     concrete_ops[op_n] = _core.RescaledOperator(mat, window)
                 else:
                     concrete_ops[op_n] = _core.SparseMatrixOperator(mat)
@@ -1633,10 +2106,39 @@ def execute_runfile(
                 },
             )
 
+            state_block = _resolve_state_block(rf.expansion, dim, num_moments, num_states)
+            left_window = int(rf.expansion.get("left_window") or 16)
+            if state_block > 1:
+                from .moments import _available_memory_bytes, estimate_engine_bytes
+
+                estimate = estimate_engine_bytes(
+                    dim, compiled.plan, batch_size, state_block, left_window,
+                    right_window=rf.expansion.get("right_window"),
+                )
+                available = _available_memory_bytes()
+                if available is not None and estimate > 0.8 * available:
+                    import warnings
+
+                    warnings.warn(
+                        f"state_block={state_block} needs about {estimate / 2**30:.1f} GiB "
+                        f"of engine working set; only {available / 2**30:.1f} GiB available",
+                        RuntimeWarning,
+                        stacklevel=2,
+                    )
             engine = _core.MomentEngine(
-                rescaled_h, compiled.operators, state_gen, batch_size
+                rescaled_h, compiled.operators, state_gen, batch_size, state_block,
+                left_window, int(rf.expansion.get("right_window") or 0),
             )
-            mu = engine.run(compiled.plan)
+            # Trace-state-level checkpointing (native and golden): on restart the engine
+            # resumes after the last fully accumulated state; the tensor is bit-identical
+            # to an uninterrupted run.
+            ckpt_path = ""
+            if rf.expansion.get("checkpoint"):
+                ckpt_tag = hashlib.sha256(compiled.plan.word.encode()).hexdigest()[:12]
+                ckpt_path = os.path.join(out_dir, f"checkpoint_{ckpt_tag}.lsqckpt")
+            mu = engine.run(compiled.plan, checkpoint_path=ckpt_path)
+            if ckpt_path and os.path.isfile(ckpt_path):
+                os.remove(ckpt_path)
             mu.window = window
             mu.system_size = dim
             mu.number_of_states = num_states

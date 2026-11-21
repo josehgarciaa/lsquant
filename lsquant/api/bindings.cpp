@@ -13,14 +13,21 @@
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
+#include <omp.h>
 
 #include <algorithm>
+#include <limits>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
 #include "compat/legacy_kernels.hpp"
+#include "core/algebra/atom_block_operator.hpp"
+#ifdef LSQUANT_WITH_CUDA
+#include "core/algebra/atom_block_cuda.hpp"
+#endif
 #include "core/algebra/bloch_transform.hpp"
 #include "core/algebra/block_diagonal_operator.hpp"
 #include "core/algebra/composite_operators.hpp"
@@ -28,6 +35,9 @@
 #include "core/algebra/metric_policy.hpp"
 #include "core/algebra/overlap_appliers.hpp"
 #include "core/algebra/sparse_matrix.hpp"
+#ifdef LSQUANT_WITH_GINKGO
+#include "core/algebra/ginkgo_operator.hpp"
+#endif
 #include "core/algebra/spectral_bounds.hpp"
 #include "core/algebra/state_generator.hpp"
 #include "core/algebra/types.hpp"
@@ -138,6 +148,59 @@ Index ValidateRank2Tables(const char* funcName, Index m0, Index m1, const TableA
   return static_cast<Index>(tableA.shape(1));
 }
 
+/**
+ * @brief Convert a 1D int64 C-contiguous NumPy array into an owned `std::vector<Index>`.
+ */
+std::vector<Index> Int64VecFromArray(py::handle obj, const char* name) {
+  Index size = 0;
+  const Index* ptr = ValidateCsrBuffer1D<Index>(obj, name, "int64", 'i', size);
+  return std::vector<Index>(ptr, ptr + size);
+}
+
+/**
+ * @brief Convert a 1D integer (32- or 64-bit) NumPy array into an owned int32 vector.
+ */
+std::vector<std::int32_t> Int32VecFromArray(py::handle obj, const char* name) {
+  if (!py::isinstance<py::array>(obj)) {
+    throw py::type_error(std::string("AtomBlockOperator: argument '") + name +
+                         "' must be a 1D integer numpy.ndarray");
+  }
+  auto arr = py::reinterpret_borrow<py::array>(obj);
+  if (arr.ndim() != 1 || (arr.flags() & py::array::c_style) == 0 ||
+      (arr.dtype().kind() != 'i' && arr.dtype().kind() != 'u')) {
+    throw py::type_error(std::string("AtomBlockOperator: argument '") + name +
+                         "' must be a 1D C-contiguous integer numpy.ndarray");
+  }
+  std::vector<std::int32_t> out(static_cast<std::size_t>(arr.size()));
+  if (arr.itemsize() == 4) {
+    std::copy_n(static_cast<const std::int32_t*>(arr.data()), arr.size(), out.begin());
+  } else if (arr.itemsize() == 8) {
+    const auto* src = static_cast<const std::int64_t*>(arr.data());
+    for (py::ssize_t k = 0; k < arr.size(); ++k) {
+      const std::int64_t v = src[k];
+      if (v < std::numeric_limits<std::int32_t>::min() ||
+          v > std::numeric_limits<std::int32_t>::max()) {
+        throw std::invalid_argument(std::string("AtomBlockOperator: argument '") + name +
+                                    "' exceeds int32 range");
+      }
+      out[static_cast<std::size_t>(k)] = static_cast<std::int32_t>(v);
+    }
+  } else {
+    throw py::type_error(std::string("AtomBlockOperator: argument '") + name +
+                         "' must have 32- or 64-bit integer dtype");
+  }
+  return out;
+}
+
+/**
+ * @brief Convert a 1D complex128 C-contiguous NumPy array into an owned `std::vector<Scalar>`.
+ */
+std::vector<Scalar> ComplexVecFromArray(py::handle obj, const char* name) {
+  Index size = 0;
+  const Scalar* ptr = ValidateCsrBuffer1D<Scalar>(obj, name, "complex128", 'c', size);
+  return std::vector<Scalar>(ptr, ptr + size);
+}
+
 }  // namespace
 }  // namespace lsquant
 
@@ -146,7 +209,27 @@ PYBIND11_MODULE(_core, m) {
 
   m.doc() = "C++ execution engine and zero-copy tensor bindings for LSQUANT.";
   m.attr("build_profile") = BuildProfileName();
+#ifdef LSQUANT_WITH_GINKGO
+  m.attr("ginkgo_available") = true;
+#else
+  m.attr("ginkgo_available") = false;
+#endif
+#ifdef LSQUANT_WITH_CUDA
+  m.attr("cuda_available") = true;
+#else
+  m.attr("cuda_available") = false;
+#endif
+#ifdef LSQUANT_WITH_MPI
+  m.attr("mpi_available") = true;
+#else
+  m.attr("mpi_available") = false;
+#endif
   // Configure once before execution, never while an engine is running.
+  m.def("ConfigureBenchmarkThreads", [](int count) {
+    if (count <= 0) throw std::invalid_argument("Thread count must be positive");
+    omp_set_num_threads(count);
+    return omp_get_max_threads();
+  }, py::arg("count"));
   m.def("ConfigurePerformance", [](Index threshold, int batch) {
     if (threshold < 0 || batch < 0) {
       throw std::invalid_argument(
@@ -156,6 +239,19 @@ PYBIND11_MODULE(_core, m) {
     SpmvThresholdSetting() = threshold;
     KernelBatchSetting() = batch;
   }, py::arg("spmv_min_nnz") = kDefaultSpmvThreshold, py::arg("kernel_batch") = 0);
+
+  m.def("ConfigureEngineDiagnostics", [](bool memoryReport, bool phaseTiming,
+                                         long long checkpointAbortAfter) {
+    if (checkpointAbortAfter < -1) {
+      throw std::invalid_argument(
+          "ConfigureEngineDiagnostics: checkpoint_abort_after must be >= -1, got " +
+          std::to_string(checkpointAbortAfter));
+    }
+    EngineDiagnosticsSetting().memoryReport = memoryReport;
+    EngineDiagnosticsSetting().phaseTiming = phaseTiming;
+    EngineDiagnosticsSetting().checkpointAbortAfter = checkpointAbortAfter;
+  }, py::arg("memory_report") = false, py::arg("phase_timing") = false,
+     py::arg("checkpoint_abort_after") = -1);
 
   m.def("FftMomentContraction", [](const py::array_t<Scalar, py::array::c_style>& moments,
                                     Index points) {
@@ -188,8 +284,21 @@ PYBIND11_MODULE(_core, m) {
           py::arg("dim"), py::arg("row_pointers"), py::arg("columns"), py::arg("values"))
       .def_property_readonly("dimension", &SparseMatrix::Dimension)
       .def_property_readonly("non_zeros", &SparseMatrix::NonZeros)
+      .def("rescaled", &SparseMatrix::Rescaled, py::arg("a"), py::arg("b"))
       .def("hermitian_fold", &SparseMatrix::HermitianFold)
-      .def("is_hermitian", &SparseMatrix::IsHermitian, py::arg("tol") = 1e-12);
+      .def("is_hermitian", &SparseMatrix::IsHermitian, py::arg("tol") = 1e-12)
+      .def("csr_arrays", [](const SparseMatrix& matrix) {
+        const auto& eigen = matrix.Eigen();
+        const Index nnz = eigen.nonZeros();
+        const Index dim = eigen.rows();
+        py::array_t<Index> rowPointers(static_cast<py::ssize_t>(dim + 1));
+        py::array_t<Index> columns(static_cast<py::ssize_t>(nnz));
+        py::array_t<Scalar> values(static_cast<py::ssize_t>(nnz));
+        std::copy_n(eigen.outerIndexPtr(), dim + 1, rowPointers.mutable_data());
+        std::copy_n(eigen.innerIndexPtr(), nnz, columns.mutable_data());
+        std::copy_n(eigen.valuePtr(), nnz, values.mutable_data());
+        return py::make_tuple(rowPointers, columns, values);
+      });
 
   py::class_<LinearOperator>(m, "LinearOperator")
       .def_property_readonly("dimension", &LinearOperator::Dimension)
@@ -236,10 +345,168 @@ PYBIND11_MODULE(_core, m) {
               std::copy(yVec.begin(), yVec.end(), y.mutable_data());
             }
           },
+          py::arg("a"), py::arg("x"), py::arg("b"), py::arg("y"))
+      .def(
+          "multiply_block",
+          [](const LinearOperator& op, Scalar a,
+             py::array_t<Scalar, py::array::f_style> x, Scalar b,
+             py::array_t<Scalar, py::array::f_style> y) {
+            if (x.ndim() != 2 || y.ndim() != 2) {
+              throw std::invalid_argument(
+                  "LinearOperator.multiply_block: X and Y must be 2D complex128 F-ordered arrays");
+            }
+            const Index dim = op.Dimension();
+            if (static_cast<Index>(x.shape(0)) != dim || static_cast<Index>(y.shape(0)) != dim ||
+                x.shape(1) != y.shape(1)) {
+              throw std::invalid_argument("LinearOperator.multiply_block: block dimension mismatch");
+            }
+            VectorBlock xView(dim, static_cast<int>(x.shape(1)), const_cast<Scalar*>(x.data()));
+            VectorBlock yView(dim, static_cast<int>(y.shape(1)), y.mutable_data());
+            op.MultiplyBlock(a, xView, b, yView);
+          },
           py::arg("a"), py::arg("x"), py::arg("b"), py::arg("y"));
 
   py::class_<SparseMatrixOperator, LinearOperator>(m, "SparseMatrixOperator")
       .def(py::init<const SparseMatrix&>(), py::arg("matrix"), py::keep_alive<1, 2>());
+
+  py::class_<AtomBlockOperator, LinearOperator>(m, "AtomBlockOperator")
+      .def(py::init([](py::object atomOffset, py::object pairOffset, py::object nbr,
+                       py::object blockId, py::object dictOffset, py::object dictRows,
+                       py::object dictCols, py::object dictValues, py::object diagonal,
+                       bool hermitian) {
+             return AtomBlockOperator(
+                 Int64VecFromArray(atomOffset, "atom_offset"),
+                 Int64VecFromArray(pairOffset, "pair_offset"),
+                 Int32VecFromArray(nbr, "nbr"), Int32VecFromArray(blockId, "block_id"),
+                 Int64VecFromArray(dictOffset, "dict_offset"),
+                 Int32VecFromArray(dictRows, "dict_rows"),
+                 Int32VecFromArray(dictCols, "dict_cols"),
+                 ComplexVecFromArray(dictValues, "dict_values"),
+                 ComplexVecFromArray(diagonal, "diagonal"), hermitian);
+           }),
+           py::arg("atom_offset"), py::arg("pair_offset"), py::arg("nbr"), py::arg("block_id"),
+           py::arg("dict_offset"), py::arg("dict_rows"), py::arg("dict_cols"),
+           py::arg("dict_values"), py::arg("diagonal"), py::arg("hermitian") = true)
+      .def_property_readonly("num_atoms", &AtomBlockOperator::NumAtoms)
+      .def_property_readonly("num_pairs", &AtomBlockOperator::NumPairs)
+      .def_property_readonly("dictionary_size", &AtomBlockOperator::DictionarySize);
+
+  m.def("AtomBlocksFromCsr", [](py::object rowptr, py::object columns, py::object values,
+                                py::object atomMap, py::object permutation) {
+    Index nr, nc, nv, na, np;
+    const auto* rp = ValidateCsrBuffer1D<Index>(rowptr, "rowptr", "int64", 'i', nr);
+    const auto* cl = ValidateCsrBuffer1D<Index>(columns, "columns", "int64", 'i', nc);
+    const auto* vl = ValidateCsrBuffer1D<Scalar>(values, "values", "complex128", 'c', nv);
+    const auto* am = ValidateCsrBuffer1D<Index>(atomMap, "atom_map", "int64", 'i', na);
+    const auto* pm = ValidateCsrBuffer1D<Index>(permutation, "permutation", "int64", 'i', np);
+    if (nr != na + 1 || na != np || nc != nv) {
+      throw std::invalid_argument("AtomBlocksFromCsr: array length mismatch");
+    }
+    AtomBlockData data;
+    {
+      py::gil_scoped_release release;
+      data = AtomBlocksFromCsr(rp, cl, vl, na, nv, am, pm);
+    }
+    py::dict arrays;
+    auto transfer = [&arrays](const char* name, auto&& vector) {
+      using Container = std::decay_t<decltype(vector)>;
+      using Value = typename Container::value_type;
+      auto* owned = new Container(std::move(vector));
+      py::capsule owner(owned, [](void* p) { delete static_cast<Container*>(p); });
+      arrays[name] = py::array_t<Value>(static_cast<py::ssize_t>(owned->size()), owned->data(), owner);
+    };
+    transfer("atom_offset", std::move(data.atomOffset));
+    transfer("pair_offset", std::move(data.pairOffset));
+    transfer("nbr", std::move(data.nbr));
+    transfer("block_id", std::move(data.blockId));
+    transfer("dict_offset", std::move(data.dictOffset));
+    transfer("dict_rows", std::move(data.dictRows));
+    transfer("dict_cols", std::move(data.dictCols));
+    transfer("dict_values", std::move(data.dictValues));
+    transfer("diagonal", std::move(data.diagonal));
+    return arrays;
+  }, py::arg("rowptr"), py::arg("columns"), py::arg("values"), py::arg("atom_map"),
+     py::arg("permutation"));
+
+#ifdef LSQUANT_WITH_CUDA
+  py::class_<CudaVectorBlock>(m, "CudaVectorBlock")
+      .def(py::init<Index, int>(), py::arg("rows"), py::arg("cols"))
+      .def_property_readonly("rows", &CudaVectorBlock::Rows)
+      .def_property_readonly("cols", &CudaVectorBlock::Cols)
+      .def("from_numpy",
+           [](CudaVectorBlock& self, const py::array_t<Scalar, py::array::f_style>& arr) {
+             if (arr.ndim() != 2 || static_cast<Index>(arr.shape(0)) != self.Rows() ||
+                 static_cast<int>(arr.shape(1)) != self.Cols()) {
+               throw std::invalid_argument(
+                   "CudaVectorBlock.from_numpy: expected an (N, S) F-ordered complex128 array");
+             }
+             self.CopyFromHost(arr.data());
+           },
+           py::arg("array"))
+      .def("to_numpy", [](const CudaVectorBlock& self) {
+        const auto rows = static_cast<py::ssize_t>(self.Rows());
+        const auto cols = static_cast<py::ssize_t>(self.Cols());
+        const auto elem = static_cast<py::ssize_t>(sizeof(Scalar));
+        py::array out(py::dtype::of<Scalar>(), {rows, cols}, {elem, rows * elem});
+        self.CopyToHost(static_cast<Scalar*>(out.mutable_data()));
+        return out;
+      });
+
+  py::class_<CudaAtomBlockOperator, LinearOperator>(m, "CudaAtomBlockOperator")
+      .def(py::init([](py::object atomOffset, py::object pairOffset, py::object nbr,
+                       py::object blockId, py::object dictOffset, py::object dictRows,
+                       py::object dictCols, py::object dictValues, py::object diagonal,
+                       bool hermitian) {
+             return std::make_unique<CudaAtomBlockOperator>(
+                 Int64VecFromArray(atomOffset, "atom_offset"),
+                 Int64VecFromArray(pairOffset, "pair_offset"),
+                 Int32VecFromArray(nbr, "nbr"), Int32VecFromArray(blockId, "block_id"),
+                 Int64VecFromArray(dictOffset, "dict_offset"),
+                 Int32VecFromArray(dictRows, "dict_rows"),
+                 Int32VecFromArray(dictCols, "dict_cols"),
+                 ComplexVecFromArray(dictValues, "dict_values"),
+                 ComplexVecFromArray(diagonal, "diagonal"), hermitian);
+           }),
+           py::arg("atom_offset"), py::arg("pair_offset"), py::arg("nbr"), py::arg("block_id"),
+           py::arg("dict_offset"), py::arg("dict_rows"), py::arg("dict_cols"),
+           py::arg("dict_values"), py::arg("diagonal"), py::arg("hermitian") = true)
+      .def_property_readonly("num_atoms", &CudaAtomBlockOperator::NumAtoms)
+      .def_property_readonly("num_pairs", &CudaAtomBlockOperator::NumPairs)
+      .def_property_readonly("dictionary_size", &CudaAtomBlockOperator::DictionarySize)
+      .def("multiply_block_device", &CudaAtomBlockOperator::MultiplyBlockDevice,
+           py::arg("a"), py::arg("x"), py::arg("b"), py::arg("y"));
+  m.def("synchronize_cuda", &SynchronizeCuda, py::call_guard<py::gil_scoped_release>());
+#endif
+
+#ifdef LSQUANT_WITH_GINKGO
+  py::class_<GinkgoOperator, LinearOperator>(m, "GinkgoOperator")
+      .def(py::init<const SparseMatrix&, std::string, std::string>(), py::arg("matrix"),
+           py::arg("executor") = "omp", py::arg("format") = "csr")
+      .def_property_readonly("executor", &GinkgoOperator::ExecutorName)
+      .def_property_readonly("format", &GinkgoOperator::FormatName)
+      .def("multiply_block_row_major", [](const GinkgoOperator& op, Scalar a,
+             py::array_t<Scalar, py::array::c_style> x, Scalar b,
+             py::array_t<Scalar, py::array::c_style> y) {
+        if (op.ExecutorName() != "omp" || x.ndim() != 2 || y.ndim() != 2 ||
+            x.shape(0) != op.Dimension() || y.shape(0) != op.Dimension() ||
+            x.shape(1) != y.shape(1) || x.data() == y.data()) {
+          throw std::invalid_argument(
+              "GinkgoOperator.multiply_block_row_major: distinct CPU N x S blocks required");
+        }
+        // Direct reference SpMM on persistent row-major buffers: no layout conversion is
+        // charged to the sparse kernel, and the production column-major engine is unchanged.
+        using Dense = gko::matrix::Dense<Scalar>;
+        const auto exec = op.GinkgoExecutor();
+        const auto rows = static_cast<gko::size_type>(x.shape(0));
+        const auto cols = static_cast<gko::size_type>(x.shape(1));
+        if (rows == 0 || cols == 0) return;
+        auto xv = Dense::create(exec, gko::dim<2>(rows, cols),
+            gko::array<Scalar>::view(exec, rows * cols, const_cast<Scalar*>(x.data())), cols);
+        auto yv = Dense::create(exec, gko::dim<2>(rows, cols),
+            gko::array<Scalar>::view(exec, rows * cols, y.mutable_data()), cols);
+        op.ApplyDevice(a, xv.get(), b, yv.get());
+      }, py::arg("a"), py::arg("x").noconvert(), py::arg("b"), py::arg("y").noconvert());
+#endif
 
   py::class_<IdentityOperator, LinearOperator>(m, "IdentityOperator")
       .def(py::init<Index>(), py::arg("dim"));
@@ -404,6 +671,10 @@ PYBIND11_MODULE(_core, m) {
       .def(py::init<Index, Index, unsigned>(), py::arg("dim"), py::arg("num_states"),
            py::arg("seed") = 12345u);
 
+  py::class_<RangedRandomPhaseStates, StateGenerator>(m, "RangedRandomPhaseStates")
+      .def(py::init<Index, Index, unsigned, Index, Index>(), py::arg("dim"),
+           py::arg("num_states"), py::arg("seed"), py::arg("row_begin"), py::arg("row_end"));
+
   py::class_<LocalStates, StateGenerator>(m, "LocalStates")
       .def(py::init([](Index dim, const py::array_t<Index, py::array::c_style>& sites) {
              if (sites.ndim() != 1) {
@@ -440,6 +711,17 @@ PYBIND11_MODULE(_core, m) {
            }),
            py::arg("states"))
       .def(py::init<std::vector<Vector>>(), py::arg("states"));
+
+  py::class_<PermutedStates, StateGenerator>(m, "PermutedStates")
+      .def(py::init([](const py::array_t<Index, py::array::c_style>& perm,
+                       StateGenerator& inner) {
+             if (perm.ndim() != 1) {
+               throw std::invalid_argument("PermutedStates: perm must be a 1D int64 array");
+             }
+             std::vector<Index> permVec(perm.data(), perm.data() + perm.size());
+             return PermutedStates(std::move(permVec), inner);
+           }),
+           py::arg("permutation"), py::arg("inner"), py::keep_alive<1, 3>());
 
   py::class_<SpectralBounds>(m, "SpectralBounds")
       .def(py::init<double, double>(), py::arg("lower") = 0.0, py::arg("upper") = 0.0)
@@ -591,12 +873,16 @@ PYBIND11_MODULE(_core, m) {
 
   py::class_<MomentEngine>(m, "MomentEngine")
       .def(py::init<const LinearOperator&, std::vector<const LinearOperator*>, StateGenerator&,
-                    int>(),
+                    int, int, int, int>(),
            py::arg("rescaled_h"), py::arg("operators"), py::arg("states"), py::arg("batch_size"),
+           py::arg("state_block") = 1, py::arg("left_window") = 32, py::arg("right_window") = 0,
            py::keep_alive<1, 2>(), py::keep_alive<1, 3>(), py::keep_alive<1, 4>())
       // All registered operators and state generators are native C++.
       // The complete recursion/trace runs without a Python callback or GIL.
-      .def("run", &MomentEngine::Run, py::arg("plan"),
+      .def("run",
+           static_cast<ChebyshevMoments (MomentEngine::*)(const Plan&, const std::string&)>(
+               &MomentEngine::Run),
+           py::arg("plan"), py::arg("checkpoint_path") = "",
            py::call_guard<py::gil_scoped_release>());
 
   py::class_<ChebyshevMoments>(m, "ChebyshevMoments")

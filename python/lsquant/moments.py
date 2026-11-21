@@ -411,6 +411,86 @@ def window_from_gershgorin(
     return _core.SpectralWindow(bounds.lower, bounds.upper)
 
 
+def _available_memory_bytes() -> int | None:
+    """Return ``MemAvailable`` from ``/proc/meminfo`` in bytes, or ``None`` if unreadable."""
+    try:
+        with open("/proc/meminfo", encoding="ascii") as fh:
+            for line in fh:
+                if line.startswith("MemAvailable:"):
+                    return int(line.split()[1]) * 1024
+    except OSError:
+        return None
+    return None
+
+
+def estimate_engine_bytes(
+    dim: int,
+    plan: _core.Plan,
+    batch_size: int,
+    state_block: int = 1,
+    left_window: int = 16,
+    right_window: int | None = None,
+) -> int:
+    """Estimate the peak engine working set in bytes for a (state-blocked) run.
+
+    Counts the per-state register blocks, the rolling Chebyshev recursions, and the expanded
+    moment storage. In the native profile a static rank-2 plan stores the ket side in blocks
+    of ``right_window`` columns per state (``None`` = all ``M`` columns) and streams the bra
+    side in windows of ``left_window`` columns; other profiles and plan shapes keep the
+    windowed scheme with ``min(batch, M)`` columns per expanded side. Everything is scaled by
+    ``state_block`` trace states advanced together. Element size is 16 bytes (complex128).
+    """
+    expands = [i for i in plan.code if isinstance(i, _core.Expand)]
+    registers = 13  # r, ket/bra/aux seed, ket/bra init, scratch, 4 cheb, phiT, post
+    recursions = 3 * max(1, len(expands))
+    native_rank2 = (
+        _core.build_profile == "native"
+        and len(expands) == 2
+        and not any(isinstance(i, _core.TimeAxis) for i in plan.code)
+    )
+    if native_rank2:
+        m = expands[0].num_moments
+        right_cols = min(right_window, m) if right_window else m
+        cols = registers + recursions + right_cols + min(left_window, m)
+    else:
+        window_cols = sum(min(batch_size, i.num_moments) for i in expands)
+        cols = registers + recursions + window_cols
+    return 16 * dim * cols * max(1, state_block)
+
+
+def choose_state_block(
+    dim: int,
+    num_moments: int,
+    num_states: int,
+    left_window: int = 16,
+    fraction: float = 0.6,
+    right_window: int | None = None,
+) -> tuple[int, str]:
+    """Pick ``state_block`` from the available memory.
+
+    Returns ``S = min(num_states, 16, floor(fraction * MemAvailable /
+    ((right_window + left_window) * dim * 16 B)))`` (never below 1) and a human-readable
+    reason string for the run receipt. ``right_window=None`` (``"all"``) uses the full
+    ``num_moments`` for the stored right side. Falls back to ``S = 1`` when ``MemAvailable``
+    cannot be read.
+    """
+    available = _available_memory_bytes()
+    if available is None:
+        return 1, "MemAvailable unreadable; state_block=1"
+    right_cols = min(right_window, num_moments) if right_window else num_moments
+    per_state = 16 * dim * (right_cols + min(left_window, num_moments))
+    if per_state <= 0:
+        return 1, "degenerate size; state_block=1"
+    by_memory = int(fraction * available // per_state)
+    s = max(1, min(int(num_states), 16, by_memory))
+    reason = (
+        f"min(states={int(num_states)}, cap=16, memory={by_memory}) "
+        f"[0.6*MemAvailable/((right_window+left_window)*N*16B) "
+        f"with MemAvailable={available / 2**30:.1f} GiB]"
+    )
+    return s, reason
+
+
 def run_plan(
     plan: _core.Plan,
     hamiltonian: _core.SparseMatrix | _core.LinearOperator,
@@ -420,6 +500,9 @@ def run_plan(
     batch_size: int | None = None,
     symmetrise: bool = True,
     dt: float | None = None,
+    state_block: int = 1,
+    left_window: int = 16,
+    right_window: int | None = 16,
 ) -> _core.ChebyshevMoments:
     """Execute a bytecode :class:`~lsquant._core.Plan` and populate tensor metadata.
 
@@ -445,6 +528,14 @@ def run_plan(
         Chebyshev batch size (defaults to the first ``Expand`` moment count).
     symmetrise : bool, optional
         Whether to Hermitian-symmetrise rank-2 moment tensors (default ``True``).
+    state_block : int, optional
+        Number of trace states advanced together per ``MultiplyBlock`` (default 1).
+    left_window : int, optional
+        Bra-side streaming window of the native rank-2 path (default 16; native
+        profile only).
+    right_window : int or None, optional
+        Ket-side storage window of the native rank-2 path (default 16; ``None``
+        stores all ``M`` right vectors, the fastest mode). Native profile only.
 
     Returns
     -------
@@ -468,8 +559,32 @@ def run_plan(
             if isinstance(instr, _core.Expand):
                 batch_size = instr.num_moments
                 break
+    if state_block < 1:
+        raise ValueError(f"state_block must be a positive integer, got {state_block}")
+    if left_window < 1:
+        raise ValueError(f"left_window must be a positive integer, got {left_window}")
+    if right_window is not None and right_window < 1:
+        raise ValueError(f"right_window must be a positive integer or None, got {right_window}")
+    if state_block > 1:
+        estimate = estimate_engine_bytes(
+            int(hamiltonian.dimension), plan, batch_size, state_block, left_window,
+            right_window=right_window,
+        )
+        available = _available_memory_bytes()
+        if available is not None and estimate > 0.8 * available:
+            import warnings
 
-    engine = _core.MomentEngine(rescaled_h, list(operators), states, batch_size)
+            warnings.warn(
+                f"state_block={state_block} needs about {estimate / 2**30:.1f} GiB "
+                f"of engine working set; only {available / 2**30:.1f} GiB available",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+
+    engine = _core.MomentEngine(
+        rescaled_h, list(operators), states, batch_size, state_block, left_window,
+        right_window or 0,
+    )
     mu = engine.run(plan)
     mu.window = window
     mu.system_size = hamiltonian.dimension

@@ -187,7 +187,8 @@ def execute_projection_runfile(rf, out_dir):
     resolved["receipt"]["metric_residuals"] = basis.metric_residuals if basis.name == "real" else projected.metric_residuals
     options = dict(moments=rf.expansion["moments"], trace=rf.expansion["trace"],
                    states=rf.expansion["states"] or 16, seed=rf.expansion["seed"],
-                   batch=rf.expansion["batch"], window=window)
+                   batch=rf.expansion["batch"], window=window,
+                   state_block=int(rf.expansion.get("state_block", 1)))
     names = sorted({slot.operator_key.upper() for word in rf.words for slot in parse_word(word).slots
                     if isinstance(slot, OperatorSlot)})
     with timing.phase("operators"):

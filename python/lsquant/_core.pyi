@@ -7,7 +7,19 @@ import numpy as np
 import numpy.typing as npt
 
 build_profile: str
+ginkgo_available: bool
+cuda_available: bool
+mpi_available: bool
+def AtomBlocksFromCsr(
+    rowptr: npt.NDArray[np.int64], columns: npt.NDArray[np.int64],
+    values: npt.NDArray[np.complex128], atom_map: npt.NDArray[np.int64],
+    permutation: npt.NDArray[np.int64],
+) -> dict[str, np.ndarray]: ...
 def ConfigurePerformance(spmv_min_nnz: int = 16384, kernel_batch: int = 0) -> None: ...
+def ConfigureEngineDiagnostics(
+    memory_report: bool = False, phase_timing: bool = False, checkpoint_abort_after: int = -1
+) -> None: ...
+def ConfigureBenchmarkThreads(count: int) -> int: ...
 
 def FftMomentContraction(moments: npt.NDArray[np.complex128], points: int) -> npt.NDArray[np.complex128]: ...
 
@@ -24,8 +36,12 @@ class SparseMatrix:
     def dimension(self) -> int: ...
     @property
     def non_zeros(self) -> int: ...
+    def rescaled(self, a: complex, b: complex) -> SparseMatrix: ...
     def hermitian_fold(self) -> SparseMatrix: ...
     def is_hermitian(self, tol: float = 1e-12) -> bool: ...
+    def csr_arrays(
+        self,
+    ) -> tuple[npt.NDArray[np.int64], npt.NDArray[np.int64], npt.NDArray[np.complex128]]: ...
 
 class LinearOperator:
     @property
@@ -46,9 +62,50 @@ class LinearOperator:
         b: complex,
         y: npt.NDArray[np.complex128],
     ) -> None: ...
+    def multiply_block(
+        self,
+        a: complex,
+        x: npt.NDArray[np.complex128],
+        b: complex,
+        y: npt.NDArray[np.complex128],
+    ) -> None: ...
 
 class SparseMatrixOperator(LinearOperator):
     def __init__(self, matrix: SparseMatrix) -> None: ...
+
+class AtomBlockOperator(LinearOperator):
+    def __init__(
+        self,
+        atom_offset: npt.NDArray[np.int64],
+        pair_offset: npt.NDArray[np.int64],
+        nbr: npt.NDArray[np.int32],
+        block_id: npt.NDArray[np.int32],
+        dict_offset: npt.NDArray[np.int64],
+        dict_rows: npt.NDArray[np.int32],
+        dict_cols: npt.NDArray[np.int32],
+        dict_values: npt.NDArray[np.complex128],
+        diagonal: npt.NDArray[np.complex128],
+        hermitian: bool = True,
+    ) -> None: ...
+    @property
+    def num_atoms(self) -> int: ...
+    @property
+    def num_pairs(self) -> int: ...
+    @property
+    def dictionary_size(self) -> int: ...
+
+class GinkgoOperator(LinearOperator):
+    def multiply_block_row_major(
+        self, a: complex, x: npt.NDArray[np.complex128],
+        b: complex, y: npt.NDArray[np.complex128],
+    ) -> None: ...
+    def __init__(
+        self, matrix: SparseMatrix, executor: str = "omp", format: str = "csr"
+    ) -> None: ...
+    @property
+    def executor(self) -> str: ...
+    @property
+    def format(self) -> str: ...
 
 class IdentityOperator(LinearOperator):
     def __init__(self, dim: int) -> None: ...
@@ -216,6 +273,11 @@ class BlockLocalStates(StateGenerator):
 
 class TransformedStates(StateGenerator):
     def __init__(self, transform: LinearOperator, inner: StateGenerator) -> None: ...
+
+class PermutedStates(StateGenerator):
+    def __init__(
+        self, permutation: npt.NDArray[np.int64], inner: StateGenerator
+    ) -> None: ...
 
 class UserStates(StateGenerator):
     def __init__(
@@ -390,8 +452,11 @@ class MomentEngine:
         operators: Sequence[LinearOperator],
         states: StateGenerator,
         batch_size: int,
+        state_block: int = 1,
+        left_window: int = 32,
+        right_window: int = 0,
     ) -> None: ...
-    def run(self, plan: Plan) -> ChebyshevMoments: ...
+    def run(self, plan: Plan, checkpoint_path: str = "") -> ChebyshevMoments: ...
 
 def ApplyKpmWeights(
     moments: ChebyshevMoments, num_states: int, symmetrise: bool
@@ -466,3 +531,36 @@ class compat:
     def bessel_series_coefficients(
         x: float, tol: float = 1e-15
     ) -> npt.NDArray[np.complex128]: ...
+
+class CudaVectorBlock:
+    def __init__(self, rows: int, cols: int) -> None: ...
+    @property
+    def rows(self) -> int: ...
+    @property
+    def cols(self) -> int: ...
+    def from_numpy(self, array: npt.NDArray[np.complex128]) -> None: ...
+    def to_numpy(self) -> npt.NDArray[np.complex128]: ...
+
+class CudaAtomBlockOperator(LinearOperator):
+    def __init__(
+        self,
+        atom_offset: npt.NDArray[np.int64],
+        pair_offset: npt.NDArray[np.int64],
+        nbr: npt.NDArray[np.int32],
+        block_id: npt.NDArray[np.int32],
+        dict_offset: npt.NDArray[np.int64],
+        dict_rows: npt.NDArray[np.int32],
+        dict_cols: npt.NDArray[np.int32],
+        dict_values: npt.NDArray[np.complex128],
+        diagonal: npt.NDArray[np.complex128],
+        hermitian: bool = True,
+    ) -> None: ...
+    @property
+    def num_atoms(self) -> int: ...
+    @property
+    def num_pairs(self) -> int: ...
+    @property
+    def dictionary_size(self) -> int: ...
+    def multiply_block_device(
+        self, a: complex, x: CudaVectorBlock, b: complex, y: CudaVectorBlock
+    ) -> None: ...

@@ -53,6 +53,8 @@ the MCP server are covered in \subpage run_files.
 
 The CMake presets, the golden and native build profiles, the install and the kernel
 benchmark are covered in \subpage build.
+Thread placement, state blocks, atom-block operators, checkpoints and the optional CUDA,
+Ginkgo and MPI backends are covered in \subpage performance.
 
 ## Testing
 

@@ -161,6 +161,29 @@ public:
                      std::vector<Vector>& y) const;
 
   /**
+   * @brief Compute the row-parallel block product `Y = a * M * X + b * Y` on an `N x b` block.
+   *
+   * Streams the CSR storage once per row and accumulates every column `j` as
+   * `acc_j = sum_p vl[p] * X[cl[p] + j*N]` in stored column order, so each output column is
+   * bit-identical to a separate `Multiply` call on that column. Rows are partitioned by
+   * non-zero count (native) or statically (golden) across OpenMP threads; no row reduction
+   * is split, so the result is independent of the thread count. Complexity is
+   * `O(nnz * b)` work with a single pass over the matrix values.
+   *
+   * @param a Scalar multiplier for `M * X`.
+   * @param x Input block of size `Dimension() x b`.
+   * @param b Scalar multiplier for `Y`.
+   * @param y Input/output block of size `Dimension() x b`.
+   *
+   * @warning Throws `std::invalid_argument` if the block dimensions do not match or `x` and
+   *          `y` are the same object.
+   * @par Pitfall
+   *      The per-column floating-point operations and their order are exactly those of
+   *      `Multiply`; do not introduce cross-column vectorisation that reassociates them.
+   */
+  void MultiplyBlock(Scalar a, const VectorBlock& x, Scalar b, VectorBlock& y) const;
+
+  /**
    * @brief Return a new sparse matrix equal to the affine transformation `a * M + b * I`.
    *
    * Evaluates the exact Eigen sparse expression `a * matrix_ + bID` used by the
@@ -287,6 +310,7 @@ public:
   void Multiply(Scalar a, const Vector& x, Scalar b, Vector& y) const override;
   void MultiplyBatch(Scalar a, const std::vector<Vector>& x, Scalar b,
                      std::vector<Vector>& y) const override;
+  void MultiplyBlock(Scalar a, const VectorBlock& x, Scalar b, VectorBlock& y) const override;
 
   using LinearOperator::Multiply;
 

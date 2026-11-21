@@ -50,6 +50,11 @@ class PhaseReceipt:
             print(f"stage6c: {name} {entry['status']} wall_seconds={entry['wall_seconds']:.6f} {details}", flush=True)
 
 
+def _state_block_or_one(value):
+    """Return ``value`` as int; ``"auto"`` is not resolved in this app and maps to 1."""
+    return 1 if isinstance(value, str) else int(value)
+
+
 def execute_disorder_runfile(rf, out_dir):
     """Run physical DOS and SHC words across disordered Bloch or real-space bases.
 
@@ -151,7 +156,8 @@ def execute_disorder_runfile(rf, out_dir):
         prepared = [(word, prepare_moments(
             basis, word, moments=rf.expansion["moments"], trace=rf.expansion["trace"],
             states=rf.expansion["states"] or 16, seed=rf.expansion["seed"],
-            window=window, batch=rf.expansion["batch"])) for word in rf.words]
+            window=window, batch=rf.expansion["batch"],
+            state_block=_state_block_or_one(rf.expansion.get("state_block", 1)))) for word in rf.words]
     moment_files, curve_files, plateaus = [], [], []
     for word, plan in prepared:
         with timing.phase("moments", word=word):
