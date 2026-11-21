@@ -16,7 +16,7 @@ from .grammar import (
 
 @dataclass(frozen=True)
 class CatalogueEntry:
-    """Metadata for one recognised word shape in the Stage-7 catalogue."""
+    """Metadata for one recognised word shape in the LSQUANT word catalogue."""
 
     shape_id: str
     canonical_example: str
@@ -134,6 +134,7 @@ SHAPE_ALLOWED_FORMULAS: dict[str, frozenset[str]] = {
     ),
     "kubo_bastin": frozenset(
         {
+            "shc",
             "bastin",
             "kubo_bastin",
             "sea",
@@ -270,7 +271,7 @@ def nearest_catalogue_entry(word: Word) -> CatalogueEntry:
 
 
 def match_catalogue(word: Word) -> CatalogueMatch:
-    """Match ``word`` against the Stage-7 catalogue or raise a descriptive ``ValueError``."""
+    """Match ``word`` against the word catalogue or raise a descriptive ``ValueError``."""
     validate_word_bases(word)
 
     if word.rank >= 3:

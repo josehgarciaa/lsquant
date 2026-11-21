@@ -7,7 +7,6 @@ from typing import Any, Iterator, Mapping, Sequence
 
 from .. import _core
 from ..moments import (
-     _kpm_weights_1d,
     dos_plan,
     kubo_plan,
     msd_plan,
@@ -35,6 +34,15 @@ DEFAULT_KNOWN_OPERATORS: frozenset[str] = frozenset(
         "SX",
         "SY",
         "SZ",
+        "JXSX",
+        "JXSY",
+        "JXSZ",
+        "JYSX",
+        "JYSY",
+        "JYSZ",
+        "JZSX",
+        "JZSY",
+        "JZSZ",
         "VXSX",
         "VXSY",
         "VXSZ",

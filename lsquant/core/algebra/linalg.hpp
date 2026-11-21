@@ -94,6 +94,12 @@ Scalar dot(const Vector& x, const Vector& y);
  */
 double norm2(const Vector& x);
 
+/**
+ * @brief Compute the inner-product table `<left[m] | right[n]>` in row-major order.
+ */
+std::vector<Scalar> MomentTable(const std::vector<const Vector*>& left,
+                                const std::vector<const Vector*>& right);
+
 }  // namespace linalg
 }  // namespace lsquant
 

@@ -9,6 +9,10 @@ from __future__ import annotations
 
 import sys as _sys
 
+from .runtime import configure_threads as _configure_threads
+
+_configure_threads()
+
 try:
     from . import _core
 except ImportError:
@@ -16,8 +20,12 @@ except ImportError:
 
     _sys.modules[f"{__name__}._core"] = _core
 
+from .runtime import configure_kernels as _configure_kernels
+
+_configure_kernels(_core)
+
 from . import bases, cli, kernels, models, moments, reconstruct, runfile, spectral_functions, words
-from .bases import BlochBasis, EigenBasis, RealBasis, make_basis
+from .bases import BlochMetricBasis, EigenMetricBasis, BlochBasis, EigenBasis, RealBasis, make_basis
 from .runfile import RunFile, execute_runfile, inspect_target, reconstruct_target
 from .kernels import jackson_damping, jackson_damping_2d
 from .moments import (
@@ -34,6 +42,7 @@ from .moments import (
 )
 from .reconstruct import (
     dos_curve,
+    shc,
     kubo_bastin,
     kubo_bastin_sea,
     kubo_bastin_surf,
@@ -72,6 +81,9 @@ __all__ = [
     "inspect_target",
     "RealBasis",
     "BlochBasis",
+    "BlochMetricBasis",
+    "EigenMetricBasis",
+    "shc",
     "EigenBasis",
     "make_basis",
     "jackson_damping",

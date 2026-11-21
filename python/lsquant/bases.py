@@ -20,14 +20,30 @@ import json
 import math
 import os
 import shlex
-from typing import Sequence
+from typing import Sequence, Protocol
+from types import SimpleNamespace
 import numpy as np
 import numpy.typing as npt
 
 from . import _core
-from .models.wannier import WannierModel
 from .moments import window_from_gershgorin
 from .spectral_functions import GaussianDelta
+
+class TightBindingModel(Protocol):
+    """Structural model interface; no file format is required by an adapter."""
+    num_wann: int
+    seed_name: str
+    model_dir: str | None
+    uc: np.ndarray
+    tau: np.ndarray
+
+    def Hk(self, k_points): ...
+    def dHk(self, k_points, direction): ...
+    def k_mesh(self, supercell): ...
+    def bloch_phases(self, k_points): ...
+    def hamiltonian_csr(self, supercell): ...
+    def velocity_csr(self, supercell, direction): ...
+
 
 _W2S_ALL_OPERATORS: tuple[str, ...] = (
     "VX",
@@ -493,7 +509,7 @@ class RealBasis:
 
     def __init__(
         self,
-        model: WannierModel,
+        model: TightBindingModel,
         supercell: Sequence[int],
         *,
         disorder_w: float = 0.0,
@@ -692,11 +708,10 @@ class RealBasis:
     def window(self, pad: float = 0.10) -> _core.SpectralWindow:
         """Return the Gershgorin :class:`~lsquant._core.SpectralWindow` for this Hamiltonian.
 
-        Kept on Gershgorin only as the stage-1-compatible real-space default;
-        on Wannier models with long-range hoppings, Gershgorin bounds are
-        several times wider than the true spectrum and waste Chebyshev moments,
-        so :class:`BlochBasis` and :class:`EigenBasis` use the block eigenvalue
-        range instead.
+        Kept on Gershgorin as the real-space default; on Wannier models with
+        long-range hoppings, Gershgorin bounds are several times wider than the
+        true spectrum and waste Chebyshev moments, so :class:`BlochBasis` and
+        :class:`EigenBasis` use the block eigenvalue range instead.
         """
         win = window_from_gershgorin(self._h_csr, pad=float(pad))
         if self.disorder_w > 0.0:
@@ -717,7 +732,7 @@ class BlochBasis:
 
     def __init__(
         self,
-        model: WannierModel,
+        model: TightBindingModel,
         supercell: Sequence[int],
         *,
         disorder_w: float = 0.0,
@@ -901,7 +916,7 @@ class EigenBasis:
 
     def __init__(
         self,
-        model: WannierModel,
+        model: TightBindingModel,
         supercell: Sequence[int],
         *,
         disorder_w: float = 0.0,
@@ -1060,7 +1075,7 @@ class EigenBasis:
 
         Computes ``(1 / N_k) sum_{k, n} g(E - eps_n(k); eta)`` where the
         Gaussian ``g(x; eta) = exp(-x^2 / (2 * eta^2)) / (sqrt(2 * pi) * eta)``
-        is evaluated via the stage-2 SymPy
+        is evaluated via the SymPy
         :data:`~lsquant.spectral_functions.GaussianDelta`
         :class:`~lsquant.spectral_functions.SpectralFunction`.
 
@@ -1096,7 +1111,7 @@ class EigenBasis:
         """Evaluate the exact Gaussian Kubo-Greenwood conductivity ``sigma_xx(E)``.
 
         Computes ``pi * sum_{k, n, m} |v_{x, nm}(k)|^2 g(E - eps_n(k); eta) g(E - eps_m(k); eta)``
-        with the same normalisation as stage-3 :func:`~lsquant.reconstruct.kubo_greenwood`
+        with the same normalisation as :func:`~lsquant.reconstruct.kubo_greenwood`
         so that the two curves are directly comparable (multiply by
         ``2 * pi / (A_cell * N_k)`` to convert to ``hr_exactdiag.py``'s
         ``e^2 / h`` per-area convention).
@@ -1131,7 +1146,7 @@ class EigenBasis:
 
 def make_basis(
     basis_name: str,
-    model: WannierModel,
+    model: TightBindingModel,
     supercell: Sequence[int],
     *,
     disorder_w: float = 0.0,
@@ -1166,3 +1181,286 @@ def make_basis(
     raise ValueError(
         f"make_basis: unknown basis '{basis_name}' (expected 'real', 'bloch', or 'eigen')"
     )
+
+
+class BlochMetricBasis:
+    """Clean nonorthogonal Bloch blocks with a single cached exact metric.
+
+    ``X=S^-1`` and ``Y=S^-1/2`` are built once, O(N_k W^3), and exposed as
+    ordinary C++ BlockDiagonalOperators. H and every observable are physical
+    matrices; the word compiler inserts X or Y for the selected route. No
+    iterative solver, sparse supercell inverse, or disorder is used here.
+    The model protocol is Hk, Sk, derivatives, Ak, k_mesh, tau and uc; it has
+    no dependency on a Wannier reader.
+    """
+    name = "bloch"
+
+    def __init__(self, model, supercell, *, velocity_mode="berry_connection",
+                 route="lowdin", seed=12345):
+        from .models.nonorthogonal import adjoint, exact_block_metric
+        if route not in ("lowdin", "generalised", "anticommutator"):
+            raise ValueError("route must be lowdin, generalised or anticommutator")
+        if velocity_mode not in ("bare", "berry_connection", "covariant"):
+            raise ValueError("unknown velocity mode")
+        if velocity_mode == "covariant" and model.dipoles is None:
+            raise ValueError("covariant velocity requires a dipole matrix")
+        self.model, self.supercell = model, tuple(map(int, supercell))
+        self.velocity_mode, self.route, self.seed = velocity_mode, route, int(seed)
+        self.k_points = model.k_mesh(self.supercell)
+        self.num_cells, self.num_wann = len(self.k_points), model.num_wann
+        self.dimension = self.num_cells*self.num_wann
+        self.hk_array, self.sk_array = model.Hk(self.k_points), model.Sk(self.k_points)
+        self.inverse_array, self.inverse_sqrt_array = exact_block_metric(self.sk_array)
+        self._h_op = _core.BlockDiagonalOperator(self.hk_array)
+        self._s_op = _core.BlockDiagonalOperator(self.sk_array)
+        self.metric = SimpleNamespace(is_orthogonal=False, overlap=self._s_op,
+                                      inverse_overlap=_core.BlockDiagonalOperator(self.inverse_array),
+                                      inverse_sqrt_overlap=_core.BlockDiagonalOperator(self.inverse_sqrt_array))
+        Y = self.inverse_sqrt_array
+        lowdin_h = Y @ self.hk_array @ Y
+        self.eigenvalues, u = np.linalg.eigh(lowdin_h)
+        self.eigenvectors = np.ascontiguousarray(Y @ u)  # C^+ S C=I
+        self.physical_eigenvalues = self.eigenvalues
+        self.physical_eigenvectors = self.eigenvectors
+        # Clean blocks permit the metric composition to be cached once.
+        # Each recursion step then enters one C++ block matvec, rather than
+        # allocating full-size intermediates for two/three metric matvecs.
+        applied_h = lowdin_h if route == "lowdin" else self.inverse_array @ self.hk_array
+        if route == "anticommutator":
+            # metric_forms.hamiltonian_forms: this is a Hermitian approximation,
+            # NOT a similarity transform of the generalised Hamiltonian.
+            symmetric_h = 0.5*(self.inverse_array @ self.hk_array + self.hk_array @ self.inverse_array)
+            self._symmetric_h_op = _core.BlockDiagonalOperator(symmetric_h)
+            self.eigenvalues, u = np.linalg.eigh(symmetric_h)
+            self.eigenvectors = np.ascontiguousarray(u)
+            applied_h = symmetric_h
+        self._applied_h_op = _core.BlockDiagonalOperator(np.ascontiguousarray(applied_h))
+        self._lowdin_seed = _core.BlockDiagonalOperator(u)
+        self._coefficient_seed = _core.BlockDiagonalOperator(self.eigenvectors)
+        identity = np.eye(self.num_wann)
+        self.metric_residuals = {
+            "inverse": float(np.max(np.abs(self.sk_array @ self.inverse_array-identity))),
+            "inverse_sqrt": float(np.max(np.abs(Y @ self.sk_array @ Y-identity))),
+            "inverse_hermiticity": float(np.max(np.abs(self.inverse_array-adjoint(self.inverse_array)))),
+            "generalised_eigenvectors": float(np.max(np.abs(
+                adjoint(self.physical_eigenvectors) @ self.sk_array @ self.physical_eigenvectors-identity))),
+        }
+        self._blocks, self._op_cache = {}, {}
+        self._eigen_basis = None
+
+    def hamiltonian(self):
+        """Return the physical H(k) matrix, BEFORE the metric policy acts."""
+        return self._h_op
+
+    def overlap(self):
+        """Return S(k) as an ordinary block-diagonal operator."""
+        return self._s_op
+
+    def rescaled_hamiltonian(self, window):
+        """Return ``a Y H Y+b I`` or ``a X H+b I = X(aH+bS)``.
+
+        Symbolic source: metric_forms.hamiltonian_forms. Clean applied blocks
+        are cached once; all per-moment block loops run in C++.
+        The shift multiplies the identity in coefficient representation. A
+        shift by bX would change every generalised eigenvalue incorrectly.
+        """
+        return _core.RescaledOperator(self._applied_h_op, window)
+
+    def operator_blocks(self, name):
+        """Return physical matrices before inserting any metric factors.
+
+        Symbolic sources: metric_forms.velocity_forms, spin_forms and
+        spin_current_forms. Hermiticity is checked in this physical form;
+        the generalised applied form is only S-Hermitian.
+        """
+        from .models.nonorthogonal import (bloch_velocity, spin_operators,
+                                           applied_spin_operators, spin_current,
+                                           checked_hermitian)
+        key = name.upper()
+        if key in ("H", "HAM"):
+            return self.hk_array
+        if key == "S":
+            return self.sk_array
+        if key not in self._blocks:
+            if key in ("VX", "VY", "VZ"):
+                axis = "XYZ".index(key[1])
+                dH, dS = self.model.derivatives(self.k_points, axis, cell=self.velocity_mode == "bare")
+                A = self.model.Ak(self.k_points, axis) if self.velocity_mode == "covariant" else None
+                self._blocks[key] = bloch_velocity(self.hk_array, self.sk_array, dH, dS, A,
+                                                   self.velocity_mode, inverse_overlap=self.inverse_array)
+            elif key in ("SX", "SY", "SZ"):
+                if self.model.physical_spin is not None:
+                    self._blocks.update(self.model.physical_spin)
+                else:
+                    self._blocks.update(spin_operators(self.sk_array, "interleaved"))
+            elif len(key) == 4 and key[0] == "J" and key[1] in "XYZ" and key[2] == "S" and key[3] in "XYZ":
+                V = self.operator_blocks("V"+key[1])
+                if self.model.physical_spin is None:
+                    q = applied_spin_operators(self.num_wann)["S"+key[3]]
+                    self._blocks[key] = spin_current(V, q)
+                else:
+                    Sigma = self.operator_blocks("S"+key[3])
+                    self._blocks[key] = 0.5*(V @ self.inverse_array @ Sigma +
+                                              Sigma @ self.inverse_array @ V)
+            else:
+                raise ValueError(f"unknown BlochMetricBasis operator {name!r}")
+            self._blocks[key] = checked_hermitian(self._blocks[key], name=f"physical {key}")
+        return self._blocks[key]
+
+    def operator(self, name):
+        """Return a physical observable, or O_sym on the anticommutator route.
+
+        The latter is already an applied Hermitian matrix. Its compiler uses
+        the orthogonal policy, so no second inverse is inserted.
+        """
+        key = name.upper()
+        if key in ("1", "I", "IDENTITY"):
+            # The matrix of physical identity in a nonorthogonal basis is S.
+            return (_core.IdentityOperator(self.dimension) if self.route == "anticommutator"
+                    else self._s_op)
+        if key not in self._op_cache:
+            blocks = self.operator_blocks(key)
+            if self.route == "anticommutator":
+                blocks = self.anticommutator_blocks(blocks)
+            self._op_cache[key] = _core.BlockDiagonalOperator(blocks)
+        return self._op_cache[key]
+
+    def anticommutator_blocks(self, blocks):
+        """metric_forms.operator_forms: ``O_sym=(X O+O X)/2``.
+
+        Only the single-operator trace identity is universal. Products and
+        functions of H_sym are generally approximations; no plateau equality
+        with the physical oracle is asserted on this route.
+        """
+        return 0.5*(self.inverse_array @ blocks + blocks @ self.inverse_array)
+
+    def states(self, trace_mode="random", num_states=None, seed=None):
+        """Generate orbital Bloch phases, or an exact block-local trace.
+
+        Symbolic source: metric_forms.trace_equivalence. Random phases live
+        in the orthonormal orbital (Lowdin) representation; the adapter maps
+        them to coefficient vectors on the generalised route. Exact seeds
+        span all bands at once in every independent k block, using W states.
+        """
+        if trace_mode == "random":
+            return _core.RandomPhaseStates(self.dimension, 1 if num_states is None else int(num_states),
+                                           self.seed if seed is None else int(seed))
+        if trace_mode == "exact":
+            if num_states is not None and int(num_states) != self.num_wann:
+                raise ValueError("block exact trace requires W states")
+            return _core.BlockLocalStates(self.num_cells, self.num_wann)
+        raise ValueError("trace must be random or exact")
+
+    def bind_eigen_trace(self, plan, operators, trace_mode="exact"):
+        """Prepare an exact trace or an orbital-phase production estimator.
+
+        Symbolic source: metric_forms.trace_equivalence. Exact seeds use C
+        on the ket and SC on the dual bra, with C^+SC=I. Orbital phases use
+        Y and SY instead, where Y=S^-1/2; Lowdin needs no seed transform.
+        A rank-1 plan gets an explicit unexpanded bra.
+        """
+        operators = list(operators)
+        if trace_mode == "exact":
+            ket = self._coefficient_seed if self.route == "generalised" else self._lowdin_seed
+        elif trace_mode == "random":
+            ket = (self.metric.inverse_sqrt_overlap if self.route == "generalised"
+                   else _core.IdentityOperator(self.dimension))
+        else:
+            raise ValueError("trace must be random or exact")
+        # MirrorToBra starts from the SAME original r, not the prepared ket.
+        # Prepare K r explicitly on both sides, then insert S on the bra.
+        # With the compiler's X, X*A, T_m, S this gives equations (2a-c)
+        # in the metric dual of K r: left_m = S*T_m*X*A*K*r.
+        bra = self._s_op if self.route == "generalised" else _core.IdentityOperator(self.dimension)
+        ki, bi = len(operators), len(operators)+1
+        operators.extend([ket, bra])
+        code, mirrored = [_core.ApplyOperator(ki)], False
+        for instruction in plan.code:
+            if isinstance(instruction, _core.MirrorToBra):
+                code.extend([instruction, _core.ApplyOperator(ki), _core.ApplyOperator(bi)])
+                mirrored = True
+            elif isinstance(instruction, _core.Trace) and not mirrored:
+                code.extend([_core.MirrorToBra(), _core.ApplyOperator(ki),
+                             _core.ApplyOperator(bi), instruction])
+            else:
+                code.append(instruction)
+        return _core.Plan(code, plan.word), operators
+
+    def window(self, pad=0.10):
+        """Return [emin-pad*width,emax+pad*width] from generalised eigenvalues."""
+        if pad < 0:
+            raise ValueError("window padding must be nonnegative")
+        lo, hi = float(self.eigenvalues.min()), float(self.eigenvalues.max())
+        width = max(hi-lo, 1.0)
+        return _core.SpectralWindow(lo-pad*width, hi+pad*width)
+
+    def eigenbasis(self):
+        """Return the cached exact adapter ``diag(E), C^+ O C`` on the SAME blocks."""
+        if self._eigen_basis is None:
+            self._eigen_basis = EigenMetricBasis(self)
+        return self._eigen_basis
+
+
+class EigenMetricBasis:
+    """Generalised eigenbasis oracle adapter, reusing the cached C^+SC=I solve."""
+    name = "eigen"
+
+    def __init__(self, bloch):
+        self.bloch = bloch
+        for name in ("dimension", "num_cells", "num_wann", "eigenvalues", "eigenvectors"):
+            setattr(self, name, getattr(bloch, name))
+        self._h_op = _core.DiagonalOperator(np.asarray(self.eigenvalues.ravel(), complex))
+        self._op_cache = {}
+        self.hermiticity_residuals = {}
+
+    def hamiltonian(self):
+        """Return diag(E), the operator in its exact eigenbasis."""
+        return self._h_op
+
+    def operator(self, name):
+        """Return the Hermitian eigen representation of a physical operator.
+
+        Symbolic source: metric_forms.operator_forms. Validate before the
+        metric transform and remove only accepted transform round-off.
+        """
+        from .models.nonorthogonal import adjoint, checked_hermitian
+        key = name.upper()
+        if key in ("1", "I", "IDENTITY"):
+            return _core.IdentityOperator(self.dimension)
+        if key not in self._op_cache:
+            C = self.eigenvectors
+            blocks = adjoint(C) @ (
+                    self.bloch.anticommutator_blocks(self.bloch.operator_blocks(key))
+                    if self.bloch.route == "anticommutator" else self.bloch.operator_blocks(key)) @ C
+            # The physical input was checked by operator_blocks. Only accepted
+            # transform round-off may be folded; report the norm actually removed.
+            anti_norm = float(np.max(0.5*np.linalg.norm(blocks-adjoint(blocks), axis=(-2, -1))))
+            scale = max(float(np.max(np.linalg.norm(blocks, axis=(-2, -1)))), np.finfo(float).tiny)
+            folded = checked_hermitian(blocks, name=f"eigen {key}")
+            self.hermiticity_residuals[key] = dict(removed_anti_hermitian_norm=anti_norm,
+                                                 operator_scale=scale, relative_norm=anti_norm/scale)
+            print(f"eigen {key}: Hermitian fold removed anti-Hermitian norm={anti_norm:.17g} "
+                  f"operator_scale={scale:.17g} relative_norm={anti_norm/scale:.17g}", flush=True)
+            self._op_cache[key] = _core.BlockDiagonalOperator(folded)
+        return self._op_cache[key]
+
+    def states(self, trace_mode="random", num_states=None, seed=None):
+        """Expose exact block trace, or transform orbital Bloch phases once.
+
+        Symbolic source: metric_forms.trace_equivalence. Exact uses W
+        block-local states with diagonal H. Random uses U^+ r, where r has
+        orbital Bloch phases and U is the cached Lowdin eigenvector matrix.
+        The transform and all k loops execute inside C++ TransformedStates.
+        """
+        if trace_mode == "exact":
+            if num_states is not None and int(num_states) != self.num_wann:
+                raise ValueError("block exact trace requires W states")
+            return _core.BlockLocalStates(self.num_cells, self.num_wann)
+        if trace_mode == "random":
+            orbital = self.bloch.states("random", num_states, seed)
+            return _core.TransformedStates(self.bloch._lowdin_seed.adjoint(), orbital)
+        raise ValueError("trace must be random or exact")
+
+    def window(self, pad=0.10):
+        """Use the same generalised spectral window as the Bloch calculation."""
+        return self.bloch.window(pad)

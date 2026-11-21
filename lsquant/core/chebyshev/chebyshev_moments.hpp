@@ -2,8 +2,8 @@
  * @file chebyshev_moments.hpp
  * @brief Rank-generic Chebyshev moment tensor container and KPM weighting routines.
  *
- * Replaces the legacy `Moments1D`, `Moments2D`, `MomentsTD`, and `MomentsLocal` class
- * hierarchy with a single rank-generic tensor `ChebyshevMoments` storing row-major
+ * Unifies 1D, 2D, time-dependent, and local Chebyshev moment containers into
+ * a single rank-generic tensor `ChebyshevMoments` storing row-major
  * complex moments alongside spectral window, trace, and word metadata.
  */
 #ifndef LSQUANT_CORE_CHEBYSHEV_CHEBYSHEV_MOMENTS_HPP_
@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "core/algebra/types.hpp"
+#include "core/algebra/build_profile.hpp"
 #include "core/chebyshev/spectral_window.hpp"
 
 namespace lsquant {
@@ -144,6 +145,7 @@ public:
   int numberOfStates = 0;
   std::string stateLabel;
   std::string word;
+  std::string buildProfile = BuildProfileName();
   bool kpmWeighted = false;
   bool symmetrised = false;
   double timeStep = 0.0;

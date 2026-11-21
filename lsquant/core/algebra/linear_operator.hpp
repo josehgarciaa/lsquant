@@ -11,6 +11,7 @@
 #define LSQUANT_CORE_ALGEBRA_LINEAR_OPERATOR_HPP_
 
 #include "core/algebra/types.hpp"
+#include <stdexcept>
 
 namespace lsquant {
 
@@ -69,6 +70,18 @@ public:
    *      IEEE arithmetic; callers should initialise `y` to finite values.
    */
   virtual void Multiply(Scalar a, const Vector& x, Scalar b, Vector& y) const = 0;
+
+  /**
+   * @brief Apply `y[j] = a * O * x[j] + b * y[j]` across a batch of vectors.
+   */
+  virtual void MultiplyBatch(Scalar a, const std::vector<Vector>& x, Scalar b,
+                             std::vector<Vector>& y) const {
+    if (x.size() != y.size()) {
+      throw std::invalid_argument("MultiplyBatch: expected matching batch sizes, got x=" +
+                                  std::to_string(x.size()) + " and y=" + std::to_string(y.size()));
+    }
+    for (std::size_t j = 0; j < x.size(); ++j) Multiply(a, x[j], b, y[j]);
+  }
 
   /**
    * @brief Compute the direct matrix-vector product `y = O * x`.
