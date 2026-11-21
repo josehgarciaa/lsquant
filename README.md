@@ -99,11 +99,10 @@ physics. Examples 09–18 are the use cases of [Running LSQuant](docs/how-to/run
 ## Check your build
 
 `scripts/check_goldens.sh` runs a build on committed inputs and compares the
-outputs with the reference outputs in `goldens/`. On the reference machine, a
-preset build reports two failures. Both come from checks of the C++ source,
-not from the comparison of the numbers. On other machines, a few `DIFFERS`
-lines can also appear, so a higher failure count alone does not mean the build
-is broken. [Check a build](docs/how-to/testing.md) explains how to read each
+outputs with the reference outputs in `goldens/`. With the reference
+toolchain, a `golden` preset build passes every stage with no failure. On
+other machines, run it with `GOLDEN_TOL=1`; a few `DIFFERS` lines can still
+appear there, so a failure count alone does not mean the build is broken. [Check a build](docs/how-to/testing.md) explains how to read each
 line and when such differences are acceptable.
 
 ## License
