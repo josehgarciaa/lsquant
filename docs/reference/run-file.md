@@ -226,7 +226,7 @@ there only changes the default window to `"eigen"`, which `csr` refuses.
 | `applier` | string | `"exact"`, `"chebyshev"`, `"ischo"` | `"exact"` | How S^(-1) or S^(-1/2) is applied: dense factorisation, Chebyshev expansion, or preconditioned conjugate gradients (S^(-1) only). |
 | `order` | integer | — | `60` | Chebyshev order of the `chebyshev` applier. |
 | `coeff_tol` | number | — | `1e-12` | Coefficient truncation threshold of the `chebyshev` applier. |
-| `tol` | number | — | `1e-13` | Conjugate-gradient tolerance of the `ischo` applier. Also the tolerance of the metric probe of real-space non-orthogonal runs with disorder, for every applier (`disorder_bases.py:280–284`); raise it for an ill-conditioned S (example 12 uses `1e-10`). |
+| `tol` | number | — | `1e-13` | Conjugate-gradient tolerance of the `ischo` applier. Also the tolerance of the metric probe of real-space non-orthogonal runs with disorder, for every applier (`disorder_bases.py:315–319`); raise it for an ill-conditioned S (example 12 uses `1e-10`). |
 | `max_iter` | integer | — | `200` | Maximum conjugate-gradient iterations of the `ischo` applier. |
 | `max_dim` | integer | — | `4096` | Largest matrix dimension the `exact` applier accepts. |
 
@@ -268,7 +268,7 @@ word.
 > **Known limitation: operator names.** Validation accepts any operator name
 > listed in `model.operators`, but `python -m lsquant run` accepts only the
 > names of the default operator list (`A`, `B`, `O`, `P`, `PX`, `SX`, `VX`, …).
-> The per-word compile in `execute_runfile` (`runfile.py:1535`) does not pass
+> The per-word compile in `execute_runfile` (`runfile.py:1546`) does not pass
 > the model's operators, so the compiler falls back to
 > `DEFAULT_KNOWN_OPERATORS` (`words/compiler.py:28`, `393–394`) and fails with
 > `Unknown operator` (`words/compiler.py:405`). Name your operator files with
@@ -347,12 +347,12 @@ If the Fermi energy lies outside the spectrum, the run fails with
 > **Known limitation: `shc` in `csr` and `wannier` runs.** During
 > `python -m lsquant run`, the `csr` and `wannier` executors do not pass
 > `num_cells` and `cell_area` to the `shc` formula, even when they are set in
-> `reconstruction` (`runfile.py:1703`, `2228`, `2307`). A run with
+> `reconstruction` (`runfile.py:1714`, `2228`, `2307`). A run with
 > `formulas: ["shc"]` therefore fails with
 > `shc reconstruction requires num_cells and cell_area`. Only the
 > [`reconstruct`](cli.md#reconstruct) subcommand reads them, from the
 > `run.resolved.json` in the same directory as the moment file
-> (`runfile.py:2427`). Verified by running for both `csr` and `wannier`: the
+> (`runfile.py:2438`). Verified by running for both `csr` and `wannier`: the
 > run exits with status 1 after writing the moments.
 > `siesta` runs are not affected; they write `shc.dat` themselves.
 >
@@ -372,7 +372,7 @@ If the Fermi energy lies outside the spectrum, the run fails with
 >    ```
 >
 > Use the moment file, not the directory. With a directory, `reconstruct`
-> applies `--formula shc` to every moment file in it (`runfile.py:2382`),
+> applies `--formula shc` to every moment file in it (`runfile.py:2393`),
 > including the DOS moments of the same run. It takes the legacy
 > `.chebmom1D`, `.chebmom2D` and `.chebmomTD` files first, and the unified
 > `.chebmom` only when there are no legacy files.

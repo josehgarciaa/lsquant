@@ -73,7 +73,7 @@ plots the KPM Kubo–Bastin spin Hall conductivity from `shc.dat` alongside the
 exact occupied-band Berry-curvature oracle from `exact_shc.json`, and panel (c)
 shows the residual $\sigma^z_{xy,\mathrm{KPM}} - \sigma^z_{xy,\mathrm{oracle}}$.
 On a `24x24x1` mesh with the `covariant` velocity and the `lowdin` metric,
-with the states restricted to a window of ±5 eV (projection `shift`) and a
+with the states restricted to a window of $\pm 5$ eV (projection `shift`) and a
 Gaussian of 1 meV, the exact diagonalisation gives
 $\sigma^z_{xy} = 1.987\ e^2/h$ at $E = 1.052\ \mathrm{eV}$, in the upper gap. The converged KPM value of the
 production setting at $E_F = 0$ is still pending: a difference from the

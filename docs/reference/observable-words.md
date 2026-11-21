@@ -152,7 +152,7 @@ example `<label>.A.CSR` for a layer projector, as
 > `inspect` when it is listed in `model.operators`, but
 > `python -m lsquant run` stops with `Unknown operator 'PTOP'` for `csr` and
 > `wannier` models. Before it runs each word, `execute_runfile` compiles it
-> again without the model's operators (`python/lsquant/runfile.py:1535–1543`),
+> again without the model's operators (`python/lsquant/runfile.py:1546–1554`),
 > so the compiler falls back to the default list (`words/compiler.py:28`,
 > `393–394`) and raises at `words/compiler.py:405`. `words describe` refuses
 > such a name too. Use names from the default list, as above.
