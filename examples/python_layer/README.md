@@ -48,5 +48,4 @@ checks: PASS
 The script exits with status 1 if one of the three checks fails. It writes `dos_square.dat`
 (E in eV, ρ per site in 1/eV) and, when matplotlib is installed, `dos_square.png`.
 
-The window must contain the spectrum, and its centre must be 0 at this stage: see the
-*Energy axis* paragraph of the manual page *Python layer* (`docs/python-layer.md`).
+The window must contain the spectrum.

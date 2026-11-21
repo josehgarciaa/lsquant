@@ -36,6 +36,8 @@ The new C++ core computes every KPM quantity by running a small instruction list
 The `lsquant` Python package drives the core from Python and reconstructs the density of
 states; see \subpage python_layer.
 Kubo-Greenwood and Kubo-Bastin conductivities from rank-2 moments are covered in \subpage kubo.
+Time evolution (mean-square displacement, projected operators, time correlations) is
+covered in \subpage time_evolution.
 
 ## Testing
 
