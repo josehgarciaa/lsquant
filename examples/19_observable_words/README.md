@@ -31,7 +31,7 @@ is no longer quantised. The exchange field breaks time-reversal symmetry, so the
 spin density of states and the Hall conductivity can be non-zero.
 
 The script `make_kane_mele.py` writes the model as sparse matrices for a
-$16 \times 16$ supercell, periodic in both directions, with 1024 orbitals. It
+$16 \times 16$ supercell, periodic in both directions, with 1024 states. It
 writes five matrices: the Hamiltonian, the velocities $V_x$ and $V_y$, the spin
 operator $\sigma_z$ and the spin current $J^z_x = \{V_x, \sigma_z\}/2$. A periodic
 $16 \times 16$ supercell has exactly the k points of a $16 \times 16$ mesh. The
@@ -137,7 +137,7 @@ gives an anomalous Hall conductivity that reaches −0.8 $e^2/h$ near +1 eV, and
 splits the two spins in $\rho_z(E)$.
 
 The density of states integrates to 4.000 states per cell in both calculations,
-one per orbital. The spin density of states integrates to zero in both. The peak
+one per state. The spin density of states integrates to zero in both. The peak
 heights of $\rho$, $\rho_z$ and $\sigma_{xx}$ differ for two reasons: the KPM
 curves have the resolution of 512 moments, about 25 meV, against the 20 meV of
 the exact calculation, and the Jackson kernel and the Gaussian have different
