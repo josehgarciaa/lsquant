@@ -300,7 +300,7 @@ M the number of moments. For the numbers of the Bi bilayer, see
 The spin Hall curve is an integral over energy that starts at the bottom of
 the reconstruction grid, at E = b − 0.95 a, with b the centre of the window.
 All occupied bands must lie inside this inner 95 % of the window. The 10 %
-padding of `"window": "eigen"` ensures this; check it when you give an
+padding of `"window": "eigen"` keeps them there; check it when you give an
 explicit window.
 
 In a disordered run, the window is also padded by √cond(S) × max|w|, where w is
