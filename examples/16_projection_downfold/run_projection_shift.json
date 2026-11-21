@@ -1,0 +1,59 @@
+{
+  "model": {
+    "kind": "siesta",
+    "dir": "examples/07_spin_hall_bi_bilayer/siesta",
+    "label": "bi",
+    "params": {
+      "velocity_mode": "berry_connection"
+    },
+    "operators": [
+      "WINDOW"
+    ]
+  },
+  "basis": {
+    "name": "bloch",
+    "supercell": [
+      8,
+      8,
+      1
+    ]
+  },
+  "metric": {
+    "policy": "nonorthogonal",
+    "route": "lowdin",
+    "applier": "exact"
+  },
+  "projection": {
+    "kind": "shift",
+    "window": [
+      -2.0,
+      2.0
+    ]
+  },
+  "word": "Tr[delta(E-H)]",
+  "words": [
+    "Tr[delta(E-H)]",
+    "Tr[WINDOW delta(E-H)]"
+  ],
+  "expansion": {
+    "moments": 256,
+    "window": "eigen",
+    "trace": "exact"
+  },
+  "reconstruction": {
+    "kernel": "jackson",
+    "broadening_meV": 50.0,
+    "formulas": [
+      "dos"
+    ],
+    "energy_grid": [
+      -1.5,
+      1.5,
+      61
+    ]
+  },
+  "output": {
+    "dir": "out/projection_shift",
+    "legacy_layout": true
+  }
+}
