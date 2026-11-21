@@ -30,7 +30,7 @@ Build with the same Python interpreter you run with. CMake takes the first `pyth
 | Module | Content |
 |---|---|
 | `lsquant._core` | the C++ classes of the core: `SparseMatrix` (`from_csr`, `is_hermitian`), `SparseMatrixOperator`, `SpectralWindow`, `LocalStates`, `RandomPhaseStates`, `UserStates`, the plan instructions, `Plan`, `MomentEngine`, `ChebyshevMoments`, `ApplyKpmWeights`, `ReadCsrText`, `ReadChebmom`, `WriteChebmom`, `ContractRank1`, `WriteCurveText`. Type stubs are in `_core.pyi` |
-| `lsquant.moments` | `dos_plan(M, R)`, `kubo_plan(M)` and `run_plan(plan, H, window, states, operators=(), batch_size=None, symmetrise=True)` |
+| `lsquant.moments` | `dos_plan(M, R, word)`, `kubo_plan(M, *, left_index, right_index, word)`, `window_from_gershgorin(H, pad=0.10)` and `run_plan(plan, H, window, states, operators=(), batch_size=None, symmetrise=True)` |
 | `lsquant.kernels` | `jackson_damping(M)`: g_m = [(M − m + 1) cos(mφ) + sin(mφ)/tan φ] φ/π, φ = π/(M + 1) |
 | `lsquant.spectral_functions` | `SpectralFunction`: a SymPy expression c_m(x), turned into an (M, N) table. `DeltaFunction` is c_m(x) = cos(m arccos x)/(π√(1 − x²)). `legacy_delta_table` gives the same table in the legacy operation order, for byte identity |
 | `lsquant.reconstruct` | `dos_curve(moments, broadening_meV, alpha=0.95)` → (E in eV, N·ρ(E) in 1/eV) |
@@ -83,7 +83,7 @@ from lsquant import _core
 ham = _core.SparseMatrix.from_csr(n, row_pointers, columns, values)
 window = _core.SpectralWindow(-4.2, 4.2)                 # must contain the spectrum
 states = _core.RandomPhaseStates(n, 8, 12345)            # R = 8, fixed seed
-mu = lsq.run_plan(lsq.dos_plan(512, 8), ham, window, states)
+mu = lsq.run_plan(lsq.dos_plan(512, 8, word="1 delta"), ham, window, states)
 energies, values = lsq.dos_curve(mu, 50.0)               # values = N * rho(E)
 rho = values / mu.system_size
 ```

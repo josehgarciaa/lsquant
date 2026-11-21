@@ -82,7 +82,7 @@ def main(argv=None) -> int:
 
     window = _core.SpectralWindow(-4.2, 4.2)            # contains the band [-4, 4]
     states = _core.RandomPhaseStates(n, a.states, a.seed)
-    mu = lsq.run_plan(lsq.dos_plan(a.moments, a.states), ham, window, states)
+    mu = lsq.run_plan(lsq.dos_plan(a.moments, a.states, word="1 delta"), ham, window, states)
     e, v = lsq.dos_curve(mu, a.eta)
     rho = v / mu.system_size                            # dos_curve returns N * rho(E)
 
