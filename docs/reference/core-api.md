@@ -183,7 +183,7 @@ waits for the GPU and releases the GIL meanwhile.
 ## Overlap metric
 
 These classes treat a non-orthogonal basis with overlap matrix S. See
-[Bases and metrics](bases-and-metrics.md) for how the run file selects them.
+the [`metric` keys of the run file](run-file.md#metric) for how the run file selects them.
 
 ### Metric policies
 

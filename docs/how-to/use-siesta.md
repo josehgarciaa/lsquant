@@ -1,19 +1,28 @@
 # Use a SIESTA calculation
 
-This guide shows you how to prepare a SIESTA calculation for LSQuant, write the
-run file, and stay within the settings that LSQuant accepts for SIESTA models.
-It assumes you know SIESTA and have read [How we run LSQuant](run-lsquant.md).
+Start from your own SIESTA calculation and end with a converged density of
+states and spin Hall conductivity. Save the Hamiltonian in SIESTA, write the
+run file, then converge the number of moments, the k-mesh or supercell, and
+the broadening. You should know SIESTA and have read
+[Running LSQuant](run-lsquant.md).
 
-LSQuant computes the density of states and the intrinsic spin Hall
-conductivity of a SIESTA crystal with spin–orbit coupling, clean or with
-Anderson disorder. Two use cases show it end to end:
+For a SIESTA crystal with spin–orbit coupling, clean or with Anderson
+disorder, LSQuant computes two quantities: the density of states and the
+intrinsic spin Hall conductivity. The longitudinal and Hall conductivities
+σ_xx and σ_xy, time-dependent observables, checkpoints, the atom-block layout
+and the GPU code are not available for SIESTA models. Two use cases show the
+full workflow:
+<!-- source: quantities and time-dependent: reference/run-file.md (SIESTA executors, Words row; "no time section"); checkpoint: reference/run-file.md (expansion.checkpoint "csr only"); atom-block: reference/run-file.md (numerics: "atom_block requires model.kind='csr'"); GPU: how-to/run-on-a-cluster.md (CUDA: "SIESTA and Wannier models run on the CPU"), reference/run-file.md (numerics: ginkgo "applies to real-space csr models") -->
 
 - [Example 07: spin Hall conductivity of a Bi(111) bilayer](../../examples/07_spin_hall_bi_bilayer/README.md);
 - [Example 08: spin Hall conductivity of a PdSe₂ monolayer](../../examples/08_spin_hall_pdse2_monolayer/README.md).
 
+The [table in the README](../../README.md#quantities-by-model-source) compares
+what each model source computes.
+
 Every key used here is listed in the [run-file reference](../reference/run-file.md#siesta-models).
 
-## Before you begin
+## Requirements
 
 You need:
 
@@ -27,22 +36,18 @@ You need:
   pip install sisl
   ```
 
-## Check what LSQuant accepts
+## The SIESTA calculation
 
 LSQuant reads only non-orthogonal SIESTA Hamiltonians with spin–orbit
-coupling. For any other SIESTA output, the run stops with this message:
+coupling. The atomic-orbital basis of SIESTA is always non-orthogonal, so the
+condition on your calculation is `Spin spin-orbit`. For any other SIESTA
+output, collinear and spin-unpolarised runs included, a run with
+`model.kind = "siesta"` stops with this message:
 
 ```text
 load_siesta_model requires a nonorthogonal SIESTA SOC Hamiltonian
 ```
-<!-- source: python/lsquant/models/siesta.py:311-312 -->
-
-SIESTA's atomic-orbital basis is always non-orthogonal, so in practice the
-condition is `Spin spin-orbit`. LSQuant cannot load a collinear or
-spin-unpolarised calculation with `model.kind = "siesta"`; the run stops with
-this message.
-
-## Prepare the SIESTA run
+<!-- source: python/lsquant/models/siesta.py:311-312 (refuses orthogonal or not is_spinorbit) -->
 
 1. Turn on spin–orbit coupling in the `.fdf` file:
 
@@ -76,14 +81,14 @@ this message.
    `<label>` is the `SystemLabel` of the SIESTA run. LSQuant reads only these
    files, not the pseudopotential files.
 
-LSQuant treats the energies stored in the `.TSHS` file as already measured
-from the Fermi level, E_F = 0, and uses them unshifted. The Fermi level that
-SIESTA prints goes into `basis.json` as information only. Give every energy
-in the run file (windows, Fermi energies, projection windows) relative to
-E_F.
-<!-- source: python/lsquant/models/siesta.py:4-5, 340-345 -->
+Give every energy in the run file (windows, Fermi energies, projection
+windows) relative to the Fermi level, E_F = 0. LSQuant takes the energies
+stored in the `.TSHS` or `.HSX` file as already measured from E_F and uses
+them unshifted. The Fermi level printed by SIESTA is copied to `basis.json`
+for information only.
+<!-- source: python/lsquant/models/siesta.py:4-5 (docstring), 310 (one read path for .TSHS and .HSX), 343 (energy_reference "stored H, E_F already zero"), 345-347 (printed_fermi_level_eV recorded only) -->
 
-## Write the run file
+## The run file
 
 Start from a run file of example 07. This one computes the spin Hall
 conductivity of the clean crystal on a 24 × 24 k-mesh:
@@ -105,18 +110,10 @@ conductivity of the clean crystal on a 24 × 24 k-mesh:
 }
 ```
 
-The template asks for 20 meV, but the run delivers a broadening of about
-0.6 eV. The finest broadening LSQuant can deliver is πa/M, with a the
-half-width of the window and M the number of moments. The spectrum of the Bi
-bilayer spans about [−24.7, 56.4] eV. With the default 10 % padding, the
-window becomes [−32.8, 64.5] eV, a half-width of a ≈ 48.6 eV. With 256
-moments, πa/M ≈ 0.6 eV, and LSQuant uses this value instead of the requested
-20 meV, without a warning. The DOS of example 07's quick run, which has the
-same settings, shows the cap: its 7681 points are the grid of 30 points per
-moment for all 256 moments. To resolve 20 meV, you need about 7600 moments.
-Alternatively, narrow the window with a projection run:
-[example 16](../../examples/16_projection_downfold/README.md) keeps the states
-in [−2, 2] eV, so the expansion covers 4 eV instead of 81 eV.
+This template is the quick run of example 07, a test of the workflow rather
+than a converged result. Its broadening is set to 20 meV, but with 256
+moments the curve is resolved only to about 0.6 eV; see
+[Number of moments and broadening](#number-of-moments-and-broadening).
 
 Adapt the template:
 
@@ -145,15 +142,16 @@ python -m lsquant run my_run.json --out out/shc_quick
 The `--out` option overrides `output.dir` of the run file.
 <!-- source: python/lsquant/cli.py:133 (out_dir_override) -->
 
-`inspect` checks the keys and the word. LSQuant applies further checks when
-the run starts, most of them before it reads the SIESTA files. A file that
-`inspect` accepts can therefore still stop at once in `run`. The next
-sections describe those checks.
+`inspect` checks the keys and the observable. Further checks run when the
+run starts, most of them before the SIESTA files are read, so a file that
+`inspect` accepts can still stop at once in `run`. The next section lists
+those checks.
 
-## Know which kind of SIESTA run you have
+## Clean, disordered and projected calculations
 
-LSQuant handles a SIESTA run file in one of three ways. The kind of run
-follows from the contents of the run file:
+LSQuant distinguishes three kinds of SIESTA calculation, a clean crystal, a
+disordered supercell and a projected Hamiltonian. It takes the kind from the
+contents of the run file:
 
 | Your run file has | Kind of run | Typical use |
 |---|---|---|
@@ -162,27 +160,29 @@ follows from the contents of the run file:
 | anything else | clean | Clean crystal on a k-mesh. |
 
 Each kind of run accepts a different set of settings. The full table is in
-[SIESTA executors](../reference/run-file.md#siesta-executors). The rules you
-meet most often are below.
+the [run-file reference](../reference/run-file.md#siesta-executors); the
+rules you meet most often follow.
 
-### Rules for every SIESTA run
+### Settings for every kind
 
-- **Words.** Only the DOS, `Tr[delta(E-H)]`, and the spin Hall word
+- The `word` is the DOS, `Tr[delta(E-H)]`, or the spin Hall conductivity,
   `Tr[JXSZ delta(E-H) VY dG-(E)/dE]`. Projection runs also accept
-  `Tr[A delta(E-H)]` with one operator, for example `WINDOW`.
-  Time-dependent words are refused.
-- **Formulas.** A subset of `shc`, `dos` and `dos_curve`; `dos_curve` is
-  another name for `dos`. For the units of `shc`, see
-  [Check the result](#check-the-result).
-- **Window.** `expansion.window` is `"eigen"` or an explicit `[lo, hi]` that
-  encloses the spectrum. `"gershgorin"` is refused. Because the default
-  window of `basis.name = "real"` is `"gershgorin"`, set `"window": "eigen"`
-  explicitly for a real-space run.
-- **Targets.** Leave `reconstruction.targets` empty; a non-empty list stops
-  the run. Reconstruct again afterwards with
+  `Tr[A delta(E-H)]` with one operator, for example `WINDOW`. A
+  time-dependent observable stops the run.
+- `reconstruction.formulas` is a subset of `shc`, `dos` and `dos_curve`;
+  `dos_curve` is another name for `dos`. For the units of `shc`, see
+  [Results and units](#results-and-units).
+- `expansion.window` is `"eigen"` or an explicit `[lo, hi]` that encloses the
+  spectrum. `"gershgorin"` stops the run. Because the default window of
+  `basis.name = "real"` is `"gershgorin"`, set `"window": "eigen"` explicitly
+  for a real-space run.
+- `reconstruction.targets` holds extra reconstructions of the same moments
+  with other broadenings. Leave it empty, because a non-empty list stops the
+  run, and reconstruct again afterwards with
   [`python -m lsquant reconstruct`](../reference/cli.md#reconstruct).
+<!-- source: targets defined in reference/run-file.md (reconstruction table: "Extra reconstructions of the same moments"; Reconstruction targets: SIESTA executors refuse a non-empty list) -->
 
-### Clean runs
+### Clean crystals
 
 - `basis.name` is `"bloch"` or `"eigen"`.
 - `metric.applier` is `"exact"`. `metric.route` can be `"lowdin"`,
@@ -191,16 +191,16 @@ meet most often are below.
 - With `model.params.oracle = true`, the run also writes the exact per-k spin
   Hall conductivity (`exact_shc.json`) and the spin Chern number
   (`spin_chern.json`).
-- A clean run reconstructs every spin Hall word with `shc` and every DOS word
-  with `dos`, whatever `formulas` lists.
+- A clean run reconstructs every spin Hall observable with `shc` and every
+  DOS observable with `dos`, whatever `formulas` lists.
 
-### Disordered runs
+### Disordered supercells
 
 - `basis.name` is `"real"` (a supercell of `basis.supercell` unit cells) or
   `"bloch"`.
 - `metric.route` is `"lowdin"` or `"generalised"`. `metric.applier` is
   `"exact"`, or also `"chebyshev"` for `"real"`.
-- The exact applier is refused when the supercell dimension exceeds
+- `"applier": "exact"` stops the run when the supercell dimension exceeds
   `metric.max_dim` (default 4096). For larger supercells, use
   `"applier": "chebyshev"`.
 - `model.params.oracle` must be `false`, because an exact per-k reference
@@ -214,40 +214,43 @@ meet most often are below.
   - `"magnetic"`: a random Zeeman field along z, +h on spin up and −h on spin
     down of each orbital. It breaks time-reversal symmetry and acts as
     magnetic disorder on the spin Hall conductivity;
-  - `"independent"`: one energy per spin-orbital, the layout of earlier
-    versions. Use it only to reproduce earlier results.
+  - `"independent"`: the layout of earlier versions, kept only to reproduce
+    their results.
 
   The [run-file reference](../reference/run-file.md#basis) gives the exact
-  draws.
+  draws of each kind.
 <!-- source: max_dim python/lsquant/disorder_bases.py:264-265, runfile.py:299; kind: disorder_bases.py:29, runfile.py:501-510 -->
 
-Use case: [Example 12: Anderson disorder in a non-orthogonal SIESTA basis](../../examples/12_disorder_nonorthogonal/README.md).
+[Example 12](../../examples/12_disorder_nonorthogonal/README.md) shows this
+case for Anderson disorder in the non-orthogonal SIESTA basis of the Bi
+bilayer.
 
-### Projection runs
+### Projected Hamiltonians
 
 - `projection.kind` is `"hard"`, `"shift"` or `"orthogonal"`, and
   `projection.window` is the energy window in eV relative to E_F.
-  `"orthogonal"` is refused with `basis.name = "real"`.
+  `"orthogonal"` stops the run with `basis.name = "real"`.
 - `basis.disorder.W` is 0, and the run file has no `time` section.
-- A word with the operator `WINDOW` also needs `"operators": ["WINDOW"]` in
-  `model`. When `model.operators` is set, validation accepts only the listed
-  names, so list every operator of every word.
+- An observable with the operator `WINDOW` also needs
+  `"operators": ["WINDOW"]` in `model`. When `model.operators` is set,
+  validation accepts only the listed names, so list every operator of every
+  observable.
 
-Use case: [Example 16: spectral projection of a Bi Hamiltonian onto [−2, 2] eV](../../examples/16_projection_downfold/README.md).
+[Example 16](../../examples/16_projection_downfold/README.md) projects a Bi
+Hamiltonian onto the states in [−2, 2] eV.
 
-## Choose the basis
+## Basis
 
 | Basis | What it does | Use it for |
 |---|---|---|
 | `eigen` | Diagonalises S⁻¹H at every k and works in the eigenbasis. | Clean crystals. With `trace: "exact"` it is the cheapest route and the reference for the others. |
-| `bloch` | Keeps one H(k), S(k) block per k-point. | Clean crystals; the disordered Bloch layout. |
+| `bloch` | Keeps one H(k), S(k) block per k-point. | Clean crystals; disorder without a supercell matrix, the potential acting on the H(k), S(k) blocks through a Fourier transform. |
 | `real` | Builds a real-space supercell of `basis.supercell` unit cells. | Disorder. |
+<!-- source: bloch with disorder: examples/12_disorder_nonorthogonal/README.md (V = ½{B D B†, S(k)}, no supercell matrix stored) -->
 
-For a clean crystal, `eigen` and `bloch` give the same moments. Start with
-`eigen` and a coarse k-mesh, as example 07 does with 24 × 24, then increase
-the mesh.
+For a clean crystal, `eigen` and `bloch` give the same moments.
 
-## Choose the velocity mode
+## Velocity operators
 
 `model.params.velocity_mode` sets how LSQuant builds the velocity operators,
 and with them the spin current `JXSZ`, from H(k), S(k) and the orbital
@@ -263,52 +266,78 @@ The default depends on the kind of SIESTA run: `berry_connection` for clean
 and projection runs, `covariant` for disordered runs. Set the mode
 explicitly, so that clean and disordered runs of the same system use the same
 velocity. Examples 07 and 08 use `covariant`.
-<!-- source: python/lsquant/apps/stage6b_siesta.py:203, python/lsquant/apps/stage6c_disorder.py:111 -->
-
-[Bases and metrics](../reference/bases-and-metrics.md) and
-[Non-orthogonal bases](../explanation/nonorthogonal-bases.md) explain the
+[Non-orthogonal bases](../explanation/nonorthogonal-bases.md) explains the
 modes.
+<!-- source: python/lsquant/apps/stage6b_siesta.py:203, python/lsquant/apps/stage6c_disorder.py:111 -->
 
 With `covariant`, the first run integrates the dipoles and caches them. Later
 runs on the same SIESTA files reuse the cache, whatever the k-mesh, metric or
-word; a change in the input files invalidates it. LSQuant writes the cache to
-the first of these locations that applies:
+observable; a change in the input files invalidates it. To keep the cache in
+a fixed place, set the environment variable `LSQUANT_CACHE_DIR`. Without it,
+the cache goes to `.lsquant-cache` in the parent of `model.dir` when that
+directory is named `siesta`. Otherwise it goes to `lsquant-cache` in the
+system temporary directory when `model.dir` is not writable, and to
+`.lsquant-cache` in `model.dir` itself in every other case.
+<!-- source: python/lsquant/models/siesta.py:287-289 (docstring: cache outside siesta/ input directories, content-based invalidation), 382-391 (order: LSQUANT_CACHE_DIR, parent of siesta/, temp dir if not writable, model.dir) -->
 
-1. the directory in the environment variable `LSQUANT_CACHE_DIR`;
-2. `.lsquant-cache` in the parent of `model.dir`, if `model.dir` is named
-   `siesta`;
-3. `lsquant-cache` in the system temporary directory, if `model.dir` is not
-   writable;
-4. `.lsquant-cache` in `model.dir` itself.
+The accuracy of the dipole integrals is set by `quadrature_order`,
+`quadrature_max_order` and `quadrature_tolerance` in `model.params`.
+Examples 07 and 08 use the defaults, which the
+[run-file reference](../reference/run-file.md#siesta-models) lists.
+<!-- source: no quadrature_* key in examples/07_*/run_*.json or examples/08_*/run_*.json; defaults 24, 384, 1e-5 in reference/run-file.md (SIESTA models) -->
 
-The order keeps the cache out of the SIESTA input directory where it can. To
-keep the cache in a fixed place, set `LSQUANT_CACHE_DIR`.
-<!-- source: python/lsquant/models/siesta.py:287-289 (docstring: cache outside siesta/ input directories, content-based invalidation), 382-397 -->
+## Number of moments and broadening
 
-The quadrature is controlled by `quadrature_order`, `quadrature_max_order` and
-`quadrature_tolerance` in `model.params`.
+Choose the number of moments M from the broadening you need. M sets the
+energy resolution of every curve, as the smearing does for a DFT density of
+states. The finest broadening of a run is πa/M, with a the half-width of the
+energy window. A finer value in `broadening_meV` uses all M moments, and
+LSQuant applies πa/M instead, without a warning.
 
-## Set the energy window and the number of moments
+> **Rule of thumb.** For a broadening η, use M ≈ πa/η moments, where a is
+> the half-width of the energy window in eV.
 
-With `"window": "eigen"`, LSQuant takes the window from the eigenvalues of the
-generalised problem. SIESTA spectra are wide, so a SIESTA run needs more
-moments than a tight-binding model for the same broadening. A broadening finer
-than πa/M silently uses all M moments, with a the half-width of the window and
-M the number of moments. For the numbers of the Bi bilayer, see
-[Write the run file](#write-the-run-file).
+SIESTA spectra are wide, so a SIESTA run needs more moments than a
+tight-binding model for the same broadening. With `"window": "eigen"`, LSQuant
+takes the window from the eigenvalues of the generalised problem and pads it
+by 10 %. The spectrum of the Bi bilayer spans about [−24.7, 56.4] eV, so the
+window becomes [−32.8, 64.5] eV, with a half-width a ≈ 48.6 eV. With 256
+moments, πa/M ≈ 0.6 eV, and LSQuant uses this value in place of the requested
+20 meV. The DOS file of example 07's quick run, which has the same settings,
+confirms it: its 7681 energy points show that all 256 moments were used. To
+resolve 20 meV, you need about 7600 moments.
+<!-- source: 7681 points = grid of 30 points per moment for all 256 moments (previous page; generic grid num_div = 30*max_mom in python/lsquant/reconstruct.py:101 gives 7680, the extra point of the SIESTA writer not checked); window margin runfile.py:1603-1604 (0.10 * width) -->
 
-The spin Hall curve is an integral over energy that starts at the bottom of
-the reconstruction grid, at E = b − 0.95 a, with b the centre of the window.
-All occupied bands must lie inside this inner 95 % of the window. The 10 %
-padding of `"window": "eigen"` ensures this; check it when you give an
-explicit window.
+To need fewer moments, narrow the window with a projection run instead:
+[example 16](../../examples/16_projection_downfold/README.md) keeps the states
+in [−2, 2] eV, so the expansion covers 4 eV instead of 81 eV.
 
 In a disordered run, the window is also padded by √cond(S) × max|w|, where w is
 the disorder potential. For the Bi bilayer at W = 1 eV, the window is
-[−68.5, 100.2] eV, and 256 moments resolve only about 1 eV. A projection run
-narrows the spectrum, as shown in [Write the run file](#write-the-run-file).
+[−68.5, 100.2] eV, and 256 moments resolve only about 1 eV.
 
-## Relax `metric.tol` for an ill-conditioned overlap
+The spin Hall curve is an integral over energy that starts at the bottom of
+the reconstruction grid, at E = b − 0.95 a, with b the centre of the window.
+All occupied bands must lie inside this inner 95 % of the window. With
+`"window": "eigen"`, the 10 % padding keeps them there; check this when you
+give an explicit window.
+
+## k-mesh and supercell
+
+For a clean crystal, `basis.supercell` is the k-mesh and sets the
+Brillouin-zone sampling error, as in SIESTA. Start with `eigen` and a coarse
+k-mesh, as example 07 does with 24 × 24, then increase the mesh. The
+production setting of example 07 uses a 48 × 48 mesh with M = 1024 and a
+requested broadening of 10 meV. With a ≈ 48.6 eV, 1024 moments resolve about
+πa/M ≈ 0.15 eV, so this setting is also limited by M. Its converged value at
+E_F = 0 is still under study.
+<!-- source: examples/07_spin_hall_bi_bilayer/README.md (Step 2; Step 3: "converged KPM value of the production setting at E_F = 0 is still pending"), run_*_production.json; π × 48.6 / 1024 = 0.149 eV -->
+
+For a disordered run, `basis.supercell` is the number of unit cells of the
+real-space supercell and sets the finite-size error, as the k-mesh does for a
+crystal. Average the result over several `basis.disorder.seed` values.
+
+## Overlap tolerance `metric.tol`
 
 A real-space disordered run checks the inverse overlap S⁻¹ and S^(−1/2) with a
 probe, and stops if the residual exceeds `metric.tol`:
@@ -321,8 +350,8 @@ The default `metric.tol` is 10⁻¹³. In double precision, with
 ε ≈ 2.2 × 10⁻¹⁶, the rounding errors of an exact factorisation of S can reach
 cond(S) × ε. For the DZP basis of the Bi bilayer, cond(S) ≈ 3550, so rounding
 errors can reach about 8 × 10⁻¹³. The measured residual, 1.4 × 10⁻¹³, is of
-rounding size, yet the default refuses it: 10⁻¹³ asks for more than double
-precision guarantees for this overlap.
+rounding size but exceeds the default, a tolerance tighter than double
+precision can guarantee for this overlap.
 
 Raise the tolerance in the `metric` section:
 
@@ -332,17 +361,15 @@ Raise the tolerance in the `metric` section:
 
 To see the residuals of a run, look at `metric_residuals` in its
 `basis.json`. Example 12 shows the case and checks the result against the
-Bloch layout.
+`bloch` basis.
 
 > **Known limitation: `metric.tol` and its error message.** The default
-> tolerance does not scale with cond(S)
-> (`python/lsquant/disorder_bases.py:315–319`, `python/lsquant/runfile.py:297`).
-> The message suggests changing the Chebyshev order or `coeff_tol` even with
-> the exact applier, where those keys have no effect. The
-> [run-file reference](../reference/run-file.md#metric) describes `tol` only
-> as the tolerance of the `ischo` applier. Set `tol` as shown above.
+> tolerance stays at 10⁻¹³ whatever cond(S) is. The message suggests changing
+> the Chebyshev order or `coeff_tol` even with `"applier": "exact"`, where
+> those keys have no effect. Set `tol` as shown above.
+<!-- source: python/lsquant/disorder_bases.py:315–319, python/lsquant/runfile.py:297 -->
 
-## Check the result
+## Results and units
 
 After the run, look at these files in the output directory:
 
@@ -373,8 +400,14 @@ These times were measured on a shared 96-core node with the `golden` build:
 | Example 12, DOS, 4 × 4 × 1 real-space supercell (dimension 1152), W = 1 eV, 4 random vectors, M = 256 | 1 | 64 s | not recorded |
 | Example 16, projection onto [−2, 2] eV, 8 × 8 Bloch mesh, M = 256 | 1 | 14 min | not recorded |
 
-The spin Hall conductivity is a rank-2 word. For the same mesh and number of
-random vectors, its cost grows as M², against M for the DOS, so expect it to
-take much longer than the DOS run with the same M.
+On one thread of a heavily loaded shared node, the quick DOS and spin Hall
+runs of example 07 took 18 min each.
+<!-- source: examples/07_spin_hall_bi_bilayer/README.md (Runtime) -->
+
+The spin Hall conductivity needs a double Chebyshev expansion, with an M × M
+table of moments. For the same k-mesh and number of random vectors, its cost
+grows as M², against M for the DOS, so at large M expect a spin Hall run to
+take much longer than a DOS run with the same M.
+<!-- source: docs/explanation/kpm.md (Cost: R M² inner products; "for large M the inner products dominate") -->
 
 See [Run on a cluster](run-on-a-cluster.md) for threads and memory.
