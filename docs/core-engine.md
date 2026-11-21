@@ -28,7 +28,7 @@ needs a C++17 compiler, Eigen 3.4 and OpenMP.
 | `LinearOperator` (`core/algebra/linear_operator.hpp`) | the interface the engine uses: `Dimension()`, `Multiply(a, x, b, y)`, `IsHermitian()` |
 | `GershgorinBounds`, `LanczosBounds` (`core/algebra/spectral_bounds.hpp`) | spectral bounds of H: guaranteed (Gershgorin, padded) or estimated (Lanczos) |
 | `SpectralWindow` (`core/chebyshev/spectral_window.hpp`) | the interval [E_min, E_max] mapped onto [−1, 1]: H̃ = (H − c)/a |
-| `RescaledOperator` | applies H̃ without forming it |
+| `RescaledOperator` | applies H̃ implicitly |
 | `ChebyshevRecursion` | T₀v = v, T₁v = H̃v, T_{m+1}v = 2H̃T_mv − T_{m−1}v |
 | `StateGenerator`: `LocalStates`, `RandomPhaseStates`, `UserStates` | the trace vectors \|r⟩: basis vectors (exact trace), random phases e^{iφ}/√N with a fixed seed (stochastic trace), or given vectors |
 | `Plan` (`core/chebyshev/plan.hpp`) | the instruction list and a descriptive word |
@@ -36,9 +36,8 @@ needs a C++17 compiler, Eigen 3.4 and OpenMP.
 | `ChebyshevMoments` | the result: rank, dimensions, data, window, number of states, word |
 | `io/csr_text`, `io/chebmom_file` | LSQUANT's CSR text format; the unified `.chebmom` format and the legacy `.chebmom1D/2D` layouts |
 
-The core never prints, never reads an environment variable and knows nothing about a
-basis or a model: the stage-1 gate checks this with a grep (`basis`, `std::cout`, `getenv`
-must not appear under `lsquant/core`).
+The core leaves printing, environment variables, bases and models to other layers: the
+stage-1 gate checks that `basis`, `std::cout` and `getenv` are absent under `lsquant/core`.
 
 ## The plan language
 
@@ -49,7 +48,7 @@ A plan has five instructions:
 | `Expand{M}` | replaces the live vector v by the M vectors T₀(H̃)v … T_{M−1}(H̃)v; opens one tensor index |
 | `ApplyOperator{k}` | applies operator k (from the engine's operator table) to every live vector |
 | `MirrorToBra{}` | the ket side is done; continue on the bra side, starting again from \|r⟩ |
-| `ApplySeries{c}` | applies Σ_m c_m T_m(H̃) on the fly (used by time evolution; not executed in stage 1) |
+| `ApplySeries{c}` | applies Σ_m c_m T_m(H̃) on the fly (used by time evolution; it runs from the time-evolution stage on) |
 | `Trace{w}` | μ[i_bra, i_ket] += w · ⟨bra_{i_bra} \| ket_{i_ket}⟩, summed over trace vectors |
 
 The rank of the result equals the number of `Expand` instructions. Two plans are used in
@@ -72,11 +71,10 @@ ApplyKpmWeights(mu, states.NumberOfStates(), /*symmetrise=*/true);
 ```
 
 `batchSize` sets how many Chebyshev vectors are kept in memory at once on the expanded
-side. It changes memory use only, not the result: the batched rank-2 tensor is
-byte-identical to the unbatched one. That is checked by the gate and by the unit tests.
-The legacy driver had a defect here: with `BATCH_SIZE` smaller than M it did not carry the
-recursion across batches. Its wrong output is kept as evidence in
-`goldens/stage0/chain1d/legacy_defects/batch16/` and is not used as a reference.
+side. The batched rank-2 tensor is byte-identical to the unbatched one, as checked by the gate
+and unit tests. The legacy driver had a defect here: with `BATCH_SIZE` smaller than M it
+lost the recursion state between batches. Its wrong output is kept as evidence in
+`goldens/stage0/chain1d/legacy_defects/batch16/`; the gate uses other files as references.
 
 ## Example
 

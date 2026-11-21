@@ -11,8 +11,8 @@ periodic). It computes two moment tensors with an exact trace over all sites:
 
 Each word is written twice: in the unified `.chebmom` format (header with rank, dimensions,
 window, number of states, word) and in the legacy `.chebmom1D`/`.chebmom2D` layout. The `kubo` file is byte-identical to the
-golden G2 in `goldens/stage0/chain1d/`; the `dos` file is not compared with G1 here, because
-it uses a wider window (below). The gate runs `dos` on [−2, 2] and compares it with G1.
+golden G2 in `goldens/stage0/chain1d/`. The `dos` file uses a wider window than G1;
+the gate compares `dos` on [−2, 2] with G1 and `kubo` with G2 byte for byte.
 
 `dos_from_moments.py` then rebuilds the density of states from the `.chebmom` file with the
 Jackson kernel and compares it with the analytic DOS of the chain, ρ(E) = 1/(π√(4 − E²)).
@@ -34,15 +34,12 @@ integral of rho over the band = 1.0000 (1 expected, minus the weight beyond |x| 
 max relative deviation from 1/(pi sqrt(4 - E^2)) for |E| < 1.5: 7.52e-03
 ```
 
-The `dos` word runs on the window [−2.5, 2.5], wider than the band [−2, 2]. On exactly
-[−2, 2] the chain DOS 1/(π√(1 − x²)) is the Chebyshev weight function itself, so every
+The `dos` window, [−2.5, 2.5], is wider than the band [−2, 2]. On exactly [−2, 2] the chain DOS 1/(π√(1 − x²)) is the Chebyshev weight function itself, so every
 moment with m ≥ 1 vanishes and the reconstruction is exact by construction. The wider
 window gives non-trivial moments (μ₂ = −0.72, μ₄ = −0.66, …), and the 0.75 % deviation is
-the Jackson broadening at M = 64. The `kubo` word stays on [−2, 2], so its legacy file is
-byte-identical to G2.
+the Jackson broadening at M = 64. The `kubo` word stays on [−2, 2].
 
-The outputs go to `examples/core_engine/out/` (set `OUT=...` to change it). The same moments
-(with `dos` on [−2, 2]) are what `scripts/check_goldens.sh 1` compares byte for byte with G1 and G2.
+The outputs go to `examples/core_engine/out/` (set `OUT=...` to change it). The gate comparison above runs through `scripts/check_goldens.sh 1`.
 
 See the manual page *Core engine* (`docs/core-engine.md`) for the plan language and the
 classes involved.
