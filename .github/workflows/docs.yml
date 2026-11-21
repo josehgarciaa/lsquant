@@ -43,7 +43,7 @@ jobs:
         run: mkdocs build -f docs-site/mkdocs.yml
       - name: Build the Doxygen C++ API
         run: |
-          cmake -S . -B build/doxygen -DBUILD_DOCS=ON -DLSQUANT_BUILD_INPUT_TOOLS=OFF -DBUILD_TESTING=OFF
+          cmake -S . -B build/doxygen -DBUILD_DOCS=ON -DLSQUANT_BUILD_INPUT_TOOLS=OFF -DLSQUANT_BUILD_PYTHON=OFF -DBUILD_TESTING=OFF
           cmake --build build/doxygen --target docs
           mkdir -p build/site/api
           cp -r build/doxygen/docs/html/. build/site/api/
