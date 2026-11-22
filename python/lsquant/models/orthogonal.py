@@ -388,16 +388,14 @@ def load_paoflow_model(path):
 
 
 def load_runfile_model(model, velocity_mode, *, phase=None):
-    """Load the model of a run file for the metric executors (SIESTA, Wannier90, PAOFLOW,
-    and the machine-learning Hamiltonians of ``runfile.ML_MODEL_KINDS``).
-    """Load the model of a run file for the metric executors (SIESTA, OpenMX, Wannier90, PAOFLOW).
+    """Load the model of a run file for the metric executors (SIESTA, OpenMX, Wannier90,
+    PAOFLOW, and the machine-learning Hamiltonians of ``runfile.ML_MODEL_KINDS``).
 
     ``model`` is the run-file ``model`` mapping. SIESTA keeps its own reader;
     a Wannier90 model reads ``_r.dat`` for the covariant velocity and the
     spin set by ``params.spin``; a PAOFLOW model has no position matrix, so
     ``covariant`` is refused. A machine-learning model is read by its module
     (``models/<kind>.py``) and has no position matrix either.
-    (``models/deeph.py`` for ``deeph``) and has no position matrix either.
     """
     kind = model["kind"]
     params = model.get("params") or {}
