@@ -64,15 +64,16 @@ directory.
 
 | Key | Type | Allowed values | Default | Used by | Meaning |
 |---|---|---|---|---|---|
-| `kind` | string | `"csr"`, `"wannier"`, `"siesta"`, `"generator"` | `"csr"` | all | Input source. |
+| `kind` | string | `"csr"`, `"wannier"`, `"siesta"`, `"paoflow"`, `"generator"` | `"csr"` | all | Input source. |
 | `dir` | path | — | `null` | `csr`, `wannier`, `siesta`, `generator` (tutorials 3 and 4) | Directory that holds the model files. |
 | `label` | string | — | `null` | `csr`, `siesta` | File prefix: `<label>.HAM.CSR` (`csr`) or `<label>.fdf` (`siesta`). |
 | `seed` | string | — | `null` | `wannier` | Wannier90 seed: LSQuant reads `<seed>_hr.dat`, `<seed>.uc` and `<seed>.xyz`. |
+| `file` | path | — | `null` | `paoflow` | Model file written by `write_paoflow_model` (`.npz`). |
 | `operators` | list of strings | operator names | `null` | `csr` | Operators to load as `<label>.<OP>.CSR`. If absent, every `<label>.*.CSR` except `HAM` and `S` is loaded. A listed operator without a file is skipped, except with `numerics.operator = "atom_block"`. |
 | `csr_dir` | path | — | `null` | `wannier`, `basis.name = "real"` | Directory with a prebuilt supercell `<seed>.HAM.CSR` and its `wannier2sparse` receipt `<seed>.out`. LSQuant checks it against `seed` and `basis.supercell` before it loads anything. |
 | `name` | string | see [Generator models](#generator-models) | `null` | `generator` | Generator from the catalogue. |
 | `tutorial` | integer | `1`–`6` | from `name` | `generator` | Tutorial driver to run. Not validated; an unknown value fails at execution with `Unsupported generator`. |
-| `params` | object | depends on `kind` | `{}` | `siesta`, `generator` | Model parameters. See [SIESTA models](#siesta-models) and [Generator models](#generator-models). For `csr` and `wannier` the object is not checked and not used. |
+| `params` | object | depends on `kind` | `{}` | `siesta`, `wannier`, `paoflow`, `generator` | Model parameters. See [SIESTA models](#siesta-models), [Wannier90 and PAOFLOW models in the metric executors](#wannier90-and-paoflow-models-in-the-metric-executors) and [Generator models](#generator-models). For `csr` the object is not checked and not used; for `wannier` it is checked only when it holds `velocity_mode`, `spin` or `fermi_energy`. |
 | `positions` | path or array | file of `x y z` lines, `.xyz`-like file, or `(N, 2)`/`(N, 3)` array | `null` | `csr` with `atom_block` | Orbital positions. |
 | `orbitals_per_atom` | integer | positive | `null` | `csr` with `atom_block` | Uniform number of orbitals per atom. Give this or `atom_map`, not both. Required with `hr_file`. |
 | `atom_map` | path or array | one integer per orbital | `null` | `csr` with `atom_block` | Atom index of every orbital. |
@@ -87,6 +88,7 @@ directory.
 | `csr` with `hr_file` | `numerics.operator = "atom_block"` | `model.hr_file requires numerics.operator='atom_block'` |
 | `wannier` | `dir` and `seed` | `Run file with model.kind='wannier' requires 'dir' and 'seed'` |
 | `siesta` | `dir` and `label` | `SIESTA model requires dir and label` |
+| `paoflow` | `file` | `Run file with model.kind='paoflow' requires 'file' (see write_paoflow_model)` |
 | `generator` | `name` | `Run file with model.kind='generator' requires 'name' from [...]` |
 
 For `csr`, the executor also needs `<dir>/<label>.HAM.CSR` and, when
@@ -117,6 +119,46 @@ Allowed keys in `model.params`:
 | `quadrature_max_order` | integer | ≥ 2 × `quadrature_order` | `384` | Maximum quadrature order. |
 | `quadrature_tolerance` | number | positive | `1e-5` | Refinement tolerance of the dipole quadrature. |
 | `nonorthogonal_disorder` | boolean | — | `false` | Sends a clean Bloch run to the disordered executor. The disordered executor sets it to `true` in `run.resolved.json`. |
+
+### Wannier90 and PAOFLOW models in the metric executors
+
+A `wannier` model whose `params` hold `velocity_mode`, `spin` or
+`fermi_energy`, and every `paoflow` model, run through the clean or the
+projection executor of SIESTA (see [SIESTA executors](#siesta-executors)).
+`models/orthogonal.py` gives them the model protocol of `BlochMetricBasis`
+with S = 1. They therefore get the three velocity modes, a physical spin
+operator in `SX`, `SY`, `SZ` and `JXSZ`, spectral projection, the exact
+oracle and the KPM words of a SIESTA model. A `wannier` model without these
+keys keeps the original Wannier executor and its `real` basis.
+
+These runs need `basis.name` `bloch` or `eigen` and `basis.disorder.W = 0`.
+`metric.policy = "orthogonal"` is accepted and run as the exact Löwdin route,
+which is the same with S = 1.
+
+| Key | Kinds | Allowed values | Default | Meaning |
+|---|---|---|---|---|
+| `velocity_mode` | `wannier`, `paoflow` | `"bare"`, `"berry_connection"`, `"covariant"` (`wannier` only) | `"berry_connection"` | `bare`: cell derivative of H. `berry_connection`: derivative in the atom gauge, H(k) = Σ_R e^{ik·(R+τ_j−τ_i)} H(R). `covariant`: ∂H_cell + i[H, A], with the full position matrix A of `<seed>_r.dat`. Velocities have the sign +∂H; `WannierModel.velocity_blocks` returns −∂H, and a Hall word gives the same result with either sign. |
+| `spin` | `wannier` | `"labels"`, `"exact"` | `"labels"` | `labels`: Pauli matrices on the spinor labels (Wannier90 orders each spinor projection up, then down). `exact`: S_W(k) = V†S_B V from `<seed>.spn`, with V = U_dis U from `<seed>_u.mat` and `<seed>_u_dis.mat`. With spin–orbit coupling the Wannier functions mix spin, so only `exact` is the spin operator. |
+| `fermi_energy` | `wannier` | number (eV) | `0.0` | Subtracted from H(R = 0). Energies, `projection.window` and `reconstruction.fermi_energies` are then measured from it. |
+| `oracle`, `oracle_degeneracy_tolerance`, `bloch_memory_mb` | both | as for SIESTA | as for SIESTA | As in [SIESTA models](#siesta-models). |
+
+For `spin = "exact"` on a disentangled model LSQuant also reads `<seed>.eig`
+and `dis_win_min`/`dis_win_max` from `<seed>.win`: the rows of `_u_dis.mat`
+list only the bands inside the outer window, packed at the top. It stops with
+`V^+V differs from the identity` when the window does not match the files.
+
+A `paoflow` file holds H(R), the orbital positions and PAOFLOW's on-site spin
+operator (in Pauli units), with energies measured from the DFT Fermi energy.
+Write it in the PAOFLOW script, after `pao_hamiltonian()`:
+
+```python
+from lsquant.models.orthogonal import write_paoflow_model
+write_paoflow_model(paoflow, "pdse2_paoflow.npz")
+```
+
+PAOFLOW has no position matrix, so `velocity_mode = "covariant"` is refused;
+`berry_connection` is the velocity of PAOFLOW's `gradient_and_momenta`. `spin`
+and `fermi_energy` are refused for `paoflow`.
 
 ### Generator models
 
@@ -237,9 +279,10 @@ there only changes the default window to `"eigen"`, which `csr` refuses.
 
 ## `projection`
 
-Spectral projection works only with `model.kind = "siesta"`. For any other
-kind, the validator stops with
-`Expected model.kind='siesta' when projection is enabled`.
+Spectral projection works with the models of the metric executors: `siesta`,
+`paoflow`, and `wannier` with `params.velocity_mode`, `spin` or
+`fermi_energy`. For any other model the validator stops with
+`Expected a metric-executor model (...) when projection is enabled`.
 
 | Key | Type | Allowed values | Default | Meaning |
 |---|---|---|---|---|
@@ -443,11 +486,13 @@ These keys let a `run.resolved.json` be read back as a run file.
 | `build_profile` | string | the loaded profile | If present, it must equal the profile of the loaded `_core` module (`golden` or `native`), otherwise: `Run file build_profile=... differs from loaded engine profile=...`. Every run writes it. |
 | `runtime` | object | — | Ignored on input. Every run writes the values of `OMP_NUM_THREADS`, `OMP_PROC_BIND`, `OMP_PLACES`, `OMP_DYNAMIC`, `OPENBLAS_NUM_THREADS`, `MKL_NUM_THREADS`, `LSQUANT_SPMV_MIN_NNZ`, `LSQUANT_KERNEL_BATCH` and `LSQUANT_FFT_BACKEND`. |
 | `receipt` | object | — | Ignored on input. SIESTA executors write phase timings and diagnostics. |
-| `reference` | boolean | automatic | `model.kind = "siesta"` only (`Expected model.kind='siesta' when 'reference' is set`). `true` forces and `false` suppresses the exact eigenbasis reference of a clean SIESTA run. By default it runs unless the production run already computes the exact eigenbasis trace. The disordered and projection executors ignore it. |
+| `reference` | boolean | automatic | Models of the metric executors only (`Expected a metric-executor model (...) when 'reference' is set`). `true` forces and `false` suppresses the exact eigenbasis reference of a clean SIESTA run. By default it runs unless the production run already computes the exact eigenbasis trace. The disordered and projection executors ignore it. |
 
 ## SIESTA executors
 
-`execute_runfile` sends a `siesta` run to one of three executors. Each checks
+`execute_runfile` sends a `siesta` run to one of three executors. A `paoflow`
+run, or a `wannier` run with `params.velocity_mode`, `spin` or
+`fermi_energy`, goes to the projection or the clean executor by the same rule. Each checks
 the resolved run file before it reads the SIESTA files and fails with the
 quoted message.
 
