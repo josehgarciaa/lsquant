@@ -547,7 +547,14 @@ for `model.kind = "wannier"` with `params.velocity_mode`, `spin` or
 | `load_wannier_metric_model(model_dir, seed, *, spin="labels", positions=None, fermi_energy=0.0)` | `OrthogonalModel` of a Wannier90 run. `spin = "exact"` uses `WannierSpin`. `positions=None` reads `<seed>_r.dat` if present. `fermi_energy` (eV) is subtracted from H(R = 0). |
 | `write_paoflow_model(paoflow, path)` | Call in a PAOFLOW script after `pao_hamiltonian()`. Writes an `.npz` with H(R) (stored as H(−R), because PAOFLOW sums with e^{−ik·R}; on an even FFT grid the Nyquist block is split between +n/2 and −n/2 to keep H(k) Hermitian), the orbital positions from PAOFLOW's `Dnm`, and twice PAOFLOW's on-site spin operator `Sj` (Pauli units). Energies stay measured from the DFT Fermi energy. |
 | `load_paoflow_model(path)` | `OrthogonalModel` of that file, with its on-site spin and no position matrix. |
-| `load_runfile_model(model, velocity_mode, *, phase=None)` | Model of a run-file `model` mapping for the metric executors (`siesta`, `wannier`, `paoflow` and the machine-learning kinds of [Machine-learning Hamiltonians](#machine-learning-hamiltonians)). |
+| `load_runfile_model(model, velocity_mode, *, phase=None)` | Model of a run-file `model` mapping for the metric executors (`siesta`, `openmx`, `wannier`, `paoflow` and the machine-learning kinds of [Machine-learning Hamiltonians](#machine-learning-hamiltonians)). |
+
+`lsquant.models.openmx` (not re-exported by `lsquant.models`):
+
+| Name | Meaning |
+|---|---|
+| `read_scfout(path)` | Read an OpenMX 3.9 scfout file (version 3) into a dictionary: atoms, orbitals per atom, neighbour pairs with lattice vectors, cell, positions, Hks, iHks, overlap, position matrix, chemical potential. Units of the file (Bohr, Hartree). |
+| `load_openmx_model(path, *, dipoles=False)` | `SiestaModel` of a non-collinear spin–orbit scfout file: H − μS in eV, S lifted to interleaved spinors, and with `dipoles=True` the connection A = D − (τ_j + R − τ_i) S/2 from OpenMX's row-centred position matrix D. H, S and A are folded Hermitian (`metadata["hermitian_fold_relative"]`). |
 
 ### Machine-learning Hamiltonians
 
@@ -563,14 +570,6 @@ its files. These modules are not re-exported by `lsquant.models`.
 | `assemble_blocks(pairs, norb, *, spinful, name="H")` | `lsquant.models.lcao` | `(r_int, M)` from `(R, i, j, block)` items, where `block` couples atom `i` in the home cell with atom `j` in cell `R`; a spinful block is `[[uu, ud], [du, dd]]` and is stored with interleaved spinors. |
 | `hermitian_pairs(r_int, mats)` | `lsquant.models.lcao` | Adds missing −R blocks as M(R)† and replaces each pair by (M(R) + M(−R)†)/2; returns the relative residual before the mean. |
 | `build_lcao_model(uc, positions, norb, r_int, hamiltonian, overlap=None, *, spinful, seed_name, metadata, fermi_energy=0.0, overlap_r_int=None)` | `lsquant.models.lcao` | `OrthogonalModel` without `overlap`, `SiestaModel` with it; removes H − E_F S and sets the attribute `spinful`, which `BlochMetricBasis` reads to refuse spin operators on a spinless model. |
-| `load_runfile_model(model, velocity_mode, *, phase=None)` | Model of a run-file `model` mapping for the metric executors (`siesta`, `openmx`, `wannier`, `paoflow`). |
-
-`lsquant.models.openmx` (not re-exported by `lsquant.models`):
-
-| Name | Meaning |
-|---|---|
-| `read_scfout(path)` | Read an OpenMX 3.9 scfout file (version 3) into a dictionary: atoms, orbitals per atom, neighbour pairs with lattice vectors, cell, positions, Hks, iHks, overlap, position matrix, chemical potential. Units of the file (Bohr, Hartree). |
-| `load_openmx_model(path, *, dipoles=False)` | `SiestaModel` of a non-collinear spin–orbit scfout file: H − μS in eV, S lifted to interleaved spinors, and with `dipoles=True` the connection A = D − (τ_j + R − τ_i) S/2 from OpenMX's row-centred position matrix D. H, S and A are folded Hermitian (`metadata["hermitian_fold_relative"]`). |
 
 ### Other functions
 

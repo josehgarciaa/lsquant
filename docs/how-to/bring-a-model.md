@@ -1,25 +1,18 @@
 # Bring a model to LSQuant
 
 LSQuant computes transport and spectral properties of a tight-binding model.
-It does not run the electronic-structure calculation: you run SIESTA, Quantum
-ESPRESSO + Wannier90, PAOFLOW or a machine-learning Hamiltonian code, turn on
-the outputs LSQuant reads, and give LSQuant the result in a run file. The model
-is yours; LSQuant checks only that its files are complete and consistent.
 It does not run the electronic-structure calculation: you run SIESTA, OpenMX,
-Quantum ESPRESSO + Wannier90 or PAOFLOW, turn on the outputs LSQuant reads,
-and give LSQuant the result in a run file. The model is yours; LSQuant checks only that
-its files are complete and consistent.
+Quantum ESPRESSO + Wannier90, PAOFLOW or a machine-learning Hamiltonian code,
+turn on the outputs LSQuant reads, and give LSQuant the result in a run file.
+The model is yours; LSQuant checks only that its files are complete and
+consistent.
 
 Every source follows the same three steps:
 
 1. **Turn on** the outputs LSQuant reads in your code.
-2. **Transfer** the model: for SIESTA, Wannier90 and the DeepH format LSQuant
-   reads the files of the run directly; for PAOFLOW and DeePTB one call in a
-   Python script writes the files.
-   reads the files of the run directly; for PAOFLOW one call in the PAOFLOW
-   script writes a file.
-2. **Transfer** the model: for SIESTA, OpenMX and Wannier90 LSQuant reads the
-   files of the run directly; for PAOFLOW one call in the PAOFLOW script writes a file.
+2. **Transfer** the model: for SIESTA, OpenMX, Wannier90 and the DeepH format
+   LSQuant reads the files of the run directly; for PAOFLOW and DeePTB one
+   call in a Python script writes the files.
 3. **Run** LSQuant with a run file whose `model.kind` names the source.
 
 | Source | 1. Turn on | 2. Transfer | 3. `model` in the run file | Guide |
@@ -33,9 +26,6 @@ Every source follows the same three steps:
 
 For every source, step 3 is the same:
 
-For every source, step 3 is the same:
-For all of them, step 3 is the same:
-
 ```bash
 python -m lsquant inspect run.json   # check the run file
 python -m lsquant run run.json       # compute
@@ -47,7 +37,5 @@ machine-learning model has no position matrix, so its velocity is `bare` or
 `berry_connection`, and a model without spin–orbit coupling has no spin
 operator. LSQuant computes transport only; the quality of a predicted
 Hamiltonian is yours to check against DFT.
-All sources go through the same executor: the same velocity modes,
-spin operators, spectral projection, kernel polynomial method and exact check.
 The quantities they give are listed in the
 [README](../../README.md#quantities-by-model-source).

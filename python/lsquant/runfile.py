@@ -391,20 +391,17 @@ def validate_runfile_dict(raw: Mapping[str, Any]) -> None:
     metric_kind = uses_metric_executor(model)
     if reference is not None and not isinstance(reference, bool):
         raise ValueError(f"Expected boolean for 'reference', got {type(reference).__name__}")
-    metric_names = ", ".join(("siesta", "paoflow") + tuple(ML_MODEL_KINDS))
+    metric_names = ", ".join(("siesta", "openmx", "paoflow") + tuple(ML_MODEL_KINDS))
     if reference is not None and not metric_kind:
         raise ValueError(f"Expected a metric-executor model ({metric_names}, or wannier with "
                          f"params.velocity_mode or params.spin) when 'reference' is set, got {kind!r}")
     if projection["kind"] != "none" and not metric_kind:
         raise ValueError(f"Expected a metric-executor model ({metric_names}, or wannier with "
                          f"params.velocity_mode or params.spin) when projection is enabled, got {kind!r}")
-    known_kinds = ("csr", "wannier", "siesta", "generator", "paoflow") + tuple(ML_MODEL_KINDS)
+    known_kinds = ("csr", "wannier", "siesta", "generator", "openmx", "paoflow") + tuple(ML_MODEL_KINDS)
     if kind not in known_kinds:
         raise ValueError(
             f"Unknown model.kind '{kind}'; expected one of {', '.join(repr(k) for k in known_kinds)}"
-    if kind not in ("csr", "wannier", "siesta", "generator", "paoflow", "openmx"):
-        raise ValueError(
-            f"Unknown model.kind '{kind}'; expected 'csr', 'wannier', 'siesta', 'openmx', 'paoflow', or 'generator'"
         )
     if kind == "csr":
         if model.get("hr_file"):
@@ -1489,15 +1486,14 @@ def _execute_generator_runfile(
 def uses_metric_executor(model: Mapping[str, Any]) -> bool:
     """True when the model runs through BlochMetricBasis (velocity modes, physical spin).
 
-    SIESTA, PAOFLOW and machine-learning models (``ML_MODEL_KINDS``) always
-    do. A Wannier90 model does when its
+    SIESTA, OpenMX, PAOFLOW and machine-learning models (``ML_MODEL_KINDS``)
+    always do. A Wannier90 model does when its
     ``params`` set ``velocity_mode`` or ``spin``; without them it keeps the
     original Wannier executor and its CSR and real-space bases.
     """
     kind = str(_get_or(model, "kind", "csr"))
     params = model.get("params") or {}
-    if kind in ("siesta", "paoflow") or kind in ML_MODEL_KINDS:
-    if kind in ("siesta", "paoflow", "openmx"):
+    if kind in ("siesta", "paoflow", "openmx") or kind in ML_MODEL_KINDS:
         return True
     return kind == "wannier" and isinstance(params, Mapping) and (
         "velocity_mode" in params or "spin" in params or "fermi_energy" in params)
@@ -1577,8 +1573,7 @@ def execute_runfile(
         out_dir_override if out_dir_override is not None else rf.output["dir"]
     )
     kind = str(rf.model["kind"])
-    if (kind in ("wannier", "paoflow") or kind in ML_MODEL_KINDS) and uses_metric_executor(rf.model):
-    if kind in ("wannier", "paoflow", "openmx") and uses_metric_executor(rf.model):
+    if (kind in ("wannier", "paoflow", "openmx") or kind in ML_MODEL_KINDS) and uses_metric_executor(rf.model):
         if rf.basis["name"] == "real" or rf.basis["disorder"]["W"] != 0:
             raise ValueError(f"model.kind={kind!r} with params.velocity_mode/spin runs in the "
                              "clean bloch or eigen basis")
