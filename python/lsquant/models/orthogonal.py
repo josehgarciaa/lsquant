@@ -436,7 +436,8 @@ def load_runfile_model(model, velocity_mode, *, phase=None):
         return load_abacus_model(model["file"], overlap_file=params["overlap_file"], stru_file=params["stru_file"],
                                  orbital_dir=params.get("orbital_dir"),
                                  orbitals_per_element=params.get("orbitals_per_element"),
-                                 fermi_energy=float(params.get("fermi_energy", 0.0)))
+                                 fermi_energy=float(params.get("fermi_energy", 0.0)),
+                                 position_file=params.get("position_file") if velocity_mode == "covariant" else None)
     raise ValueError(f"model.kind {kind!r} has no metric executor")
 
 

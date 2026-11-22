@@ -46,12 +46,21 @@ Pitfall: NextHAM predicts H only within its cut-off (7 Angstrom in
 ABACUS file given as ``weak_file`` in its pipeline. The model is therefore
 partly predicted and partly DFT.
 
-Warning: the orbitals are atom-centred numerical orbitals; LSQuant puts
-each on its atom and has no intra-atomic dipoles (``berry_connection``).
-
-To-do: ABACUS can also write the position matrix r(R) (``out_mat_r``),
-which depends only on the basis and the structure. Reading it would allow
-the covariant velocity.
+Position matrix (``out_mat_r 1``): ``data-rR-sparse.csr`` holds
+``Q_a,ij(R) = <i, 0| r_a |j, R>`` in Bohr, the absolute position (ABACUS adds
+``tau_i S_ij(R)`` to the integral of ``r - tau_i``; ``cal_r_overlap_R.cpp``).
+Layout: the same three header lines (``r(R)``); per R a line ``R1 R2 R3``,
+then for x, y and z a line ``nnz`` followed, if ``nnz > 0``, by the CSR
+``data``, ``indices`` and ``indptr`` (real numbers). For ``nspin = 4`` the
+dimension is that of H, with zero spin off-diagonal elements. With
+``position_file`` the model gets the connection
+``A = Q - (tau_i + tau_j + R) S / 2`` of the covariant velocity (see
+:func:`~lsquant.models.siesta.midpoint_connection`); exact two-centre
+integrals give ``A(-R)^+ = A(R)``. Without it the orbitals sit on their
+atoms with no intra-atomic dipoles (``bare`` and ``berry_connection`` only).
+The orbital order and the sign convention of ABACUS's real spherical
+harmonics do not matter here: H, S and r are in the same basis, and the spin
+operator is the Pauli matrix on the interleaved spin index.
 """
 from __future__ import annotations
 
@@ -144,6 +153,54 @@ def _read_binary(raw, path):
     raise ValueError(f"{path} is neither an ABACUS text nor binary sparse matrix file")
 
 
+def read_abacus_rr(path):
+    """Return ``(r_int, Q)`` of an ABACUS ``data-rR-sparse.csr``, text or binary.
+
+    ``Q`` has shape ``(3, M, N, N)``, the position matrix in Bohr.
+    """
+    with open(path, "rb") as f:
+        raw = f.read()
+    if raw[:4] == b"STEP":
+        lines = iter(raw.decode().splitlines())
+        next(lines)
+        n = int(next(lines).split()[-1])
+        m = int(next(lines).split()[-1])
+        r_int, q = np.zeros((m, 3), int), np.zeros((3, m, n, n))
+        for r in range(m):
+            r_int[r] = [int(float(x)) for x in next(lines).split()[:3]]
+            for a in range(3):
+                nnz = int(next(lines).split()[0])
+                if nnz == 0:
+                    continue
+                data = np.array(next(lines).split(), float)
+                indices = np.array(next(lines).split(), int)
+                indptr = np.array(next(lines).split(), int)
+                if len(data) != nnz or len(indices) != nnz or len(indptr) != n + 1:
+                    raise ValueError(f"{path}: R = {r_int[r]}, direction {a} has inconsistent CSR sizes")
+                q[a, r, np.repeat(np.arange(n), np.diff(indptr)), indices] = data
+        return r_int, q
+    _, n, m = struct.unpack_from("iii", raw, 0)
+    offset, r_int, q = 12, np.zeros((m, 3), int), np.zeros((3, m, n, n))
+    for r in range(m):
+        r_int[r] = struct.unpack_from("iii", raw, offset)
+        offset += 12
+        for a in range(3):
+            (nnz,) = struct.unpack_from("i", raw, offset)
+            offset += 4
+            if nnz == 0:
+                continue
+            data = np.frombuffer(raw, float, nnz, offset)
+            offset += 8 * nnz
+            indices = np.frombuffer(raw, np.int32, nnz, offset)
+            offset += 4 * nnz
+            indptr = np.frombuffer(raw, np.int32, n + 1, offset)
+            offset += 4 * (n + 1)
+            q[a, r, np.repeat(np.arange(n), np.diff(indptr)), indices] = data
+    if offset != len(raw):
+        raise ValueError(f"{path} is neither a text nor a binary ABACUS r(R) file")
+    return r_int, q
+
+
 def _strip(line):
     return re.sub(r"(#|//).*", "", line).strip()
 
@@ -227,14 +284,15 @@ def _shells_of(label, orbital_file, search_dirs, orbitals_per_element):
 
 
 def load_abacus_model(hamiltonian_file, *, overlap_file, stru_file, orbital_dir=None,
-                      orbitals_per_element=None, fermi_energy=0.0):
+                      orbitals_per_element=None, fermi_energy=0.0, position_file=None):
     """Read an ABACUS-format H(R) (NextHAM ``hr_tot``, or ABACUS's own) with its S(R) and STRU.
 
     Returns a non-orthogonal model (:class:`~lsquant.models.siesta.SiestaModel`)
     in eV and Angstrom, spinful when the matrix dimension is twice the
     number of orbitals (``nspin = 4``). ``fermi_energy`` (eV) is removed as
     ``H - E_F S``. The orbital files are searched in ``orbital_dir``, then
-    next to ``stru_file``.
+    next to ``stru_file``. ``position_file`` (ABACUS's ``data-rR-sparse.csr``)
+    adds the connection of the covariant velocity.
     """
     from .lcao import build_lcao_model
 
@@ -264,6 +322,45 @@ def load_abacus_model(hamiltonian_file, *, overlap_file, stru_file, orbital_dir=
                 elements=elements, orbital_l=[int(x) for x in ell],
                 basis="ABACUS numerical atomic orbitals of STRU (NUMERICAL_ORBITAL)",
                 orbital_positions="atom-centred: every orbital on its atom")
-    return build_lcao_model(lattice, positions, norb, h_r, hamiltonian * RYDBERG_EV, overlap, spinful=spinful,
-                            seed_name=os.path.basename(h_path), metadata=meta,
-                            fermi_energy=float(fermi_energy), overlap_r_int=s_r)
+    model = build_lcao_model(lattice, positions, norb, h_r, hamiltonian * RYDBERG_EV, overlap, spinful=spinful,
+                             seed_name=os.path.basename(h_path), metadata=meta,
+                             fermi_energy=float(fermi_energy), overlap_r_int=s_r)
+    if position_file is not None:
+        q_path = os.path.abspath(os.path.expanduser(str(position_file)))
+        _attach_connection(model, q_path)
+    return model
+
+
+def _attach_connection(model, q_path):
+    """Give ``model`` the midpoint connection built from ABACUS's r(R) file."""
+    from .siesta import midpoint_connection
+
+    q_r, q = read_abacus_rr(q_path)
+    width = model.num_wann
+    if q.shape[2] * 2 == width:
+        lifted = np.zeros((3, len(q_r), width, width))
+        lifted[:, :, 0::2, 0::2] = q
+        lifted[:, :, 1::2, 1::2] = q
+        q = lifted
+    elif q.shape[2] != width:
+        raise ValueError(f"r(R) has dimension {q.shape[2]}, H(R) {width}; use the files of one ABACUS run")
+    cells = {tuple(r): n for n, r in enumerate(model.r_int)}
+    full = np.zeros((3, len(cells), width, width))
+    missing = 0.0
+    for n, r in enumerate(q_r):
+        if tuple(r) in cells:
+            full[:, cells[tuple(r)]] = q[:, n]
+        else:
+            missing = max(missing, float(np.abs(q[:, n]).max()))
+    if missing > 1e-6:
+        raise ValueError(f"r(R) has elements up to {missing:.1e} Bohr on cells where S(R) is zero; "
+                         "use the files of one ABACUS run")
+    a = midpoint_connection(full / ANGSTROM_BOHR, model.overlaps, model.tau, model.r_cart)
+    minus = [cells.get(tuple(-r)) for r in model.r_int]
+    if any(m is None for m in minus):
+        raise ValueError("the R list of the model is not closed under R -> -R")
+    sym = 0.5 * (a + np.conj(np.swapaxes(a[:, minus], 2, 3)))
+    scale = max(float(np.abs(a).max()), 1e-300)
+    model.metadata["connection_hermiticity_residual"] = float(np.abs(a - sym).max() / scale)
+    model.metadata["position_file"] = q_path
+    model.dipoles = sym
