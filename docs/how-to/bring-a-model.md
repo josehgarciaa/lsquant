@@ -14,7 +14,9 @@ Every source follows the same three steps:
    LSQuant reads the output files of your calculation directly; for PAOFLOW
    and DeePTB, one call in a Python script writes them; for HamGNN, a script
    that comes with LSQuant writes one file in the HamGNN environment; ThreeBodyTB writes its
-   model file with its own `write_tb_crys`.
+   model file with its own `write_tb_crys`; NextHAM's own scripts
+   write H(R) in the ABACUS format, which LSQuant reads with the ABACUS overlap
+   and `STRU`.
 3. **Run** LSQuant with a run file whose `model.kind` names the source.
 
 | Source | 1. Outputs to turn on | 2. How LSQuant gets the model | 3. `model` in the run file | Guide |
@@ -27,6 +29,7 @@ Every source follows the same three steps:
 | DeePTB (SK and E3, spinless) | a trained model and a structure | `TBSystem(...).to_pardiso_json("dir")` or `dptb pdso` | `"kind": "deeptb"`, `"dir"`, `params.fermi_energy` | [Use a DeePTB model](use-deeptb.md) |
 | HamGNN | a prediction run (`stage: test`) on the `graph_data.npz` of the structure | `python lsquant/models/hamgnn.py graph_data.npz prediction_hamiltonian.npy model.npz --nao-max N --spin soc --dft-code openmx` in the HamGNN environment | `"kind": "hamgnn"`, `"file"`, `params.fermi_energy` | [Use a HamGNN model](use-hamgnn.md) |
 | ThreeBodyTB | nothing: build the model (`scf_energy` for charge transfer) | `write_tb_crys("model.xml", tbc)` in Julia (a ThreeBodyTB function) | `"kind": "threebodytb"`, `"file"` | [Use a ThreeBodyTB model](use-threebodytb.md) |
+| NextHAM (ABACUS basis) | save the predictions of the test run (`test.py`) | NextHAM's `run_bands_compare.py` writes `hr_tot`; LSQuant reads it with ABACUS's `srs1_nao.csr` and `STRU` | `"kind": "abacus"`, `"file"`, `params.overlap_file`, `params.stru_file`, `params.fermi_energy` | [Use a NextHAM model](use-nextham.md) |
 
 For every source, step 3 is the same. Check the run file, then compute:
 
@@ -42,7 +45,7 @@ explains them. A machine-learning model has no position matrix, so its
 velocity is `bare` or `berry_connection`. A model without spin–orbit coupling
 has no spin operator and gives the density of states only.
 
-OpenMX, PAOFLOW, DeepH, DeePTB, HamGNN and ThreeBodyTB models, and Wannier90 models with
+OpenMX, PAOFLOW, DeepH, DeePTB, HamGNN, ThreeBodyTB and NextHAM (ABACUS) models, and Wannier90 models with
 `params.velocity_mode`, `params.spin` or `params.fermi_energy`, run as clean
 crystals on a k-mesh (`basis.name` `"bloch"` or `"eigen"`). A real-space supercell or
 Anderson disorder stops the run; disorder is available for SIESTA models.

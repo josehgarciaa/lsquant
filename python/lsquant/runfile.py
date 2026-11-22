@@ -973,6 +973,11 @@ class RunFile:
         }
         if raw_model.get("file") is not None:
             model_cfg["file"] = _resolve_path(raw_model["file"])
+        if kind == "abacus":
+            # The S(R) file, the STRU and the orbital directory resolve like model.file.
+            for key in ("overlap_file", "stru_file", "orbital_dir"):
+                if isinstance(model_cfg["params"].get(key), str):
+                    model_cfg["params"][key] = _resolve_path(model_cfg["params"][key])
 
         raw_basis = dict(raw.get("basis") or {})
         raw_dis = dict(raw_basis.get("disorder") or {})
@@ -1526,6 +1531,7 @@ ML_MODEL_KINDS: dict[str, tuple[str, frozenset[str]]] = {
     "deeptb": ("dir", frozenset()),
     "hamgnn": ("file", frozenset()),
     "threebodytb": ("file", frozenset({"orbitals_per_element"})),
+    "abacus": ("file", frozenset({"overlap_file", "stru_file", "orbital_dir", "orbitals_per_element"})),
 }
 
 
@@ -1559,6 +1565,11 @@ def _check_ml_params(kind: str, model: Mapping[str, Any]) -> None:
     if per_element is not None and (not isinstance(per_element, Mapping) or not all(
             isinstance(v, int) and not isinstance(v, bool) and v > 0 for v in per_element.values())):
         raise ValueError("model.params.orbitals_per_element must map element symbols to positive integers")
+    if kind == "abacus":
+        for name in ("overlap_file", "stru_file"):
+            if not params.get(name):
+                raise ValueError(f"model.params.{name} is required for model.kind='abacus' "
+                                 "(the S(R) file and the STRU of the same structure)")
 
 
 def execute_runfile(

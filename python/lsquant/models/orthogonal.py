@@ -431,6 +431,12 @@ def load_runfile_model(model, velocity_mode, *, phase=None):
         from .threebodytb import load_threebodytb_model
         return load_threebodytb_model(model["file"], fermi_energy=_optional_float(params.get("fermi_energy")),
                                       orbitals_per_element=params.get("orbitals_per_element"))
+    if kind == "abacus":
+        from .abacus import load_abacus_model
+        return load_abacus_model(model["file"], overlap_file=params["overlap_file"], stru_file=params["stru_file"],
+                                 orbital_dir=params.get("orbital_dir"),
+                                 orbitals_per_element=params.get("orbitals_per_element"),
+                                 fermi_energy=float(params.get("fermi_energy", 0.0)))
     raise ValueError(f"model.kind {kind!r} has no metric executor")
 
 
