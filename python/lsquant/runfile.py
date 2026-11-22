@@ -1527,6 +1527,7 @@ def _check_metric_params(kind: str, model: Mapping[str, Any], modes: tuple[str, 
 #: executors: kind -> (required model key, extra model.params keys).
 ML_MODEL_KINDS: dict[str, tuple[str, frozenset[str]]] = {
     "deeph": ("dir", frozenset({"hamiltonian_file"})),
+    "deeptb": ("dir", frozenset()),
 }
 
 
