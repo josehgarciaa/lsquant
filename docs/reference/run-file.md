@@ -66,14 +66,19 @@ directory.
 |---|---|---|---|---|---|
 | `kind` | string | `"csr"`, `"wannier"`, `"siesta"`, `"paoflow"`, `"generator"`, `"deeph"`, `"deeptb"` | `"csr"` | all | Input source. |
 | `dir` | path | — | `null` | `csr`, `wannier`, `siesta`, `deeph`, `deeptb`, `generator` (tutorials 3 and 4) | Directory that holds the model files. |
+| `kind` | string | `"csr"`, `"wannier"`, `"siesta"`, `"paoflow"`, `"generator"`, `"deeph"` | `"csr"` | all | Input source. |
+| `dir` | path | — | `null` | `csr`, `wannier`, `siesta`, `deeph`, `generator` (tutorials 3 and 4) | Directory that holds the model files. |
+| `kind` | string | `"csr"`, `"wannier"`, `"siesta"`, `"openmx"`, `"paoflow"`, `"generator"` | `"csr"` | all | Input source. |
+| `dir` | path | — | `null` | `csr`, `wannier`, `siesta`, `generator` (tutorials 3 and 4) | Directory that holds the model files. |
 | `label` | string | — | `null` | `csr`, `siesta` | File prefix: `<label>.HAM.CSR` (`csr`) or `<label>.fdf` (`siesta`). |
 | `seed` | string | — | `null` | `wannier` | Wannier90 seed: LSQuant reads `<seed>_hr.dat`, `<seed>.uc` and `<seed>.xyz`. |
-| `file` | path | — | `null` | `paoflow` | Model file written by `write_paoflow_model` (`.npz`). |
+| `file` | path | — | `null` | `openmx`, `paoflow` | `openmx`: the `<System.Name>.scfout` file. `paoflow`: the model file written by `write_paoflow_model` (`.npz`). |
 | `operators` | list of strings | operator names | `null` | `csr` | Operators to load as `<label>.<OP>.CSR`. If absent, every `<label>.*.CSR` except `HAM` and `S` is loaded. A listed operator without a file is skipped, except with `numerics.operator = "atom_block"`. |
 | `csr_dir` | path | — | `null` | `wannier`, `basis.name = "real"` | Directory with a prebuilt supercell `<seed>.HAM.CSR` and its `wannier2sparse` receipt `<seed>.out`. LSQuant checks it against `seed` and `basis.supercell` before it loads anything. |
 | `name` | string | see [Generator models](#generator-models) | `null` | `generator` | Generator from the catalogue. |
 | `tutorial` | integer | `1`–`6` | from `name` | `generator` | Tutorial driver to run. Not validated; an unknown value fails at execution with `Unsupported generator`. |
 | `params` | object | depends on `kind` | `{}` | `siesta`, `wannier`, `paoflow`, `deeph`, `deeptb`, `generator` | Model parameters. See [SIESTA models](#siesta-models), [Wannier90 and PAOFLOW models in the metric executors](#wannier90-and-paoflow-models-in-the-metric-executors), [Machine-learning Hamiltonians in the metric executors](#machine-learning-hamiltonians-in-the-metric-executors) and [Generator models](#generator-models). For `csr` the object is not checked and not used; for `wannier` it is checked only when it holds `velocity_mode`, `spin` or `fermi_energy`. |
+| `params` | object | depends on `kind` | `{}` | `siesta`, `wannier`, `paoflow`, `deeph`, `generator` | Model parameters. See [SIESTA models](#siesta-models), [Wannier90 and PAOFLOW models in the metric executors](#wannier90-and-paoflow-models-in-the-metric-executors), [Machine-learning Hamiltonians in the metric executors](#machine-learning-hamiltonians-in-the-metric-executors) and [Generator models](#generator-models). For `csr` the object is not checked and not used; for `wannier` it is checked only when it holds `velocity_mode`, `spin` or `fermi_energy`. |
 | `positions` | path or array | file of `x y z` lines, `.xyz`-like file, or `(N, 2)`/`(N, 3)` array | `null` | `csr` with `atom_block` | Orbital positions. |
 | `orbitals_per_atom` | integer | positive | `null` | `csr` with `atom_block` | Uniform number of orbitals per atom. Give this or `atom_map`, not both. Required with `hr_file`. |
 | `atom_map` | path or array | one integer per orbital | `null` | `csr` with `atom_block` | Atom index of every orbital. |
@@ -88,6 +93,7 @@ directory.
 | `csr` with `hr_file` | `numerics.operator = "atom_block"` | `model.hr_file requires numerics.operator='atom_block'` |
 | `wannier` | `dir` and `seed` | `Run file with model.kind='wannier' requires 'dir' and 'seed'` |
 | `siesta` | `dir` and `label` | `SIESTA model requires dir and label` |
+| `openmx` | `file` | `Run file with model.kind='openmx' requires 'file' (the .scfout file)` |
 | `paoflow` | `file` | `Run file with model.kind='paoflow' requires 'file' (see write_paoflow_model)` |
 | `deeph` | `dir` | `Run file with model.kind='deeph' requires 'dir'` |
 | `deeptb` | `dir` | `Run file with model.kind='deeptb' requires 'dir'` |
@@ -121,6 +127,24 @@ Allowed keys in `model.params`:
 | `quadrature_max_order` | integer | ≥ 2 × `quadrature_order` | `384` | Maximum quadrature order. |
 | `quadrature_tolerance` | number | positive | `1e-5` | Refinement tolerance of the dipole quadrature. |
 | `nonorthogonal_disorder` | boolean | — | `false` | Sends a clean Bloch run to the disordered executor. The disordered executor sets it to `true` in `run.resolved.json`. |
+
+### OpenMX models
+
+`model.kind = "openmx"` reads the `<System.Name>.scfout` file that OpenMX 3.9
+writes with `HS.fileout on` (`models/openmx.py`). It needs a non-collinear
+calculation with spin–orbit coupling and stops otherwise. The model is
+non-orthogonal and runs through the SIESTA executors with the SIESTA rules
+(`metric.policy = "nonorthogonal"`, the same basis names and words).
+Energies are measured from the chemical potential stored in the file, so
+E_F = 0. `velocity_mode = "covariant"` uses the position matrix of the basis
+orbitals written in the same file. H, S and that position matrix are folded
+Hermitian; the removed relative parts are recorded in the model metadata
+(`hermitian_fold_relative`, copied to `basis.json` by the clean executor).
+
+Allowed keys in `model.params`: `velocity_mode` (`"bare"`,
+`"berry_connection"`, `"covariant"`; default `"berry_connection"`), `oracle`,
+`oracle_degeneracy_tolerance`, `bloch_memory_mb`. `spin` and `fermi_energy`
+are refused.
 
 ### Wannier90 and PAOFLOW models in the metric executors
 
@@ -181,6 +205,7 @@ out. These runs need `basis.name` `bloch` or `eigen` and
 |---|---|---|---|---|
 | `velocity_mode` | all | `"bare"`, `"berry_connection"` | `"berry_connection"` | As for SIESTA. There is no position matrix, so `"covariant"` is refused. |
 | `fermi_energy` | all | number (eV) | `deeph`: `fermi_level` or `fermi_energy_eV` of `info.json`, else `0.0`; `deeptb`: `0.0` | Removed as H(R) − E_F S(R). Energies, `projection.window` and `reconstruction.fermi_energies` are then measured from it. |
+| `fermi_energy` | all | number (eV) | `deeph`: `fermi_level` or `fermi_energy_eV` of `info.json`, else `0.0` | Removed as H(R) − E_F S(R). Energies, `projection.window` and `reconstruction.fermi_energies` are then measured from it. |
 | `hamiltonian_file` | `deeph` | file name in `dir` | `hamiltonians_pred.h5` or `hamiltonian_pred.h5`, then the DFT file `hamiltonians.h5` or `hamiltonian.h5` | The H(R) file to read. |
 | `oracle`, `oracle_degeneracy_tolerance`, `bloch_memory_mb` | all | as for SIESTA | as for SIESTA | As in [SIESTA models](#siesta-models). |
 
@@ -312,6 +337,10 @@ there only changes the default window to `"eigen"`, which `csr` refuses.
 Spectral projection works with the models of the metric executors: `siesta`,
 `paoflow`, the machine-learning kinds (`deeph`, `deeptb`), and `wannier` with
 `params.velocity_mode`, `spin` or `fermi_energy`. For any other model the validator stops with
+`paoflow`, the machine-learning kinds (`deeph`), and `wannier` with
+`params.velocity_mode`, `spin` or `fermi_energy`. For any other model the validator stops with
+`openmx`, `paoflow`, and `wannier` with `params.velocity_mode`, `spin` or
+`fermi_energy`. For any other model the validator stops with
 `Expected a metric-executor model (...) when projection is enabled`.
 
 | Key | Type | Allowed values | Default | Meaning |
@@ -520,8 +549,8 @@ These keys let a `run.resolved.json` be read back as a run file.
 
 ## SIESTA executors
 
-`execute_runfile` sends a `siesta` run to one of three executors. A `paoflow`
-run, or a `wannier` run with `params.velocity_mode`, `spin` or
+`execute_runfile` sends a `siesta` run to one of three executors. An `openmx`
+or `paoflow` run, or a `wannier` run with `params.velocity_mode`, `spin` or
 `fermi_energy`, goes to the projection or the clean executor by the same rule. Each checks
 the resolved run file before it reads the SIESTA files and fails with the
 quoted message.

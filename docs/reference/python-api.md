@@ -563,6 +563,14 @@ its files. These modules are not re-exported by `lsquant.models`.
 | `assemble_blocks(pairs, norb, *, spinful, name="H")` | `lsquant.models.lcao` | `(r_int, M)` from `(R, i, j, block)` items, where `block` couples atom `i` in the home cell with atom `j` in cell `R`; a spinful block is `[[uu, ud], [du, dd]]` and is stored with interleaved spinors. |
 | `hermitian_pairs(r_int, mats)` | `lsquant.models.lcao` | Adds missing −R blocks as M(R)† and replaces each pair by (M(R) + M(−R)†)/2; returns the relative residual before the mean. |
 | `build_lcao_model(uc, positions, norb, r_int, hamiltonian, overlap=None, *, spinful, seed_name, metadata, fermi_energy=0.0, overlap_r_int=None)` | `lsquant.models.lcao` | `OrthogonalModel` without `overlap`, `SiestaModel` with it; removes H − E_F S and sets the attribute `spinful`, which `BlochMetricBasis` reads to refuse spin operators on a spinless model. |
+| `load_runfile_model(model, velocity_mode, *, phase=None)` | Model of a run-file `model` mapping for the metric executors (`siesta`, `openmx`, `wannier`, `paoflow`). |
+
+`lsquant.models.openmx` (not re-exported by `lsquant.models`):
+
+| Name | Meaning |
+|---|---|
+| `read_scfout(path)` | Read an OpenMX 3.9 scfout file (version 3) into a dictionary: atoms, orbitals per atom, neighbour pairs with lattice vectors, cell, positions, Hks, iHks, overlap, position matrix, chemical potential. Units of the file (Bohr, Hartree). |
+| `load_openmx_model(path, *, dipoles=False)` | `SiestaModel` of a non-collinear spin–orbit scfout file: H − μS in eV, S lifted to interleaved spinors, and with `dipoles=True` the connection A = D − (τ_j + R − τ_i) S/2 from OpenMX's row-centred position matrix D. H, S and A are folded Hermitian (`metadata["hermitian_fold_relative"]`). |
 
 ### Other functions
 

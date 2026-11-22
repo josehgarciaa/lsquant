@@ -24,6 +24,7 @@ The quantities you can compute depend on where the Hamiltonian comes from:
 | Hamiltonian from | DOS | σ_xx | σ_xy | Spin Hall σ^z_xy | Time-dependent (spreading, spin dynamics) |
 |---|---|---|---|---|---|
 | SIESTA with spin–orbit coupling (`siesta`) | yes | no | no | yes | no |
+| OpenMX with spin–orbit coupling (`openmx`) | yes | no | no | yes | no |
 | Wannier90 `_hr.dat` (`wannier`) | yes | yes | not documented | no | not documented |
 | Wannier90 with `params.velocity_mode`, `spin` or `fermi_energy` (`wannier`) | yes | no | no | yes | no |
 | PAOFLOW model file (`paoflow`) | yes | no | no | yes | no |
@@ -37,6 +38,7 @@ The quantities you can compute depend on where the Hamiltonian comes from:
 <!-- source, wannier with params and paoflow rows: they run through the SIESTA clean and projection executors (python/lsquant/runfile.py, uses_metric_executor; models/orthogonal.py), which accept only Tr[delta(E-H)] and Tr[JXSZ delta(E-H) VY dG-(E)/dE]; docs/how-to/use-wannier90.md, docs/how-to/use-paoflow.md -->
 <!-- source, deeph row: models/deeph.py through the SIESTA clean and projection executors (runfile.py ML_MODEL_KINDS, uses_metric_executor), which accept only Tr[delta(E-H)] and Tr[JXSZ delta(E-H) VY dG-(E)/dE]; a spinless model refuses spin words (bases.py); docs/how-to/use-deeph.md -->
 <!-- source, deeptb row: models/deeptb.py through the same executors; DeePTB's to_pardiso export holds spinless blocks only (dptb/postprocess/unified/system.py, feature_to_block), so spinful exports are refused and spin words fail on the spinless model; docs/how-to/use-deeptb.md -->
+<!-- source, openmx, wannier with params and paoflow rows: they run through the SIESTA clean and projection executors (python/lsquant/runfile.py, uses_metric_executor; models/orthogonal.py), which accept only Tr[delta(E-H)] and Tr[JXSZ delta(E-H) VY dG-(E)/dE]; docs/how-to/use-wannier90.md, docs/how-to/use-paoflow.md -->
 <!-- source, csr row: projected DOS examples/15_spatial_operators/run_layer_dos.json; sigma_xx and sigma_xy examples/03_haldane_hall/run_haldane.json (greenwood, bastin) and examples/13_bastin_sea_surface; time-dependent examples/04 run_spin.json and examples/15 run_msd.json; spin Hall through reconstruct: docs/reference/run-file.md, known limitation "shc in csr and wannier runs" (runfile.py:1714, 2228, 2307, 2438) -->
 <!-- source, generator row: make_chain (tutorial 1, DOS), make_haldane (tutorial 3, kubo_bastin and kubo_greenwood in python/lsquant/apps/tutorial03.py:28-31, 255), make_square (tutorial 5, sigma_xx, examples/05 README), make_disordered_chain, make_chain_mag, make_ey/make_rashba (tutorials 2, 4, 6, time-dependent); docs/reference/run-file.md#generator-models -->
 
