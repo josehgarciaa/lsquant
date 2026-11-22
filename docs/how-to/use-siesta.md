@@ -22,6 +22,17 @@ what each model source computes.
 
 Every key used here is listed in the [run-file reference](../reference/run-file.md#siesta-models).
 
+In short, as for the other sources in [Bring a model to LSQuant](bring-a-model.md):
+
+1. **Turn on** in SIESTA: `Spin spin-orbit` and `TS.HS.Save true` (or
+   `SaveHS true`); see [The SIESTA calculation](#the-siesta-calculation).
+2. **Transfer** the model: nothing to run. LSQuant reads `<label>.fdf`,
+   `<label>.TSHS` (or `.HSX`) and, for the covariant velocity, the
+   `<species>.ion.xml` files.
+3. **Run** LSQuant: `python -m lsquant run run.json`; see
+   [The run file](#the-run-file).
+4. **Recommendations**: the sections from [Basis](#basis) on.
+
 ## Requirements
 
 You need:

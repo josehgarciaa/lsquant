@@ -12,7 +12,7 @@ import numpy as np
 from .. import _core
 from ..apps.stage6b_siesta import (PhaseReceipt, _write_json, oracle_energies, SHC_WORD)
 from ..bases import BlochMetricBasis
-from ..models.siesta import load_siesta_model
+from ..models.orthogonal import load_runfile_model
 from ..oracle.spin_hall import spin_berry_curvature, sigma_xy, UNITS
 from ..reconstruct import dos_curve, shc
 from ..words import parse as parse_word
@@ -152,11 +152,7 @@ def execute_projection_runfile(rf, out_dir):
     tolerance = float(params.get("oracle_degeneracy_tolerance", 1e-6))
     if not np.isfinite(tolerance) or tolerance <= 0:
         raise ValueError("oracle_degeneracy_tolerance must be positive and finite")
-    model = load_siesta_model(rf.model["dir"], rf.model["label"], dipoles=mode == "covariant",
-                              quadrature_order=int(params.get("quadrature_order", 24)),
-                              quadrature_tolerance=float(params.get("quadrature_tolerance", 1e-5)),
-                              quadrature_max_order=int(params.get("quadrature_max_order", 384)),
-                              phase=timing.phase)
+    model = load_runfile_model(rf.model, mode, phase=timing.phase)
     with timing.phase("metric build"):
         original = BlochMetricBasis(model, rf.basis["supercell"], velocity_mode=mode,
                                     route=rf.metric["route"], seed=rf.expansion["seed"])

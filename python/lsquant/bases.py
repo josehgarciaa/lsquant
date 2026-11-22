@@ -1282,6 +1282,9 @@ class BlochMetricBasis:
         if key == "S":
             return self.sk_array
         if key not in self._blocks:
+            if (key in ("SX", "SY", "SZ") or (len(key) == 4 and key[0] == "J" and key[2] == "S")) \
+                    and getattr(self.model, "spinful", True) is False:
+                raise ValueError(f"{key} needs spin, but the model is spinless (no spinor components)")
             if key in ("VX", "VY", "VZ"):
                 axis = "XYZ".index(key[1])
                 dH, dS = self.model.derivatives(self.k_points, axis, cell=self.velocity_mode == "bare")
@@ -1291,11 +1294,13 @@ class BlochMetricBasis:
             elif key in ("SX", "SY", "SZ"):
                 if self.model.physical_spin is not None:
                     self._blocks.update(self.model.physical_spin)
+                elif self._model_spin(key) is not None:
+                    self._blocks[key] = self._model_spin(key)
                 else:
                     self._blocks.update(spin_operators(self.sk_array, "interleaved"))
             elif len(key) == 4 and key[0] == "J" and key[1] in "XYZ" and key[2] == "S" and key[3] in "XYZ":
                 V = self.operator_blocks("V"+key[1])
-                if self.model.physical_spin is None:
+                if self.model.physical_spin is None and self._model_spin("S"+key[3]) is None:
                     q = applied_spin_operators(self.num_wann)["S"+key[3]]
                     self._blocks[key] = spin_current(V, q)
                 else:
@@ -1306,6 +1311,22 @@ class BlochMetricBasis:
                 raise ValueError(f"unknown BlochMetricBasis operator {name!r}")
             self._blocks[key] = checked_hermitian(self._blocks[key], name=f"physical {key}")
         return self._blocks[key]
+
+    def _model_spin(self, key):
+        """Physical spin of an orthogonal model (models/orthogonal.py), or None.
+
+        A Wannier model with spin-orbit coupling has spin-mixed orbitals, so
+        its spin is a k-dependent matrix rather than the Pauli matrix on the
+        spinor labels. The model computes it once per mesh.
+        """
+        spin_blocks = getattr(self.model, "spin_blocks", None)
+        if spin_blocks is None:
+            return None
+        if not hasattr(self, "_spin_cache"):
+            self._spin_cache = {}
+        if key not in self._spin_cache:
+            self._spin_cache[key] = spin_blocks(self.k_points, key[1].lower())
+        return self._spin_cache[key]
 
     def operator(self, name):
         """Return a physical observable, or O_sym on the anticommutator route.

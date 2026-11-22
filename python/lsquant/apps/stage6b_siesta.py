@@ -15,7 +15,7 @@ import numpy as np
 
 from .. import _core
 from ..bases import BlochMetricBasis
-from ..models.siesta import load_siesta_model
+from ..models.orthogonal import load_runfile_model
 from ..reconstruct import dos_curve, shc
 from ..words import compile as compile_word, parse as parse_word
 from ..words.grammar import OperatorSlot
@@ -201,11 +201,7 @@ def execute_siesta_runfile(rf, out_dir):
     if not np.isfinite(degeneracy_tolerance) or degeneracy_tolerance <= 0:
         raise ValueError("oracle_degeneracy_tolerance must be positive and finite (eV)")
     mode = params.get("velocity_mode", "berry_connection")
-    model = load_siesta_model(rf.model["dir"], rf.model["label"], dipoles=mode == "covariant",
-                              quadrature_order=int(params.get("quadrature_order", 24)),
-                              quadrature_tolerance=float(params.get("quadrature_tolerance", 1e-5)),
-                              quadrature_max_order=int(params.get("quadrature_max_order", 384)),
-                              phase=timing.phase)
+    model = load_runfile_model(rf.model, mode, phase=timing.phase)
     model.bloch_memory_mb = float(params.get("bloch_memory_mb", 256.0))
     with timing.phase("metric build"):
         bloch = BlochMetricBasis(model, rf.basis["supercell"], velocity_mode=mode,

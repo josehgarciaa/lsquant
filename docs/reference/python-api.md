@@ -271,7 +271,7 @@ builds S⁻¹ and S^(−1/2) per k block once.
 
 | Parameter | Values | Meaning |
 |---|---|---|
-| `model` | — | A model with `Hk`, `Sk`, their derivatives, `k_mesh`, `tau`, `uc`, and `dipoles` for `covariant`. |
+| `model` | — | A model with `Hk`, `Sk`, their derivatives, `k_mesh`, `tau`, `uc`, and `dipoles` for `covariant`. If the model has a method `spin_blocks(k_points, component)` that returns a matrix, `SX`, `SY`, `SZ` and the spin currents `J?S?` use it instead of the Pauli matrices on the spinor labels (see [Orthogonal models](#orthogonal-models-for-the-metric-executors)). If `model.spinful` is `False`, spin operators and spin currents raise `ValueError`. |
 | `velocity_mode` | `bare`, `berry_connection`, `covariant` | How velocities are built. `covariant` raises `ValueError` if `model.dipoles` is `None`. |
 | `route` | `lowdin`, `generalised`, `anticommutator` | Metric route. |
 | `bloch` | a `BlochMetricBasis` | `EigenMetricBasis` reuses its cached eigenvectors. |
@@ -525,10 +525,52 @@ so an overall sign of the velocity cancels.
 | `"berry_connection"` | Derivative of the atom-gauge $H(\mathbf k)$, phases on $\mathbf R + \tau_j - \tau_i$; the same matrix as `dHk`. Uses the Wannier centres only. | — |
 | `"covariant"` | The `bare` derivative plus the commutator term $\propto [H, A]$, with $A$ the full position matrix $\langle 0m\vert\mathbf r\vert\mathbf Rn\rangle$, folded Hermitian with the degeneracies of `_hr.dat`. It adds the off-diagonal position elements between Wannier functions, which the other two modes take as zero. | `<seed>_r.dat` in `model_dir`, written by Wannier90 with `write_rmn = true`; read once per model. |
 
-The run-file executor of `model.kind = "wannier"` does not read
-`model.params`, so these modes are available from Python only.
+In a run file, `model.params.velocity_mode` builds the same three modes
+through `models/orthogonal.py`, with the sign +∂H (see
+[Wannier90 and PAOFLOW models](run-file.md#wannier90-and-paoflow-models-in-the-metric-executors)).
 [Example 20](../../examples/20_pdse2_spin_hall_routes/README.md) uses the
 covariant mode.
+
+### Orthogonal models for the metric executors
+
+`lsquant.models.orthogonal` (not re-exported by `lsquant.models`) gives a
+Wannier90 or a PAOFLOW Hamiltonian the model protocol of `BlochMetricBasis`
+with S = 1. The run-file executors use it for `model.kind = "paoflow"` and
+for `model.kind = "wannier"` with `params.velocity_mode`, `spin` or
+`fermi_energy`.
+
+| Name | Meaning |
+|---|---|
+| `OrthogonalModel(uc, tau, r_int, hoppings, *, seed_name="model", positions=None, spin=None, metadata=None)` | Atom-gauge H(R) (the convention of `hk_blocks`). `positions = (r_int, A)` from `read_position_matrix` enables `covariant`, with the connection A − diag(τ). `spin` is `None` (Pauli matrices on interleaved spinor labels), a `(3, W, W)` on-site array, or an object with `blocks(k_points, component)`. Methods `Hk`, `Sk` (identity), `derivatives(k, axis, cell=False)` (+∂H, atom or cell derivative), `Ak(k, axis)`, `k_mesh`, `spin_blocks(k, component)`. |
+| `read_wannier_spin(model_dir, seed, *, unitarity_tolerance=1e-6)` | Returns `(k_frac, S_W)`, S_W of shape (3, N_k, W, W) in Pauli units: V†S_B V from `<seed>.spn` (formatted or unformatted), with V = U_dis U from `<seed>_u.mat` and `<seed>_u_dis.mat`. For a disentangled model it reads `<seed>.eig` and the outer window of `<seed>.win`, because the rows of `_u_dis.mat` list only the bands inside the window, packed at the top. Raises `ValueError` if V†V differs from the identity. |
+| `WannierSpin(model_dir, seed, uc, tau)` | Fourier transform of S_W(k) to S(R) on the centred R range of the Wannier90 mesh; `blocks(k_points, component)` returns the Hermitian atom-gauge matrix at Cartesian k. |
+| `load_wannier_metric_model(model_dir, seed, *, spin="labels", positions=None, fermi_energy=0.0)` | `OrthogonalModel` of a Wannier90 run. `spin = "exact"` uses `WannierSpin`. `positions=None` reads `<seed>_r.dat` if present. `fermi_energy` (eV) is subtracted from H(R = 0). |
+| `write_paoflow_model(paoflow, path)` | Call in a PAOFLOW script after `pao_hamiltonian()`. Writes an `.npz` with H(R) (stored as H(−R), because PAOFLOW sums with e^{−ik·R}; on an even FFT grid the Nyquist block is split between +n/2 and −n/2 to keep H(k) Hermitian), the orbital positions from PAOFLOW's `Dnm`, and twice PAOFLOW's on-site spin operator `Sj` (Pauli units). Energies stay measured from the DFT Fermi energy. |
+| `load_paoflow_model(path)` | `OrthogonalModel` of that file, with its on-site spin and no position matrix. |
+| `load_runfile_model(model, velocity_mode, *, phase=None)` | Model of a run-file `model` mapping for the metric executors (`siesta`, `wannier`, `paoflow` and the machine-learning kinds of [Machine-learning Hamiltonians](#machine-learning-hamiltonians)). |
+
+### Machine-learning Hamiltonians
+
+`lsquant.models.lcao` turns the atom-pair blocks of a machine-learning
+Hamiltonian into a model of the metric executors; one module per code reads
+its files. These modules are not re-exported by `lsquant.models`.
+
+| Name | Module | Meaning |
+|---|---|---|
+| `load_deeph_model(directory, *, hamiltonian_file=None, fermi_energy=None)` | `lsquant.models.deeph` | Model of a DeepH-format directory: the processed-structure layout of DeepH-pack (before its JAX version), DeepH-E3, xDeepH and MACE-H (`hamiltonians_pred.h5`, `overlaps.h5`, `lat.dat`, `site_positions.dat`, `orbital_types.dat`, `info.json`), or the DeepH-pack layout (`POSCAR`, `info.json`, chunked `hamiltonian_pred.h5`, `overlap.h5`, optional `hkb.h5`). Needs `h5py`. `fermi_energy` (eV) defaults to the value of `info.json`. |
+| `load_deeptb_model(directory, *, fermi_energy=0.0)` | `lsquant.models.deeptb` | Model of a DeePTB export directory (`predicted_hamiltonians.h5`, optional `predicted_overlaps.h5`, `structure.json` or the `.dat` files of `to_pardiso`). Orthogonal without the overlap file. Refuses a spinful export, whose spin–orbit term DeePTB does not write. Needs `h5py`. |
+| `read_poscar(path)` | `lsquant.models.deeph` | `(lattice, elements, cartesian)` of a VASP 5 POSCAR, in Å. |
+| `assemble_blocks(pairs, norb, *, spinful, name="H")` | `lsquant.models.lcao` | `(r_int, M)` from `(R, i, j, block)` items, where `block` couples atom `i` in the home cell with atom `j` in cell `R`; a spinful block is `[[uu, ud], [du, dd]]` and is stored with interleaved spinors. |
+| `hermitian_pairs(r_int, mats)` | `lsquant.models.lcao` | Adds missing −R blocks as M(R)† and replaces each pair by (M(R) + M(−R)†)/2; returns the relative residual before the mean. |
+| `build_lcao_model(uc, positions, norb, r_int, hamiltonian, overlap=None, *, spinful, seed_name, metadata, fermi_energy=0.0, overlap_r_int=None)` | `lsquant.models.lcao` | `OrthogonalModel` without `overlap`, `SiestaModel` with it; removes H − E_F S and sets the attribute `spinful`, which `BlochMetricBasis` reads to refuse spin operators on a spinless model. |
+| `load_runfile_model(model, velocity_mode, *, phase=None)` | Model of a run-file `model` mapping for the metric executors (`siesta`, `openmx`, `wannier`, `paoflow`). |
+
+`lsquant.models.openmx` (not re-exported by `lsquant.models`):
+
+| Name | Meaning |
+|---|---|
+| `read_scfout(path)` | Read an OpenMX 3.9 scfout file (version 3) into a dictionary: atoms, orbitals per atom, neighbour pairs with lattice vectors, cell, positions, Hks, iHks, overlap, position matrix, chemical potential. Units of the file (Bohr, Hartree). |
+| `load_openmx_model(path, *, dipoles=False)` | `SiestaModel` of a non-collinear spin–orbit scfout file: H − μS in eV, S lifted to interleaved spinors, and with `dipoles=True` the connection A = D − (τ_j + R − τ_i) S/2 from OpenMX's row-centred position matrix D. H, S and A are folded Hermitian (`metadata["hermitian_fold_relative"]`). |
 
 ### Other functions
 

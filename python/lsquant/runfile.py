@@ -61,6 +61,7 @@ ALLOWED_MODEL_KEYS: frozenset[str] = frozenset(
     {
         "kind",
         "dir",
+        "file",
         "label",
         "seed",
         "operators",
@@ -387,15 +388,23 @@ def validate_runfile_dict(raw: Mapping[str, Any]) -> None:
     _check_keys("model", model, ALLOWED_MODEL_KEYS)
     kind = str(_get_or(model, "kind", "csr"))
     reference = raw.get("reference")
+    metric_kind = uses_metric_executor(model)
     if reference is not None and not isinstance(reference, bool):
         raise ValueError(f"Expected boolean for 'reference', got {type(reference).__name__}")
-    if reference is not None and kind != "siesta":
-        raise ValueError(f"Expected model.kind='siesta' when 'reference' is set, got {kind!r}")
-    if projection["kind"] != "none" and kind != "siesta":
-        raise ValueError(f"Expected model.kind='siesta' when projection is enabled, got {kind!r}")
-    if kind not in ("csr", "wannier", "siesta", "generator"):
+    metric_names = ", ".join(("siesta", "paoflow") + tuple(ML_MODEL_KINDS))
+    if reference is not None and not metric_kind:
+        raise ValueError(f"Expected a metric-executor model ({metric_names}, or wannier with "
+                         f"params.velocity_mode or params.spin) when 'reference' is set, got {kind!r}")
+    if projection["kind"] != "none" and not metric_kind:
+        raise ValueError(f"Expected a metric-executor model ({metric_names}, or wannier with "
+                         f"params.velocity_mode or params.spin) when projection is enabled, got {kind!r}")
+    known_kinds = ("csr", "wannier", "siesta", "generator", "paoflow") + tuple(ML_MODEL_KINDS)
+    if kind not in known_kinds:
         raise ValueError(
-            f"Unknown model.kind '{kind}'; expected 'csr', 'wannier', 'siesta', or 'generator'"
+            f"Unknown model.kind '{kind}'; expected one of {', '.join(repr(k) for k in known_kinds)}"
+    if kind not in ("csr", "wannier", "siesta", "generator", "paoflow", "openmx"):
+        raise ValueError(
+            f"Unknown model.kind '{kind}'; expected 'csr', 'wannier', 'siesta', 'openmx', 'paoflow', or 'generator'"
         )
     if kind == "csr":
         if model.get("hr_file"):
@@ -411,6 +420,20 @@ def validate_runfile_dict(raw: Mapping[str, Any]) -> None:
             raise ValueError(
                 "Run file with model.kind='wannier' requires 'dir' and 'seed'"
             )
+        if metric_kind:
+            _check_metric_params("wannier", model, ("bare", "berry_connection", "covariant"))
+            if (model.get("params") or {}).get("spin", "labels") not in ("labels", "exact"):
+                raise ValueError("model.params.spin must be 'labels' or 'exact'")
+    elif kind == "openmx":
+        if not model.get("file"):
+            raise ValueError("Run file with model.kind='openmx' requires 'file' (the .scfout file)")
+        _check_metric_params("openmx", model, ("bare", "berry_connection", "covariant"))
+    elif kind == "paoflow":
+        if not model.get("file"):
+            raise ValueError("Run file with model.kind='paoflow' requires 'file' (see write_paoflow_model)")
+        _check_metric_params("paoflow", model, ("bare", "berry_connection"))
+    elif kind in ML_MODEL_KINDS:
+        _check_ml_params(kind, model)
     elif kind == "siesta":
         if not model.get("dir") or not model.get("label"):
             raise ValueError("SIESTA model requires dir and label")
@@ -524,7 +547,7 @@ def validate_runfile_dict(raw: Mapping[str, Any]) -> None:
             raise ValueError(
                 f"Unknown metric.route '{rte}'; expected 'lowdin', 'generalised' or 'anticommutator'"
             )
-        if rte == "anticommutator" and kind != "siesta":
+        if rte == "anticommutator" and kind != "siesta":  # orthogonal models have S = 1
             raise ValueError("anticommutator metric is an explicitly approximate SIESTA route")
         app = str(_get_or(metric, "applier", "exact"))
         if app not in ("exact", "chebyshev", "ischo"):
@@ -951,6 +974,8 @@ class RunFile:
                 else None
             ),
         }
+        if raw_model.get("file") is not None:
+            model_cfg["file"] = _resolve_path(raw_model["file"])
 
         raw_basis = dict(raw.get("basis") or {})
         raw_dis = dict(raw_basis.get("disorder") or {})
@@ -1460,6 +1485,80 @@ def _execute_generator_runfile(
     raise ValueError(f"Unsupported generator '{gen_name}' (tutorial={tut})")
 
 
+
+def uses_metric_executor(model: Mapping[str, Any]) -> bool:
+    """True when the model runs through BlochMetricBasis (velocity modes, physical spin).
+
+    SIESTA, PAOFLOW and machine-learning models (``ML_MODEL_KINDS``) always
+    do. A Wannier90 model does when its
+    ``params`` set ``velocity_mode`` or ``spin``; without them it keeps the
+    original Wannier executor and its CSR and real-space bases.
+    """
+    kind = str(_get_or(model, "kind", "csr"))
+    params = model.get("params") or {}
+    if kind in ("siesta", "paoflow") or kind in ML_MODEL_KINDS:
+    if kind in ("siesta", "paoflow", "openmx"):
+        return True
+    return kind == "wannier" and isinstance(params, Mapping) and (
+        "velocity_mode" in params or "spin" in params or "fermi_energy" in params)
+
+
+def _check_metric_params(kind: str, model: Mapping[str, Any], modes: tuple[str, ...]) -> None:
+    """Validate params of an orthogonal model in the metric executor."""
+    params = model.get("params") or {}
+    if not isinstance(params, Mapping):
+        raise ValueError(f"model.params ({kind}) must be a JSON object")
+    _check_keys(f"model.params ({kind})", params, frozenset({
+        "velocity_mode", "spin", "fermi_energy", "oracle", "oracle_degeneracy_tolerance", "bloch_memory_mb"}))
+    if kind == "openmx" and ("spin" in params or "fermi_energy" in params):
+        raise ValueError("an OpenMX model carries its spinors and stores energies from the chemical "
+                         "potential; remove model.params.spin and model.params.fermi_energy")
+    if kind == "paoflow" and ("spin" in params or "fermi_energy" in params):
+        raise ValueError("a PAOFLOW model carries its own on-site spin and energies from E_F; "
+                         "remove model.params.spin and model.params.fermi_energy")
+    if params.get("velocity_mode", "berry_connection") not in modes:
+        raise ValueError(f"model.params.velocity_mode for {kind} must be one of {list(modes)}")
+    tolerance = float(params.get("oracle_degeneracy_tolerance", 1e-6))
+    if not np.isfinite(tolerance) or tolerance <= 0:
+        raise ValueError("oracle_degeneracy_tolerance must be positive and finite (eV)")
+
+
+#: Machine-learning Hamiltonians read by models/<kind>.py for the metric
+#: executors: kind -> (required model key, extra model.params keys).
+ML_MODEL_KINDS: dict[str, tuple[str, frozenset[str]]] = {
+    "deeph": ("dir", frozenset({"hamiltonian_file"})),
+    "deeptb": ("dir", frozenset()),
+}
+
+
+def _check_ml_params(kind: str, model: Mapping[str, Any]) -> None:
+    """Validate a machine-learning model: its path key and params.
+
+    These models carry no position matrix and no radial orbitals, so the
+    covariant velocity is refused. ``fermi_energy`` (eV) replaces the
+    reference energy the reader would otherwise use.
+    """
+    key, extra = ML_MODEL_KINDS[kind]
+    if not model.get(key):
+        raise ValueError(f"Run file with model.kind={kind!r} requires {key!r}")
+    params = model.get("params") or {}
+    if not isinstance(params, Mapping):
+        raise ValueError(f"model.params ({kind}) must be a JSON object")
+    _check_keys(f"model.params ({kind})", params, frozenset({
+        "velocity_mode", "fermi_energy", "oracle", "oracle_degeneracy_tolerance", "bloch_memory_mb"}) | extra)
+    if params.get("velocity_mode", "berry_connection") not in ("bare", "berry_connection"):
+        raise ValueError(f"model.params.velocity_mode for {kind} must be 'bare' or 'berry_connection' "
+                         "(no position matrix, so no 'covariant')")
+    if "fermi_energy" in params and not np.isfinite(float(params["fermi_energy"])):
+        raise ValueError("model.params.fermi_energy must be a finite number (eV)")
+    tolerance = float(params.get("oracle_degeneracy_tolerance", 1e-6))
+    if not np.isfinite(tolerance) or tolerance <= 0:
+        raise ValueError("oracle_degeneracy_tolerance must be positive and finite (eV)")
+    memory = float(params.get("bloch_memory_mb", 256.0))
+    if not np.isfinite(memory) or memory <= 0:
+        raise ValueError("bloch_memory_mb must be positive and finite (MiB)")
+
+
 def execute_runfile(
     runfile: RunFile | Mapping[str, Any] | str,
     *,
@@ -1478,6 +1577,20 @@ def execute_runfile(
         out_dir_override if out_dir_override is not None else rf.output["dir"]
     )
     kind = str(rf.model["kind"])
+    if (kind in ("wannier", "paoflow") or kind in ML_MODEL_KINDS) and uses_metric_executor(rf.model):
+    if kind in ("wannier", "paoflow", "openmx") and uses_metric_executor(rf.model):
+        if rf.basis["name"] == "real" or rf.basis["disorder"]["W"] != 0:
+            raise ValueError(f"model.kind={kind!r} with params.velocity_mode/spin runs in the "
+                             "clean bloch or eigen basis")
+        if kind != "openmx" and str(rf.metric["policy"]) == "orthogonal":
+            # S = 1: the exact Lowdin route of the metric executors is the orthogonal one.
+            # A non-orthogonal machine-learning model takes the same exact route with its S.
+            rf.metric.update(policy="nonorthogonal", route="lowdin", applier="exact")
+        if rf.projection["kind"] != "none":
+            from .projection.runfile import execute_projection_runfile
+            return execute_projection_runfile(rf, out_dir)
+        from .apps.stage6b_siesta import execute_siesta_runfile
+        return execute_siesta_runfile(rf, out_dir)
     if kind == "siesta":
         if rf.projection["kind"] != "none":
             from .projection.runfile import execute_projection_runfile
