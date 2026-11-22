@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
-"""Developer golden of the Wannier90 and PAOFLOW connectors (PdSe2 monolayer).
+"""Developer golden of the OpenMX, Wannier90 and PAOFLOW connectors (PdSe2 monolayer).
 
-Runs the spin Hall run files of a Wannier90 model (covariant velocity, exact
-spin) and of a PAOFLOW model through execute_runfile, and compares the KPM
-curve and the exact projected oracle with stored reference values.
+Runs the spin Hall run files of an OpenMX model (covariant velocity), a
+Wannier90 model (covariant velocity, exact spin) and a PAOFLOW model through
+execute_runfile, and compares the KPM curve and the exact projected oracle
+with stored reference values. The 12 x 12 mesh and 512 moments keep the run
+short: the values are a regression reference, not converged physics.
 
 The models are too large for the repository. Give their directory:
   PYTHONPATH=python:<core> python tests/dev/qe_connectors_check.py DATA_DIR
-DATA_DIR holds w90/ (pdse2_proj_hr.dat, _r.dat, .win, _centres.xyz, .spn,
-.eig, _u.mat, _u_dis.mat) and pao/pdse2_paoflow.npz (write_paoflow_model).
+DATA_DIR holds openmx/pdse2.scfout, w90/ (pdse2_proj_hr.dat, _r.dat, .win,
+_centres.xyz, .spn, .eig, _u.mat, _u_dis.mat) and pao/pdse2_paoflow.npz
+(write_paoflow_model).
 Without DATA_DIR, or with LSQUANT_QE_GOLDEN_DIR unset, the check is skipped.
 --write stores new reference values instead of comparing.
 
@@ -28,7 +31,7 @@ import numpy as np
 
 HERE = Path(__file__).resolve().parent
 REFERENCE = HERE.parent.parent / "goldens" / "qe_connectors" / "pdse2_reference.json"
-ENERGIES = [0.0, 1.21, 1.40]   # E - E_F (eV): trivial gap, topological gap, metal
+ENERGIES = [0.0, 1.21, 1.40]   # E - E_F (eV): trivial gap, near the QE topological gap, metal
 COMMON = {
     "basis": {"name": "eigen", "supercell": [12, 12, 1]},
     "metric": {"policy": "orthogonal"},
@@ -43,6 +46,8 @@ COMMON = {
 
 def models(data):
     return {
+        "openmx": {"kind": "openmx", "file": str(data / "openmx" / "pdse2.scfout"),
+                   "params": {"velocity_mode": "covariant", "oracle": True}},
         "wannier": {"kind": "wannier", "dir": str(data / "w90"), "seed": "pdse2_proj",
                     "params": {"velocity_mode": "covariant", "spin": "exact",
                                "fermi_energy": -1.3162, "oracle": True}},
@@ -54,6 +59,8 @@ def models(data):
 def run(name, model, out):
     from lsquant.runfile import execute_runfile
     rf = dict(COMMON, model=model)
+    if model["kind"] == "openmx":
+        rf["metric"] = {"policy": "nonorthogonal", "route": "lowdin", "applier": "exact"}
     rf["output"] = dict(COMMON["output"], dir=str(out / name))
     execute_runfile(rf)
     e, s = np.loadtxt(out / name / "word_0.dat").T
@@ -67,7 +74,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("data", nargs="?", default=os.environ.get("LSQUANT_QE_GOLDEN_DIR"))
     parser.add_argument("--write", action="store_true", help="store new reference values")
-    parser.add_argument("--only", choices=["wannier", "paoflow"])
+    parser.add_argument("--only", choices=["openmx", "wannier", "paoflow"])
     parser.add_argument("--tolerance", type=float, default=1e-3, help="absolute, e^2/h")
     args = parser.parse_args(argv)
     if not args.data or not Path(args.data).is_dir():
