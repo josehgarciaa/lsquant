@@ -128,8 +128,10 @@ Allowed keys in `model.params`:
 `model.kind = "openmx"` reads the `<System.Name>.scfout` file that OpenMX 3.9
 writes with `HS.fileout on` (`models/openmx.py`). It needs a non-collinear
 calculation with spin–orbit coupling and stops otherwise. The model is
-non-orthogonal and runs through the SIESTA executors with the SIESTA rules
-(`metric.policy = "nonorthogonal"`, the same basis names and words).
+non-orthogonal and runs through the clean and projection executors of SIESTA
+with their rules (`metric.policy = "nonorthogonal"`, the same words). Only
+`basis.name` `bloch` or `eigen` with `basis.disorder.W = 0` is accepted: the
+disordered executor and the `real` basis are SIESTA only.
 Energies are measured from the chemical potential stored in the file, so
 E_F = 0. `velocity_mode = "covariant"` uses the position matrix of the basis
 orbitals written in the same file. H, S and that position matrix are folded
