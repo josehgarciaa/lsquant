@@ -58,6 +58,13 @@ dimension is that of H, with zero spin off-diagonal elements. With
 :func:`~lsquant.models.siesta.midpoint_connection`); exact two-centre
 integrals give ``A(-R)^+ = A(R)``. Without it the orbitals sit on their
 atoms with no intra-atomic dipoles (``bare`` and ``berry_connection`` only).
+Checked on PdSe2 (ABACUS 3.10.1, PseudoDojo NC FR, Dojo-NC-FR DZP
+orbitals, 300 spinor orbitals): the eigenvalues of the model equal those
+ABACUS prints to 4e-4 meV at seven k points of the SCF mesh; the
+anti-Hermitian part of the connection is 1.6e-8 of its largest element; the
+exact covariant spin Hall plateau is 1.948 e^2/h (48x48 to 72x72), against
+1.979 (SIESTA) and 1.971 (OpenMX), and it is 0.005 in the trivial gap, where
+``berry_connection`` gives -0.23.
 The orbital order and the sign convention of ABACUS's real spherical
 harmonics do not matter here: H, S and r are in the same basis, and the spin
 operator is the Pauli matrix on the interleaved spin index.

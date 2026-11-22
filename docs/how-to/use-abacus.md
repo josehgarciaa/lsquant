@@ -123,4 +123,7 @@ e²/h with the Pauli matrix σ_z; divide by 2 for spin ħ/2. See
   with another code, measure energies from the valence-band maximum.
 - The cost grows with the number of bands per k-point: a DZP basis with
   spin–orbit coupling has 50 spinor orbitals per transition-metal or
-  chalcogen atom (300 for the six atoms of PdSe₂).
+  chalcogen atom (300 for the six atoms of PdSe₂). For that model, the exact
+  spin Hall conductivity took about 0.7 s per k-point on 8 threads, and its
+  plateau needed a 48 × 48 mesh: 24 × 24 gives a value 4 % too low.
+<!-- measured: PdSe2 DZP (300 bands), BlochMetricBasis covariant + JXSZ/VY per k, 48x48 in 1667 s on 8 threads (AMD EPYC 9374F, shared node); plateau 1.870 (24x24), 1.948 (48x48), 1.948 (60x60), 1.948 (72x72) -->
