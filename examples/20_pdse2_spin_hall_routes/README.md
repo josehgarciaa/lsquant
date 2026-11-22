@@ -30,12 +30,13 @@ units of $\hbar/2$.
 |---|---|---|
 | Functional | PBE, fully relativistic | PBE, fully relativistic |
 | Pseudopotentials | PSML (`siesta/` of example 8) | PAW, pslibrary 1.0.0: `Pd.rel-pbe-n-kjpaw_psl.1.0.0.UPF`, `Se.rel-pbe-dn-kjpaw_psl.1.0.0.UPF` |
-| Basis | DZP numerical orbitals, 220 spinor orbitals per cell | plane waves, 80 Ry (800 Ry density) |
+| Basis | DZP numerical orbitals, 220 spinor orbitals per cell | plane waves, 80 Ry (800 Ry for the charge density) |
 | Self-consistent k mesh | $12 \times 12 \times 1$ | $4 \times 4 \times 1$ |
 | Cell | $a = 5.750$ Å, $b = 5.920$ Å, 16.45 Å along $z$ | same |
 
-The geometry is that of wannier2sparse example 05. In the Quantum ESPRESSO
-inputs the slab is centred at $z = 0$: a slab at $z = c/2$ puts the Wannier
+The geometry is that of
+[wannier2sparse](https://github.com/adamecius/wannier2sparse) example 05. In
+the Quantum ESPRESSO inputs the slab is centred at $z = 0$: a slab at $z = c/2$ puts the Wannier
 functions across the boundary of the cell along $z$, and Wannier90 then returns
 spreads of about 100 Å$^2$.
 <!-- source: qe/scf.in; ../08_spin_hall_pdse2_monolayer/siesta/pdse2.fdf -->
@@ -46,7 +47,8 @@ mesh with 96 bands, an outer window from −3.5 to 3.0 eV and a frozen window fr
 −2.8 to 1.0 eV (absolute energies; $E_F = -1.316$ eV), with 1000
 disentanglement and 400 localisation iterations. The final spreads are
 12.6 Å$^2$ for the Pd functions, centred on the Pd atoms, and 10.9 Å$^2$ for
-the Se functions, centred near the middle of the Se–Se dimers. Kramers pairs of the model stay degenerate to 1.4 meV.
+the Se functions, centred near the middle of the Se–Se dimers. Kramers
+pairs of the model stay degenerate to 1.4 meV.
 <!-- source: qe/pdse2_proj.win; Wannier90 .wout of the run -->
 
 ## The routes
@@ -56,12 +58,16 @@ diagonalises $H(\mathbf k)$ and $S(\mathbf k)$ on a $24 \times 24$ mesh and
 evaluates the word `Tr[JXSZ delta(E-H) VY dG-(E)/dE]` with an exact trace,
 the `covariant` velocity and the `lowdin` metric. With `oracle = true` it also
 writes the exact occupied-band sum, `exact_shc.json`, with a 6 meV Gaussian.
+The rows marked "exact" in the table and in FIG. 1 are these occupied-band sums. The run also writes a KPM
+curve with 64 moments, which we do not use; the moment count is kept low
+because this run serves only the exact sum.
 
 **SIESTA, $[-3, 3]$ eV.** [`run_siesta_projected.json`](run_siesta_projected.json)
 adds `"projection": {"kind": "shift", "window": [-3, 3]}`: the states outside the
 window are moved to its nearest edge, so the expansion covers 6 eV instead of
-the full spectrum. It writes the KPM curve with 1024 moments and the exact
-result for the same projected states.
+the full spectrum. It writes the KPM curve with 1024 moments (Jackson kernel)
+and, as `word_0_oracle.json`, the exact occupied-band sum of the same projected
+states with a 6 meV Gaussian.
 
 **Wannier90 and LSQuant.** [`wannier_route.py`](wannier_route.py) reads the
 Wannier90 output and computes $\sigma^z_{xy}(E)$ on a $300 \times 300$ mesh with a
@@ -83,16 +89,26 @@ operator, and it gives a different plateau (see the result).
 **PAOFLOW.** [`paoflow/run_pao.py`](paoflow/run_pao.py) projects the Quantum
 ESPRESSO bands on the pseudo-atomic orbitals (92 bands above a projectability of
 0.90), interpolates on a $120 \times 120$ mesh and calls
-`spin_Hall(twoD=True, delta=0.006)` after `adaptive_smearing()`. We multiply its output by
-$4\pi$ to express it in $e^2/h$ with the Pauli $\sigma_z$.
+`spin_Hall(twoD=True, delta=0.006)` after `adaptive_smearing()`. PAOFLOW gives
+$\sigma^z_{xy}$ in units of $e^2/\hbar$ with the spin operator $\sigma_z/2$; the
+factor $4\pi$, $2\pi$ from $e^2/\hbar$ to $e^2/h$ and 2 from $\sigma_z/2$ to
+$\sigma_z$, converts it to $e^2/h$ with the Pauli $\sigma_z$.
+<!-- source: PAOFLOW 3.0.0, PAOFLOW.py:1476 (spin operator sP = 0.5 * Pauli);
+response/do_Hall.py:77 (spin current 0.5*(Sj dHk + dHk Sj)), :447 (Omega_n =
+-2 Im sum j_nm v_mn / dE^2, energies in eV, so Omega in bohr^2), :486 (sum over
+k divided by N_k), :96 (twoD: divided by the cell area in bohr^2, no other
+factor). The result is (1/(N_k A)) sum f Omega, i.e. sigma in units of e^2/hbar,
+since int d^2k/(2pi)^2 = 1/(N_k A). LSQuant: sigma = 2pi/(N_k A) sum f Omega with
+Pauli sigma_z, in e^2/h (docs/explanation/kubo-formulas.md). Ratio: 2pi * 2 = 4pi.
+The 3D branch, :98, applies e^2/hbar in SI and 1/omega, the same convention. -->
 
 ## The run
 
 The density-functional steps are the slow part. The figure and the table below
 are made from the curves in [`data/`](data/), so Step 4 runs without them.
 
-**Step 1: Quantum ESPRESSO and Wannier90.** Put the two pseudopotentials in
-`pseudo/`, next to `qe/`, as `Pd.UPF` and `Se.UPF`, then in `qe/`:
+**Step 1: Quantum ESPRESSO and Wannier90.** We put the two pseudopotentials in
+`pseudo/`, next to `qe/`, as `Pd.UPF` and `Se.UPF`, and run in `qe/`:
 
 ```bash
 mpirun -np 32 pw.x -nk 8 -in scf.in  > scf.out
@@ -102,7 +118,7 @@ mpirun -np 16 pw2wannier90.x -in pw2wan_spn.in > pw2wan_spn.out
 wannier90.x pdse2_proj
 ```
 
-**Step 2: the LSQuant routes.** From the repository root:
+**Step 2: the LSQuant routes.** We run from the repository root:
 
 ```bash
 python examples/20_pdse2_spin_hall_routes/wannier_route.py \
@@ -116,8 +132,8 @@ python -m lsquant run examples/20_pdse2_spin_hall_routes/run_siesta_projected.js
 centres) into the Wannier90 directory, then `wannier_covariant_spn.dat` and a
 `.json` with the gaps, $Z_2$ and the operator comparison.
 
-**Step 3: PAOFLOW.** Copy the directory `tmp/` written by the self-consistent
-run of Step 1 to `paoflow/tmp/`, then in `paoflow/`:
+**Step 3: PAOFLOW.** We copy the directory `tmp/` written by the
+self-consistent run of Step 1 to `paoflow/tmp/` and run in `paoflow/`:
 
 ```bash
 mpirun -np 32 pw.x -nk 8 -in nscf_pao.in > nscf_pao.out
@@ -125,7 +141,7 @@ projwfc.x -in projwfc.in > projwfc.out
 python run_pao.py
 ```
 
-**Step 4: the figure.**
+**Step 4: the figure.** We plot the curves of `data/`:
 
 ```bash
 python examples/20_pdse2_spin_hall_routes/plot.py
@@ -137,9 +153,16 @@ python examples/20_pdse2_spin_hall_routes/plot.py
 
 **FIG. 1.** $\sigma^z_{xy}(E)$ of pentagonal $\mathrm{PdSe_2}$, in $e^2/h$ with
 Pauli $\sigma_z$. (a) From $E_F - 0.5$ eV to $E_F + 2$ eV. (b) The two
-quantum spin Hall gaps. Dark grey: gap of the SIESTA electronic structure;
-light grey: gap of the Quantum ESPRESSO one, as reproduced by the Wannier90
-model.
+quantum spin Hall gaps. Black solid line: SIESTA, all states, exact
+occupied-band sum on a $24 \times 24$ mesh with a 6 meV Gaussian. Blue dashed
+line: SIESTA, states in $[-3, 3]$ eV, exact sum, same mesh and Gaussian.
+Orange dotted line: the same projected states, KPM with $M = 1024$ moments, the
+Jackson kernel and an exact trace. Green dash-dotted line: Quantum ESPRESSO
+bands, Wannier90 model, covariant velocity and spin projected from DFT,
+$300 \times 300$ mesh, 6 meV Gaussian. Pink dashed line: the same Quantum
+ESPRESSO bands, PAOFLOW 3.0, $120 \times 120$ mesh, adaptive smearing. Dark
+grey band: gap of the SIESTA electronic structure; light grey band: gap of the
+Quantum ESPRESSO one, as reproduced by the Wannier90 model.
 
 | Route | Gap with $Z_2 = 1$, $E - E_F$ (eV) | Plateau ($e^2/h$) | At $E_F$ ($e^2/h$) |
 |---|---|---|---|
@@ -169,10 +192,13 @@ this example does not separate those effects.
 Outside the gaps the curves differ. The band structures of the two codes are
 not the same, and the four routes use different k meshes and broadenings
 ($24 \times 24$ with a 6 meV Gaussian, $300 \times 300$ with a 6 meV Gaussian,
-$120 \times 120$ with adaptive smearing in PAOFLOW). We have not converged the curves in
-the bands, and the example compares only the plateaus.
+$120 \times 120$ with adaptive smearing in PAOFLOW). The Wannier90 model
+contains only the 12 bands of its windows and reproduces the DFT bands inside
+its frozen window, −1.5 to +2.3 eV around $E_F$; the Fermi-sea sum of the other
+routes also runs over all lower bands. We have not converged the curves in the
+bands, and the example compares only the plateaus.
 
-**The spin operator decides the Wannier90 plateau.** For the Wannier90 model,
+**The spin operator and the Wannier90 plateau.** For the Wannier90 model,
 `--compare-operators` evaluates the centre of the upper gap with three
 velocities and two spin operators:
 
@@ -184,13 +210,13 @@ velocities and two spin operators:
 
 With the projected spin, the covariant and Berry-connection velocities agree to
 0.1%, and both agree with PAOFLOW; the bare velocity is 6% lower. With the
-diagonal $\sigma_z$, every velocity gives about 1.5–1.6 $e^2/h$, 20% below the
-other routes.
+diagonal $\sigma_z$, the three velocities give 1.51 to 1.58 $e^2/h$; for the
+covariant velocity, 1.577 against 1.946 $e^2/h$ is 19% lower.
 <!-- source: data/wannier_covariant_spn.json, key operators_at_upper_gap -->
 
 The same inputs with the $4 \times 4$ non-self-consistent mesh and 10 + 10
-iterations of wannier2sparse example 05 give a Wannier90 model without a global
-gap near 1.2 eV (bands overlap by 13 meV) and with Kramers splittings up to
+iterations of [wannier2sparse](https://github.com/adamecius/wannier2sparse)
+example 05 give a Wannier90 model without a global gap near 1.2 eV (bands overlap by 13 meV) and with Kramers splittings up to
 24 meV. The denser mesh and the longer minimisation above remove both.
 
 ## Runtime

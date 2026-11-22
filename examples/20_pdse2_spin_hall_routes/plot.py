@@ -29,7 +29,7 @@ ROUTES = [  # file, label, gap used for the plateau, trace index, line style
     ("siesta_direct_exact.dat", "SIESTA, exact", GAP_SIESTA, 0, "-"),
     ("siesta_projected_exact.dat", "SIESTA, $[-3,3]$ eV, exact", GAP_SIESTA, 1, "--"),
     ("siesta_projected_kpm.dat", "SIESTA, $[-3,3]$ eV, KPM", GAP_SIESTA, 2, ":"),
-    ("wannier_covariant_spn.dat", "QE + Wannier90, LSQuant", GAP_QE, 3, "-"),
+    ("wannier_covariant_spn.dat", "QE + Wannier90, LSQuant", GAP_QE, 3, "-."),
     ("paoflow.dat", "QE + PAOFLOW", GAP_QE, 4, "--"),
 ]
 
