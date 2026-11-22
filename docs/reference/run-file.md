@@ -64,16 +64,16 @@ directory.
 
 | Key | Type | Allowed values | Default | Used by | Meaning |
 |---|---|---|---|---|---|
-| `kind` | string | `"csr"`, `"wannier"`, `"siesta"`, `"openmx"`, `"paoflow"`, `"generator"`, `"deeph"`, `"deeptb"`, `"abacus"` | `"csr"` | all | Input source. |
+| `kind` | string | `"csr"`, `"wannier"`, `"siesta"`, `"openmx"`, `"paoflow"`, `"generator"`, `"deeph"`, `"deeptb"`, `"hamgnn"`, `"abacus"` | `"csr"` | all | Input source. |
 | `dir` | path | — | `null` | `csr`, `wannier`, `siesta`, `deeph`, `deeptb`, `generator` (tutorials 3 and 4) | Directory that holds the model files. |
 | `label` | string | — | `null` | `csr`, `siesta` | File prefix: `<label>.HAM.CSR` (`csr`) or `<label>.fdf` (`siesta`). |
 | `seed` | string | — | `null` | `wannier` | Wannier90 seed: LSQuant reads `<seed>_hr.dat`, `<seed>.uc` and `<seed>.xyz`. |
-| `file` | path | — | `null` | `openmx`, `paoflow`, `abacus` | `openmx`: the `<System.Name>.scfout` file. `paoflow`: the model file written by `write_paoflow_model` (`.npz`). `abacus`: H(R) in the ABACUS sparse format. |
+| `file` | path | — | `null` | `openmx`, `paoflow`, `hamgnn`, `abacus` | `openmx`: the `<System.Name>.scfout` file. `paoflow`: the model file written by `write_paoflow_model` (`.npz`). `hamgnn`: the `.npz` of `write_hamgnn_model`. `abacus`: H(R) in the ABACUS sparse format. |
 | `operators` | list of strings | operator names | `null` | `csr` | Operators to load as `<label>.<OP>.CSR`. If absent, every `<label>.*.CSR` except `HAM` and `S` is loaded. A listed operator without a file is skipped, except with `numerics.operator = "atom_block"`. |
 | `csr_dir` | path | — | `null` | `wannier`, `basis.name = "real"` | Directory with a prebuilt supercell `<seed>.HAM.CSR` and its `wannier2sparse` receipt `<seed>.out`. LSQuant checks it against `seed` and `basis.supercell` before it loads anything. |
 | `name` | string | see [Generator models](#generator-models) | `null` | `generator` | Generator from the catalogue. |
 | `tutorial` | integer | `1`–`6` | from `name` | `generator` | Tutorial driver to run. Not validated; an unknown value fails at execution with `Unsupported generator`. |
-| `params` | object | depends on `kind` | `{}` | `siesta`, `openmx`, `wannier`, `paoflow`, `deeph`, `deeptb`, `abacus`, `generator` | Model parameters. See [SIESTA models](#siesta-models), [OpenMX models](#openmx-models), [Wannier90 and PAOFLOW models in the metric executors](#wannier90-and-paoflow-models-in-the-metric-executors), [Machine-learning Hamiltonians in the metric executors](#machine-learning-hamiltonians-in-the-metric-executors) and [Generator models](#generator-models). For `csr` the object is not checked and not used; for `wannier` it is checked only when it holds `velocity_mode`, `spin` or `fermi_energy`. |
+| `params` | object | depends on `kind` | `{}` | `siesta`, `openmx`, `wannier`, `paoflow`, `deeph`, `deeptb`, `hamgnn`, `abacus`, `generator` | Model parameters. See [SIESTA models](#siesta-models), [OpenMX models](#openmx-models), [Wannier90 and PAOFLOW models in the metric executors](#wannier90-and-paoflow-models-in-the-metric-executors), [Machine-learning Hamiltonians in the metric executors](#machine-learning-hamiltonians-in-the-metric-executors) and [Generator models](#generator-models). For `csr` the object is not checked and not used; for `wannier` it is checked only when it holds `velocity_mode`, `spin` or `fermi_energy`. |
 | `positions` | path or array | file of `x y z` lines, `.xyz`-like file, or `(N, 2)`/`(N, 3)` array | `null` | `csr` with `atom_block` | Orbital positions. |
 | `orbitals_per_atom` | integer | positive | `null` | `csr` with `atom_block` | Uniform number of orbitals per atom. Give this or `atom_map`, not both. Required with `hr_file`. |
 | `atom_map` | path or array | one integer per orbital | `null` | `csr` with `atom_block` | Atom index of every orbital. |
@@ -92,6 +92,7 @@ directory.
 | `paoflow` | `file` | `Run file with model.kind='paoflow' requires 'file' (see write_paoflow_model)` |
 | `deeph` | `dir` | `Run file with model.kind='deeph' requires 'dir'` |
 | `deeptb` | `dir` | `Run file with model.kind='deeptb' requires 'dir'` |
+| `hamgnn` | `file` | `Run file with model.kind='hamgnn' requires 'file'` |
 | `abacus` | `file`, `params.overlap_file`, `params.stru_file` | `Run file with model.kind='abacus' requires 'file'`; `model.params.overlap_file is required for model.kind='abacus' ...` |
 | `generator` | `name` | `Run file with model.kind='generator' requires 'name' from [...]` |
 
@@ -198,12 +199,13 @@ out. These runs need `basis.name` `bloch` or `eigen` and
 |---|---|---|---|
 | `deeph` | DeepH-pack, DeepH-E3, xDeepH, MACE-H | `dir`: the directory of one structure with the prediction, the overlap and the structure files | `models/deeph.py`, see [Use a DeepH-format model](../how-to/use-deeph.md) |
 | `deeptb` | DeePTB-SK, DeePTB-E3 (spinless) | `dir`: the directory written by `TBSystem.to_pardiso_json` or `dptb pdso` | `models/deeptb.py`, see [Use a DeePTB model](../how-to/use-deeptb.md) |
+| `hamgnn` | HamGNN (OpenMX, ABACUS and SIESTA/HONPAS bases) | `file`: the `.npz` of `write_hamgnn_model` (script `models/hamgnn.py`) | `models/hamgnn.py`, see [Use a HamGNN model](../how-to/use-hamgnn.md) |
 | `abacus` | NextHAM, and ABACUS itself | `file`: H(R) in the ABACUS sparse format (NextHAM `hr_tot`, ABACUS `hrs1_nao.csr`), text or binary | `models/abacus.py`, see [Use a NextHAM model](../how-to/use-nextham.md) |
 
 | Key | Kinds | Allowed values | Default | Meaning |
 |---|---|---|---|---|
 | `velocity_mode` | all | `"bare"`, `"berry_connection"` | `"berry_connection"` | As for SIESTA. There is no position matrix, so `"covariant"` is refused. |
-| `fermi_energy` | all | number (eV) | `deeph`: `fermi_level` or `fermi_energy_eV` of `info.json`, else `0.0`; `deeptb`: `0.0`; `abacus`: `0.0` | Removed as H(R) − E_F S(R). Energies, `projection.window` and `reconstruction.fermi_energies` are then measured from it. |
+| `fermi_energy` | all | number (eV) | `deeph`: `fermi_level` or `fermi_energy_eV` of `info.json`, else `0.0`; `deeptb`: `0.0`; `hamgnn`: `0.0`; `abacus`: `0.0` | Removed as H(R) − E_F S(R). Energies, `projection.window` and `reconstruction.fermi_energies` are then measured from it. |
 | `hamiltonian_file` | `deeph` | file name in `dir` | `hamiltonians_pred.h5` or `hamiltonian_pred.h5`, then the DFT file `hamiltonians.h5` or `hamiltonian.h5` | The H(R) file to read. |
 | `overlap_file`, `stru_file` | `abacus` | paths | required | S(R) in the ABACUS sparse format and the ABACUS `STRU` of the same structure. Resolved like `model.file`. |
 | `orbital_dir` | `abacus` | path | directory of `stru_file` | Where the numerical orbital files named in `STRU` are. They give the orbitals per atom and their angular momenta. |
@@ -336,7 +338,7 @@ there only changes the default window to `"eigen"`, which `csr` refuses.
 ## `projection`
 
 Spectral projection works with the models of the metric executors: `siesta`,
-`openmx`, `paoflow`, the machine-learning kinds (`deeph`, `deeptb`, `abacus`), and `wannier` with
+`openmx`, `paoflow`, the machine-learning kinds (`deeph`, `deeptb`, `hamgnn`, `abacus`), and `wannier` with
 `params.velocity_mode`, `spin` or `fermi_energy`. For any other model the validator stops with
 `Expected a metric-executor model (...) when projection is enabled`.
 

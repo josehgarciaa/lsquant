@@ -1529,6 +1529,7 @@ def _check_metric_params(kind: str, model: Mapping[str, Any], modes: tuple[str, 
 ML_MODEL_KINDS: dict[str, tuple[str, frozenset[str]]] = {
     "deeph": ("dir", frozenset({"hamiltonian_file"})),
     "deeptb": ("dir", frozenset()),
+    "hamgnn": ("file", frozenset()),
     "abacus": ("file", frozenset({"overlap_file", "stru_file", "orbital_dir", "orbitals_per_element"})),
 }
 

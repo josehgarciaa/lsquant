@@ -424,6 +424,9 @@ def load_runfile_model(model, velocity_mode, *, phase=None):
     if kind == "deeptb":
         from .deeptb import load_deeptb_model
         return load_deeptb_model(model["dir"], fermi_energy=float(params.get("fermi_energy", 0.0)))
+    if kind == "hamgnn":
+        from .hamgnn import load_hamgnn_model
+        return load_hamgnn_model(model["file"], fermi_energy=float(params.get("fermi_energy", 0.0)))
     if kind == "abacus":
         from .abacus import load_abacus_model
         return load_abacus_model(model["file"], overlap_file=params["overlap_file"], stru_file=params["stru_file"],
