@@ -424,6 +424,9 @@ def load_runfile_model(model, velocity_mode, *, phase=None):
     if kind == "deeptb":
         from .deeptb import load_deeptb_model
         return load_deeptb_model(model["dir"], fermi_energy=float(params.get("fermi_energy", 0.0)))
+    if kind == "hamgnn":
+        from .hamgnn import load_hamgnn_model
+        return load_hamgnn_model(model["file"], fermi_energy=float(params.get("fermi_energy", 0.0)))
     if kind == "threebodytb":
         from .threebodytb import load_threebodytb_model
         return load_threebodytb_model(model["file"], fermi_energy=_optional_float(params.get("fermi_energy")),
