@@ -570,7 +570,9 @@ class WannierModel:
                 raise ValueError("covariant Wannier velocity requires a model directory with _r.dat")
             if not hasattr(self, "_position_cache"):
                 seed = os.path.join(self.model_dir, self.seed_name)
-                self._position_cache = read_position_matrix(seed + "_r.dat", seed + "_hr.dat")
+                # The dataclass is frozen; the cache is set once, like a lazy field.
+                object.__setattr__(self, "_position_cache",
+                                   read_position_matrix(seed + "_r.dat", seed + "_hr.dat"))
             r, positions = self._position_cache
             # Here A is the FULL position matrix, so use cell derivatives;
             # atom dressing changes representation but adds no centre term.
