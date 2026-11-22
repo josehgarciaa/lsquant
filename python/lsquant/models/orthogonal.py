@@ -388,12 +388,14 @@ def load_paoflow_model(path):
 
 
 def load_runfile_model(model, velocity_mode, *, phase=None):
-    """Load the model of a run file for the metric executors (SIESTA, Wannier90, PAOFLOW).
+    """Load the model of a run file for the metric executors (SIESTA, Wannier90, PAOFLOW,
+    and the machine-learning Hamiltonians of ``runfile.ML_MODEL_KINDS``).
 
     ``model`` is the run-file ``model`` mapping. SIESTA keeps its own reader;
     a Wannier90 model reads ``_r.dat`` for the covariant velocity and the
     spin set by ``params.spin``; a PAOFLOW model has no position matrix, so
-    ``covariant`` is refused.
+    ``covariant`` is refused. A machine-learning model is read by its module
+    (``models/deeph.py`` for ``deeph``) and has no position matrix either.
     """
     kind = model["kind"]
     params = model.get("params") or {}
@@ -412,4 +414,12 @@ def load_runfile_model(model, velocity_mode, *, phase=None):
         if velocity_mode == "covariant":
             raise ValueError("a PAOFLOW model has no position matrix; use bare or berry_connection")
         return load_paoflow_model(model["file"])
+    if kind == "deeph":
+        from .deeph import load_deeph_model
+        return load_deeph_model(model["dir"], hamiltonian_file=params.get("hamiltonian_file"),
+                                fermi_energy=_optional_float(params.get("fermi_energy")))
     raise ValueError(f"model.kind {kind!r} has no metric executor")
+
+
+def _optional_float(value):
+    return None if value is None else float(value)

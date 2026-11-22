@@ -1282,6 +1282,9 @@ class BlochMetricBasis:
         if key == "S":
             return self.sk_array
         if key not in self._blocks:
+            if (key in ("SX", "SY", "SZ") or (len(key) == 4 and key[0] == "J" and key[2] == "S")) \
+                    and getattr(self.model, "spinful", True) is False:
+                raise ValueError(f"{key} needs spin, but the model is spinless (no spinor components)")
             if key in ("VX", "VY", "VZ"):
                 axis = "XYZ".index(key[1])
                 dH, dS = self.model.derivatives(self.k_points, axis, cell=self.velocity_mode == "bare")

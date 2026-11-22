@@ -64,8 +64,8 @@ directory.
 
 | Key | Type | Allowed values | Default | Used by | Meaning |
 |---|---|---|---|---|---|
-| `kind` | string | `"csr"`, `"wannier"`, `"siesta"`, `"paoflow"`, `"generator"` | `"csr"` | all | Input source. |
-| `dir` | path | — | `null` | `csr`, `wannier`, `siesta`, `generator` (tutorials 3 and 4) | Directory that holds the model files. |
+| `kind` | string | `"csr"`, `"wannier"`, `"siesta"`, `"paoflow"`, `"generator"`, `"deeph"` | `"csr"` | all | Input source. |
+| `dir` | path | — | `null` | `csr`, `wannier`, `siesta`, `deeph`, `generator` (tutorials 3 and 4) | Directory that holds the model files. |
 | `label` | string | — | `null` | `csr`, `siesta` | File prefix: `<label>.HAM.CSR` (`csr`) or `<label>.fdf` (`siesta`). |
 | `seed` | string | — | `null` | `wannier` | Wannier90 seed: LSQuant reads `<seed>_hr.dat`, `<seed>.uc` and `<seed>.xyz`. |
 | `file` | path | — | `null` | `paoflow` | Model file written by `write_paoflow_model` (`.npz`). |
@@ -73,7 +73,7 @@ directory.
 | `csr_dir` | path | — | `null` | `wannier`, `basis.name = "real"` | Directory with a prebuilt supercell `<seed>.HAM.CSR` and its `wannier2sparse` receipt `<seed>.out`. LSQuant checks it against `seed` and `basis.supercell` before it loads anything. |
 | `name` | string | see [Generator models](#generator-models) | `null` | `generator` | Generator from the catalogue. |
 | `tutorial` | integer | `1`–`6` | from `name` | `generator` | Tutorial driver to run. Not validated; an unknown value fails at execution with `Unsupported generator`. |
-| `params` | object | depends on `kind` | `{}` | `siesta`, `wannier`, `paoflow`, `generator` | Model parameters. See [SIESTA models](#siesta-models), [Wannier90 and PAOFLOW models in the metric executors](#wannier90-and-paoflow-models-in-the-metric-executors) and [Generator models](#generator-models). For `csr` the object is not checked and not used; for `wannier` it is checked only when it holds `velocity_mode`, `spin` or `fermi_energy`. |
+| `params` | object | depends on `kind` | `{}` | `siesta`, `wannier`, `paoflow`, `deeph`, `generator` | Model parameters. See [SIESTA models](#siesta-models), [Wannier90 and PAOFLOW models in the metric executors](#wannier90-and-paoflow-models-in-the-metric-executors), [Machine-learning Hamiltonians in the metric executors](#machine-learning-hamiltonians-in-the-metric-executors) and [Generator models](#generator-models). For `csr` the object is not checked and not used; for `wannier` it is checked only when it holds `velocity_mode`, `spin` or `fermi_energy`. |
 | `positions` | path or array | file of `x y z` lines, `.xyz`-like file, or `(N, 2)`/`(N, 3)` array | `null` | `csr` with `atom_block` | Orbital positions. |
 | `orbitals_per_atom` | integer | positive | `null` | `csr` with `atom_block` | Uniform number of orbitals per atom. Give this or `atom_map`, not both. Required with `hr_file`. |
 | `atom_map` | path or array | one integer per orbital | `null` | `csr` with `atom_block` | Atom index of every orbital. |
@@ -89,6 +89,7 @@ directory.
 | `wannier` | `dir` and `seed` | `Run file with model.kind='wannier' requires 'dir' and 'seed'` |
 | `siesta` | `dir` and `label` | `SIESTA model requires dir and label` |
 | `paoflow` | `file` | `Run file with model.kind='paoflow' requires 'file' (see write_paoflow_model)` |
+| `deeph` | `dir` | `Run file with model.kind='deeph' requires 'dir'` |
 | `generator` | `name` | `Run file with model.kind='generator' requires 'name' from [...]` |
 
 For `csr`, the executor also needs `<dir>/<label>.HAM.CSR` and, when
@@ -159,6 +160,33 @@ write_paoflow_model(paoflow, "pdse2_paoflow.npz")
 PAOFLOW has no position matrix, so `velocity_mode = "covariant"` is refused;
 `berry_connection` is the velocity of PAOFLOW's `gradient_and_momenta`. `spin`
 and `fermi_energy` are refused for `paoflow`.
+
+### Machine-learning Hamiltonians in the metric executors
+
+Machine-learning models of the DFT Hamiltonian run through the clean or the
+projection executor of SIESTA, like `paoflow`. Each kind has a reader in
+`python/lsquant/models/` that converts the Fourier sign, the units (eV, Å),
+the orbital positions and the spinor order of its code. A non-orthogonal
+model (with S(R)) takes the exact Löwdin route; `metric.policy` can be left
+out. These runs need `basis.name` `bloch` or `eigen` and
+`basis.disorder.W = 0`.
+
+| `kind` | Codes | Path key | Reader |
+|---|---|---|---|
+| `deeph` | DeepH-pack, DeepH-E3, xDeepH, MACE-H | `dir`: the directory of one structure with the prediction, the overlap and the structure files | `models/deeph.py`, see [Use a DeepH-format model](../how-to/use-deeph.md) |
+
+| Key | Kinds | Allowed values | Default | Meaning |
+|---|---|---|---|---|
+| `velocity_mode` | all | `"bare"`, `"berry_connection"` | `"berry_connection"` | As for SIESTA. There is no position matrix, so `"covariant"` is refused. |
+| `fermi_energy` | all | number (eV) | `deeph`: `fermi_level` or `fermi_energy_eV` of `info.json`, else `0.0` | Removed as H(R) − E_F S(R). Energies, `projection.window` and `reconstruction.fermi_energies` are then measured from it. |
+| `hamiltonian_file` | `deeph` | file name in `dir` | `hamiltonians_pred.h5` or `hamiltonian_pred.h5`, then the DFT file `hamiltonians.h5` or `hamiltonian.h5` | The H(R) file to read. |
+| `oracle`, `oracle_degeneracy_tolerance`, `bloch_memory_mb` | all | as for SIESTA | as for SIESTA | As in [SIESTA models](#siesta-models). |
+
+LSQuant makes H(R) Hermitian as the mean of H(R) and H(−R)† and writes the
+largest difference, relative to the largest element, to `basis.json` as
+`hamiltonian_hermiticity_residual`; above 10⁻³ it warns. A model without
+spin–orbit coupling has no spin operator: the words with `SX`, `SY`, `SZ` or
+`JXSZ` stop with `... needs spin, but the model is spinless`.
 
 ### Generator models
 
@@ -280,8 +308,8 @@ there only changes the default window to `"eigen"`, which `csr` refuses.
 ## `projection`
 
 Spectral projection works with the models of the metric executors: `siesta`,
-`paoflow`, and `wannier` with `params.velocity_mode`, `spin` or
-`fermi_energy`. For any other model the validator stops with
+`paoflow`, the machine-learning kinds (`deeph`), and `wannier` with
+`params.velocity_mode`, `spin` or `fermi_energy`. For any other model the validator stops with
 `Expected a metric-executor model (...) when projection is enabled`.
 
 | Key | Type | Allowed values | Default | Meaning |
