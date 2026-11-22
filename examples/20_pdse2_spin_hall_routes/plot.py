@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Plot sigma^z_xy(E) of pentagonal PdSe2 from four routes on one energy axis.
+"""Plot sigma^z_xy of pentagonal PdSe2 from every route on one energy axis.
 
 Usage (from the repository root):
     python examples/20_pdse2_spin_hall_routes/plot.py [data_dir]
 
-Reads the curve files in data_dir (default: data/ next to this script), writes
-fig_routes.png next to this script and prints the plateau of each route in
-its own quantum spin Hall gap and the value at E_F.
+Reads the curve files in data_dir (default: data/ next to this script) and
+writes fig_routes.png next to this script. Energies are measured from the
+valence-band maximum (VBM) of each electronic structure.
 """
 import os
 import sys
@@ -20,52 +20,59 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(_HERE))
 import prl_style as prl
 
-# Quantum spin Hall gap of each electronic structure, E - E_F in eV (global gap on
-# the k mesh of the exact routes: 24 x 24 for SIESTA, 300 x 300 for Wannier90).
-GAP_SIESTA = (1.014, 1.090)
-GAP_QE = (1.188, 1.233)
+# VBM of each electronic structure, E - E_F in eV. In an insulator each code
+# places its Fermi level at a different point of the gap (smearing, electronic
+# temperature), so the VBM is the common origin. Computed from the bands of
+# each model on a 60 x 60 mesh refined around the maximum.
+VBM = {"siesta": -0.972, "qe": -0.822, "paoflow": -0.827, "openmx": -0.606}
+# Topological gap of each electronic structure, E - E_VBM in eV.
+GAP = {"siesta": (1.986, 2.061), "qe": (2.009, 2.055), "openmx": (1.918, 1.982)}
 
-ROUTES = [  # file, label, gap used for the plateau, trace index, line style
-    ("siesta_direct_exact.dat", "SIESTA, exact", GAP_SIESTA, 0, "-"),
-    ("siesta_projected_exact.dat", "SIESTA, $[-3,3]$ eV, exact", GAP_SIESTA, 1, "--"),
-    ("siesta_projected_kpm.dat", "SIESTA, $[-3,3]$ eV, KPM", GAP_SIESTA, 2, ":"),
-    ("wannier_covariant_spn.dat", "QE + Wannier90, LSQuant", GAP_QE, 3, "-."),
-    ("paoflow.dat", "QE + PAOFLOW", GAP_QE, 4, "--"),
+SMOOTH = [  # file, origin, label, trace index, line style
+    ("siesta_projected_kpm.dat", "siesta", "SIESTA, KPM", 0, "-"),
+    ("wannier_kpm.dat", "qe", "QE + Wannier90, KPM", 3, "-"),
+    ("paoflow_kpm.dat", "paoflow", "QE + PAOFLOW, KPM", 4, "--"),
+    ("openmx_exact.dat", "openmx", "OpenMX, exact ($\\eta$ = 6 meV)", 1, "-."),
+]
+# paoflow.dat is PAOFLOW's spin_Hall output times 4 pi: PAOFLOW gives e^2/hbar
+# with the spin operator sigma/2 (PAOFLOW.py: sP = 0.5 Pauli; do_Hall.py: sum
+# over k divided by N_k and by the cell area), and 2 pi * 2 converts it to e^2/h
+# with the Pauli sigma_z.
+EXACT = [  # exact curves, shown in the gap panel only
+    ("siesta_direct_exact.dat", "siesta", "SIESTA, exact", 0, ":"),
+    ("wannier_covariant_spn.dat", "qe", "QE + Wannier90, exact", 3, ":"),
+    ("paoflow.dat", "paoflow", "PAOFLOW's own", 4, ":"),
 ]
 
 
 def main(data=os.path.join(_HERE, "data")):
-    curves = {f: np.loadtxt(os.path.join(data, f)) for f, *_ in ROUTES}
-    print(f"{'route':32s} {'gap (eV)':>13s} {'plateau':>8s} {'spread':>7s} {'at E_F':>7s}")
-    for f, label, gap, _, _ in ROUTES:
-        E, s = curves[f].T
-        # The central half of the gap avoids the broadened band edges.
-        lo, hi = gap[0] + 0.25 * (gap[1] - gap[0]), gap[1] - 0.25 * (gap[1] - gap[0])
-        m = (E >= lo) & (E <= hi)
-        print(f"{label:32s} {gap[0]:.3f}-{gap[1]:.3f} {s[m].mean():8.4f} {np.ptp(s[m]):7.4f} "
-              f"{np.interp(0.0, E, s):7.4f}")
-
-    prl.use("web", height=6.0)
-    fig, (ax1, ax2) = plt.subplots(2, 1)
-    for ax, xlim in ((ax1, (-0.5, 2.0)), (ax2, (0.95, 1.32))):
-        ax.axvspan(*GAP_SIESTA, color="0.88", lw=0)
-        ax.axvspan(*GAP_QE, color="0.94", lw=0)
-        for f, label, _, i, ls in ROUTES:
-            E, s = curves[f].T
-            style = prl.trace(i)
-            style["linestyle"] = ls
-            if f == "paoflow.dat":
-                # Loose dashes and sparse markers keep it apart from the other dashed line.
-                style.update(linestyle=(0, (6, 5)), marker="v", markevery=50, markersize=4)
-            ax.plot(E, s, label=label, **style)
+    load = lambda f: np.loadtxt(os.path.join(data, f)).T
+    prl.use("web", height=4.2)
+    fig, (ax1, ax2) = plt.subplots(1, 2, gridspec_kw=dict(width_ratios=[1.6, 1]))
+    for ax in (ax1, ax2):
+        ax.axvspan(*GAP["siesta"], color="0.88", lw=0)
+        ax.axvspan(*GAP["qe"], color="0.80", lw=0, alpha=0.5)
+        ax.axvspan(*GAP["openmx"], color="0.94", lw=0)
         ax.axhline(0.0, color="0.6", lw=0.5)
-        ax.set_xlim(*xlim)
-        ax.set_ylabel(r"$\sigma^z_{xy}$ ($e^2/h$)")
-    ax2.set_ylim(1.2, 2.3)
+    for f, origin, label, i, ls in SMOOTH:
+        E, s = load(f)
+        style = dict(prl.trace(i), linestyle=ls)
+        ax1.plot(E - VBM[origin], s, label=label, **style)
+        ax2.plot(E - VBM[origin], s, **style)
+    for f, origin, label, i, ls in EXACT:
+        E, s = load(f)
+        ax2.plot(E - VBM[origin], s, label=label, **dict(prl.trace(i), linestyle=ls, linewidth=1.0))
+    ax1.set_xlim(0.0, 2.6)
+    ax1.set_ylim(-1.5, 2.6)
+    ax2.set_xlim(1.88, 2.12)
+    ax2.set_ylim(1.4, 2.15)
+    ax1.set_ylabel(r"$\sigma^z_{xy}$ ($e^2/h$)")
+    for ax in (ax1, ax2):
+        ax.set_xlabel(r"$E - E_\mathrm{VBM}$ (eV)")
     ax1.legend(loc="upper left", fontsize="small")
-    ax2.set_xlabel(r"$E - E_F$ (eV)")
+    ax2.legend(loc="lower center", fontsize="x-small")
     prl.panel(ax1, "(a)", loc="lower right")
-    prl.panel(ax2, "(b)", loc="lower left")
+    prl.panel(ax2, "(b)", loc="upper left")
     prl.save(fig, os.path.join(_HERE, "fig_routes"))
 
 
