@@ -427,6 +427,10 @@ def load_runfile_model(model, velocity_mode, *, phase=None):
     if kind == "hamgnn":
         from .hamgnn import load_hamgnn_model
         return load_hamgnn_model(model["file"], fermi_energy=float(params.get("fermi_energy", 0.0)))
+    if kind == "threebodytb":
+        from .threebodytb import load_threebodytb_model
+        return load_threebodytb_model(model["file"], fermi_energy=_optional_float(params.get("fermi_energy")),
+                                      orbitals_per_element=params.get("orbitals_per_element"))
     raise ValueError(f"model.kind {kind!r} has no metric executor")
 
 

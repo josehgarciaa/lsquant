@@ -1525,6 +1525,7 @@ ML_MODEL_KINDS: dict[str, tuple[str, frozenset[str]]] = {
     "deeph": ("dir", frozenset({"hamiltonian_file"})),
     "deeptb": ("dir", frozenset()),
     "hamgnn": ("file", frozenset()),
+    "threebodytb": ("file", frozenset({"orbitals_per_element"})),
 }
 
 
@@ -1554,6 +1555,10 @@ def _check_ml_params(kind: str, model: Mapping[str, Any]) -> None:
     memory = float(params.get("bloch_memory_mb", 256.0))
     if not np.isfinite(memory) or memory <= 0:
         raise ValueError("bloch_memory_mb must be positive and finite (MiB)")
+    per_element = params.get("orbitals_per_element")
+    if per_element is not None and (not isinstance(per_element, Mapping) or not all(
+            isinstance(v, int) and not isinstance(v, bool) and v > 0 for v in per_element.values())):
+        raise ValueError("model.params.orbitals_per_element must map element symbols to positive integers")
 
 
 def execute_runfile(

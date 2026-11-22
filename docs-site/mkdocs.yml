@@ -89,6 +89,7 @@ nav:
       - Use a DeepH-format model: docs/how-to/use-deeph.md
       - Use a DeePTB model: docs/how-to/use-deeptb.md
       - Use a HamGNN model: docs/how-to/use-hamgnn.md
+      - Use a ThreeBodyTB model: docs/how-to/use-threebodytb.md
       - Run on a cluster: docs/how-to/run-on-a-cluster.md
       - Connect an AI assistant: docs/how-to/mcp-server.md
   - Background:

@@ -30,6 +30,7 @@ The quantities you can compute depend on where the Hamiltonian comes from:
 | PAOFLOW model file (`paoflow`) | yes | no | no | yes | no |
 | DeepH-pack, DeepH-E3, xDeepH, MACE-H prediction (`deeph`) | yes | no | no | yes, with spin–orbit coupling | no |
 | HamGNN prediction, exported with `hamgnn.py` (`hamgnn`) | yes | no | no | yes, with spin–orbit coupling | no |
+| ThreeBodyTB `write_tb_crys` file (`threebodytb`) | yes | no | no | no (no spin–orbit coupling) | no |
 | DeePTB export (`deeptb`) | yes | no | no | no (the export has no spin–orbit term) | no |
 | Sparse-matrix files (`csr`) | yes, also projected | yes | yes | yes¹ | yes |
 | Model generators of examples 01–06 (`generator`) | yes | yes | yes | not documented | yes |
@@ -40,6 +41,7 @@ The quantities you can compute depend on where the Hamiltonian comes from:
 <!-- source, deeph row: models/deeph.py through the SIESTA clean and projection executors (runfile.py ML_MODEL_KINDS, uses_metric_executor), which accept only Tr[delta(E-H)] and Tr[JXSZ delta(E-H) VY dG-(E)/dE]; a spinless model refuses spin words (bases.py); docs/how-to/use-deeph.md -->
 <!-- source, deeptb row: models/deeptb.py through the same executors; DeePTB's to_pardiso export holds spinless blocks only (dptb/postprocess/unified/system.py, feature_to_block), so spinful exports are refused and spin words fail on the spinless model; docs/how-to/use-deeptb.md -->
 <!-- source, hamgnn row: models/hamgnn.py through the SIESTA clean and projection executors (runfile.py ML_MODEL_KINDS, uses_metric_executor), which accept only Tr[delta(E-H)] and Tr[JXSZ delta(E-H) VY dG-(E)/dE]; a spinless model refuses spin words (bases.py); docs/how-to/use-hamgnn.md -->
+<!-- source, threebodytb row: models/threebodytb.py through the SIESTA clean and projection executors (runfile.py ML_MODEL_KINDS), which accept only Tr[delta(E-H)] and Tr[JXSZ delta(E-H) VY dG-(E)/dE]; ThreeBodyTB has no spin-orbit coupling, so the spin Hall word has no physical content and a spinless file refuses spin words (bases.py); docs/how-to/use-threebodytb.md -->
 <!-- source, csr row: projected DOS examples/15_spatial_operators/run_layer_dos.json; sigma_xx and sigma_xy examples/03_haldane_hall/run_haldane.json (greenwood, bastin) and examples/13_bastin_sea_surface; time-dependent examples/04 run_spin.json and examples/15 run_msd.json; spin Hall through reconstruct: docs/reference/run-file.md, known limitation "shc in csr and wannier runs" (runfile.py:1714, 2228, 2307, 2438) -->
 <!-- source, generator row: make_chain (tutorial 1, DOS), make_haldane (tutorial 3, kubo_bastin and kubo_greenwood in python/lsquant/apps/tutorial03.py:28-31, 255), make_square (tutorial 5, sigma_xx, examples/05 README), make_disordered_chain, make_chain_mag, make_ey/make_rashba (tutorials 2, 4, 6, time-dependent); docs/reference/run-file.md#generator-models -->
 
