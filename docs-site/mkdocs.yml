@@ -86,6 +86,7 @@ nav:
       - Use an OpenMX calculation: docs/how-to/use-openmx.md
       - Use a Wannier90 model: docs/how-to/use-wannier90.md
       - Use a PAOFLOW model: docs/how-to/use-paoflow.md
+      - Use a DeepH-format model: docs/how-to/use-deeph.md
       - Run on a cluster: docs/how-to/run-on-a-cluster.md
       - Connect an AI assistant: docs/how-to/mcp-server.md
   - Background:
