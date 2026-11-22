@@ -4,8 +4,7 @@ LSQuant computes transport and spectral properties of a tight-binding model.
 It does not run the electronic-structure calculation: you run SIESTA, OpenMX,
 Quantum ESPRESSO + Wannier90, PAOFLOW or a machine-learning Hamiltonian code,
 turn on the outputs LSQuant reads, and give LSQuant the result in a run file.
-The model is yours; LSQuant checks only that its files are complete and
-consistent.
+LSQuant checks only that the files are complete and consistent.
 
 Every source follows the same three steps:
 
@@ -31,11 +30,10 @@ python -m lsquant inspect run.json   # check the run file
 python -m lsquant run run.json       # compute
 ```
 
-All sources go through the same executor: the same velocity modes, spin
-operators, spectral projection, kernel polynomial method and exact check. A
-machine-learning model has no position matrix, so its velocity is `bare` or
-`berry_connection`, and a model without spin–orbit coupling has no spin
-operator. LSQuant computes transport only; the quality of a predicted
-Hamiltonian is yours to check against DFT.
-The quantities they give are listed in the
+All sources use the same velocity modes, spin operators, spectral projection
+and exact check. A machine-learning model has no position matrix, so its
+velocity is `bare` or `berry_connection`, and a model without spin–orbit
+coupling has no spin operator. LSQuant computes transport only; checking a
+predicted Hamiltonian against DFT is up to you. The quantities each source
+gives are listed in the
 [README](../../README.md#quantities-by-model-source).

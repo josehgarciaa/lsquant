@@ -4,6 +4,9 @@ p.read_atomic_proj_QE()
 p.projectability(pthr=0.90)
 p.pao_hamiltonian()
 p.write_Hamiltonian("pdse2_pao_hamiltonian.dat")
+# The model for LSQuant: H(R), orbital positions and spin (model.kind "paoflow").
+from lsquant.models.orthogonal import write_paoflow_model
+write_paoflow_model(p, "pdse2_paoflow.npz")
 p.interpolated_hamiltonian(nfft1=120, nfft2=120, nfft3=1)
 p.pao_eigh()
 p.gradient_and_momenta()
