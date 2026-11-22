@@ -37,6 +37,18 @@ HamGNN conventions, read in its sources (``DFT_interfaces/openmx/band_cal.py``,
   are those with a non-zero diagonal of the on-site overlap ``Son``
   (normalized atomic orbitals have ``S_ii = 1``; padding has 0); HamGNN's
   own tables (``basis_def``) can be passed instead.
+- Spin-flip blocks with spin-orbit coupling: HamGNN does not store the
+  Hermitian completion. Its graphs (``graph_data_gen.py``: real ``ud`` and
+  ``du`` both ``Hks[2]``, imaginary ``du = -(Hks[3] + iHks[2])``) and its
+  Uni-HamGNN output (``hamgnn_output.py``, ``so3`` basis: ``ud = xi L_y +
+  i xi L_x``, ``du = xi L_y - i xi L_x`` with antisymmetric ``xi L``) both
+  satisfy ``du = -ud^+`` on every bond, so ``[[uu, ud], [du, dd]]`` is not
+  Hermitian. HamGNN's ``band_cal.py`` never sees this: ``torch.linalg.eigh``
+  reads the lower triangle, which (S being spin-diagonal) holds only ``du``.
+  The reader does the same: it keeps ``du`` and rebuilds
+  ``ud(R) = du(-R)^+``. Flipping the sign of both spin-flip blocks would be a
+  spin rotation (bands and ``SZ`` unchanged, ``SX`` and ``SY`` reversed), so
+  the choice follows HamGNN's own band structure.
 - Overlap: ``Son`` and ``Soff`` are spinless; a spinful model uses
   ``S tensor I_2``. A graph without ``Son`` gives an orthogonal model; its
   real orbitals must then come from ``basis_def``.
@@ -270,6 +282,23 @@ def _blocks(entries, cells, atom_i, atom_j, sizes):
         raise ValueError("the export file has more entries than its blocks")
 
 
+def _complete_spin_flip(r_int, hamiltonian):
+    """Rebuild the up-down blocks as ``ud(R) = du(-R)^+`` (interleaved spinors).
+
+    See the module docstring: HamGNN's spin-flip blocks obey ``du = -ud^+``,
+    and its band code uses ``du``. Every ``R`` needs its ``-R`` (HamGNN stores
+    both directions of every bond).
+    """
+    lookup = {tuple(r): n for n, r in enumerate(np.asarray(r_int, int))}
+    out = np.array(hamiltonian, complex)
+    for n, r in enumerate(np.asarray(r_int, int)):
+        partner = lookup.get(tuple(-r))
+        if partner is None:
+            raise ValueError(f"H(R) has R = {tuple(r)} but not -R; the spin-flip blocks cannot be completed")
+        out[n, 0::2, 1::2] = hamiltonian[partner][1::2, 0::2].conj().T
+    return out
+
+
 def load_hamgnn_model(path, *, fermi_energy=0.0):
     """Read a file of :func:`write_hamgnn_model` as an LSQuant model.
 
@@ -301,6 +330,8 @@ def load_hamgnn_model(path, *, fermi_energy=0.0):
     h_pairs = ((R, i, j, b * HARTREE_EV)
                for R, i, j, b in _blocks(data["hamiltonian"], cells, atom_i, atom_j, h_sizes))
     r_int, hamiltonian = assemble_blocks(h_pairs, norb, spinful=spinful, name="H")
+    if spin == "soc":
+        hamiltonian = _complete_spin_flip(r_int, hamiltonian)
     s_r_int = overlap = None
     if "overlap" in data:
         s_r_int, overlap = assemble_blocks(_blocks(data["overlap"], cells, atom_i, atom_j, norb), norb,

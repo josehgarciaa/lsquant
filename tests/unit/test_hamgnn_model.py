@@ -101,9 +101,18 @@ def _graph(edges, son, soff):
                            Son=son.reshape(2, -1), Soff=soff.reshape(len(edges), -1))
 
 
+def _hamgnn_convention(blocks):
+    """HamGNN stores the up-down block as -ud (so du = -ud^+), see models/hamgnn.py."""
+    out = np.array(blocks)
+    out[:, :NAO, NAO:] *= -1
+    return out
+
+
 def _flat(on, off, spin):
     """The prediction rows of one structure in HamGNN's output layout."""
     blocks = np.concatenate([on, off])
+    if spin == "soc":
+        blocks = _hamgnn_convention(blocks)
     if spin == "none":
         return blocks.real.reshape(len(blocks), -1)
     if spin == "collinear":
