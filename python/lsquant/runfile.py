@@ -1530,6 +1530,7 @@ ML_MODEL_KINDS: dict[str, tuple[str, frozenset[str]]] = {
     "deeph": ("dir", frozenset({"hamiltonian_file"})),
     "deeptb": ("dir", frozenset()),
     "hamgnn": ("file", frozenset()),
+    "threebodytb": ("file", frozenset({"orbitals_per_element"})),
     "abacus": ("file", frozenset({"overlap_file", "stru_file", "orbital_dir", "orbitals_per_element"})),
 }
 
