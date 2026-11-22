@@ -547,7 +547,14 @@ for `model.kind = "wannier"` with `params.velocity_mode`, `spin` or
 | `load_wannier_metric_model(model_dir, seed, *, spin="labels", positions=None, fermi_energy=0.0)` | `OrthogonalModel` of a Wannier90 run. `spin = "exact"` uses `WannierSpin`. `positions=None` reads `<seed>_r.dat` if present. `fermi_energy` (eV) is subtracted from H(R = 0). |
 | `write_paoflow_model(paoflow, path)` | Call in a PAOFLOW script after `pao_hamiltonian()`. Writes an `.npz` with H(R) (stored as H(−R), because PAOFLOW sums with e^{−ik·R}; on an even FFT grid the Nyquist block is split between +n/2 and −n/2 to keep H(k) Hermitian), the orbital positions from PAOFLOW's `Dnm`, and twice PAOFLOW's on-site spin operator `Sj` (Pauli units). Energies stay measured from the DFT Fermi energy. |
 | `load_paoflow_model(path)` | `OrthogonalModel` of that file, with its on-site spin and no position matrix. |
-| `load_runfile_model(model, velocity_mode, *, phase=None)` | Model of a run-file `model` mapping for the metric executors (`siesta`, `wannier`, `paoflow`). |
+| `load_runfile_model(model, velocity_mode, *, phase=None)` | Model of a run-file `model` mapping for the metric executors (`siesta`, `openmx`, `wannier`, `paoflow`). |
+
+`lsquant.models.openmx` (not re-exported by `lsquant.models`):
+
+| Name | Meaning |
+|---|---|
+| `read_scfout(path)` | Read an OpenMX 3.9 scfout file (version 3) into a dictionary: atoms, orbitals per atom, neighbour pairs with lattice vectors, cell, positions, Hks, iHks, overlap, position matrix, chemical potential. Units of the file (Bohr, Hartree). |
+| `load_openmx_model(path, *, dipoles=False)` | `SiestaModel` of a non-collinear spin–orbit scfout file: H − μS in eV, S lifted to interleaved spinors, and with `dipoles=True` the connection A = D − (τ_j + R − τ_i) S/2 from OpenMX's row-centred position matrix D. H, S and A are folded Hermitian (`metadata["hermitian_fold_relative"]`). |
 
 ### Other functions
 

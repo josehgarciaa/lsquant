@@ -83,6 +83,7 @@ nav:
       - Run a calculation: docs/how-to/run-lsquant.md
       - Bring a model to LSQuant: docs/how-to/bring-a-model.md
       - Use a SIESTA calculation: docs/how-to/use-siesta.md
+      - Use an OpenMX calculation: docs/how-to/use-openmx.md
       - Use a Wannier90 model: docs/how-to/use-wannier90.md
       - Use a PAOFLOW model: docs/how-to/use-paoflow.md
       - Run on a cluster: docs/how-to/run-on-a-cluster.md

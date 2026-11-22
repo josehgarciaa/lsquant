@@ -397,9 +397,9 @@ def validate_runfile_dict(raw: Mapping[str, Any]) -> None:
     if projection["kind"] != "none" and not metric_kind:
         raise ValueError(f"Expected a metric-executor model (siesta, paoflow, or wannier with "
                          f"params.velocity_mode or params.spin) when projection is enabled, got {kind!r}")
-    if kind not in ("csr", "wannier", "siesta", "generator", "paoflow"):
+    if kind not in ("csr", "wannier", "siesta", "generator", "paoflow", "openmx"):
         raise ValueError(
-            f"Unknown model.kind '{kind}'; expected 'csr', 'wannier', 'siesta', 'paoflow', or 'generator'"
+            f"Unknown model.kind '{kind}'; expected 'csr', 'wannier', 'siesta', 'openmx', 'paoflow', or 'generator'"
         )
     if kind == "csr":
         if model.get("hr_file"):
@@ -419,6 +419,10 @@ def validate_runfile_dict(raw: Mapping[str, Any]) -> None:
             _check_metric_params("wannier", model, ("bare", "berry_connection", "covariant"))
             if (model.get("params") or {}).get("spin", "labels") not in ("labels", "exact"):
                 raise ValueError("model.params.spin must be 'labels' or 'exact'")
+    elif kind == "openmx":
+        if not model.get("file"):
+            raise ValueError("Run file with model.kind='openmx' requires 'file' (the .scfout file)")
+        _check_metric_params("openmx", model, ("bare", "berry_connection", "covariant"))
     elif kind == "paoflow":
         if not model.get("file"):
             raise ValueError("Run file with model.kind='paoflow' requires 'file' (see write_paoflow_model)")
@@ -1484,7 +1488,7 @@ def uses_metric_executor(model: Mapping[str, Any]) -> bool:
     """
     kind = str(_get_or(model, "kind", "csr"))
     params = model.get("params") or {}
-    if kind in ("siesta", "paoflow"):
+    if kind in ("siesta", "paoflow", "openmx"):
         return True
     return kind == "wannier" and isinstance(params, Mapping) and (
         "velocity_mode" in params or "spin" in params or "fermi_energy" in params)
@@ -1497,6 +1501,9 @@ def _check_metric_params(kind: str, model: Mapping[str, Any], modes: tuple[str, 
         raise ValueError(f"model.params ({kind}) must be a JSON object")
     _check_keys(f"model.params ({kind})", params, frozenset({
         "velocity_mode", "spin", "fermi_energy", "oracle", "oracle_degeneracy_tolerance", "bloch_memory_mb"}))
+    if kind == "openmx" and ("spin" in params or "fermi_energy" in params):
+        raise ValueError("an OpenMX model carries its spinors and stores energies from the chemical "
+                         "potential; remove model.params.spin and model.params.fermi_energy")
     if kind == "paoflow" and ("spin" in params or "fermi_energy" in params):
         raise ValueError("a PAOFLOW model carries its own on-site spin and energies from E_F; "
                          "remove model.params.spin and model.params.fermi_energy")
@@ -1525,11 +1532,11 @@ def execute_runfile(
         out_dir_override if out_dir_override is not None else rf.output["dir"]
     )
     kind = str(rf.model["kind"])
-    if kind in ("wannier", "paoflow") and uses_metric_executor(rf.model):
+    if kind in ("wannier", "paoflow", "openmx") and uses_metric_executor(rf.model):
         if rf.basis["name"] == "real" or rf.basis["disorder"]["W"] != 0:
             raise ValueError(f"model.kind={kind!r} with params.velocity_mode/spin runs in the "
                              "clean bloch or eigen basis")
-        if str(rf.metric["policy"]) == "orthogonal":
+        if kind != "openmx" and str(rf.metric["policy"]) == "orthogonal":
             # S = 1: the exact Lowdin route of the metric executors is the orthogonal one.
             rf.metric.update(policy="nonorthogonal", route="lowdin", applier="exact")
         if rf.projection["kind"] != "none":
