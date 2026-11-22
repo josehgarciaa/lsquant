@@ -81,6 +81,7 @@ nav:
           - Scalar and magnetic disorder: examples/disorder_kinds/README.md
   - How-to:
       - Run a calculation: docs/how-to/run-lsquant.md
+      - Bring a model to LSQuant: docs/how-to/bring-a-model.md
       - Use a SIESTA calculation: docs/how-to/use-siesta.md
       - Use a Wannier90 model: docs/how-to/use-wannier90.md
       - Use a PAOFLOW model: docs/how-to/use-paoflow.md
