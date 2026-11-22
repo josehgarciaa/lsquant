@@ -10,8 +10,8 @@ Every source follows the same three steps:
 
 1. **Turn on** the outputs LSQuant reads in your code.
 2. **Transfer** the model: for SIESTA, Wannier90 and the DeepH format LSQuant
-   reads the files of the run directly; for PAOFLOW one call in the PAOFLOW
-   script writes a file.
+   reads the files of the run directly; for PAOFLOW and DeePTB one call in a
+   Python script writes the files.
 3. **Run** LSQuant with a run file whose `model.kind` names the source.
 
 | Source | 1. Turn on | 2. Transfer | 3. `model` in the run file | Guide |
@@ -20,6 +20,7 @@ Every source follows the same three steps:
 | Quantum ESPRESSO + Wannier90 | in `<seed>.win`: `write_hr`, `write_xyz`, `write_rmn`, `write_u_matrices`; in `pw2wannier90.x`: `write_spn` | nothing: LSQuant reads the Wannier90 directory and writes `<seed>.uc` and `<seed>.xyz` on the first load | `"kind": "wannier"`, `"dir"`, `"seed"`, `params.velocity_mode`, `params.spin`, `params.fermi_energy` | [Use a Wannier90 model](use-wannier90.md) |
 | Quantum ESPRESSO + PAOFLOW | `projwfc.x` with `lwrite_overlaps = .true.` | `write_paoflow_model(p, "model.npz")` at the end of the PAOFLOW script | `"kind": "paoflow"`, `"file"` | [Use a PAOFLOW model](use-paoflow.md) |
 | DeepH-pack, DeepH-E3, xDeepH, MACE-H | inference with the prediction written next to the overlap and structure files | nothing: LSQuant reads `hamiltonians_pred.h5` (or `hamiltonian_pred.h5`), the overlap and the structure files | `"kind": "deeph"`, `"dir"`, `params.fermi_energy` | [Use a DeepH-format model](use-deeph.md) |
+| DeePTB (SK and E3, spinless) | a trained model and a structure | `TBSystem(...).to_pardiso_json("dir")` or `dptb pdso` | `"kind": "deeptb"`, `"dir"`, `params.fermi_energy` | [Use a DeePTB model](use-deeptb.md) |
 
 For every source, step 3 is the same:
 

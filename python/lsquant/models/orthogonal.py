@@ -395,7 +395,7 @@ def load_runfile_model(model, velocity_mode, *, phase=None):
     a Wannier90 model reads ``_r.dat`` for the covariant velocity and the
     spin set by ``params.spin``; a PAOFLOW model has no position matrix, so
     ``covariant`` is refused. A machine-learning model is read by its module
-    (``models/deeph.py`` for ``deeph``) and has no position matrix either.
+    (``models/<kind>.py``) and has no position matrix either.
     """
     kind = model["kind"]
     params = model.get("params") or {}
@@ -418,6 +418,9 @@ def load_runfile_model(model, velocity_mode, *, phase=None):
         from .deeph import load_deeph_model
         return load_deeph_model(model["dir"], hamiltonian_file=params.get("hamiltonian_file"),
                                 fermi_energy=_optional_float(params.get("fermi_energy")))
+    if kind == "deeptb":
+        from .deeptb import load_deeptb_model
+        return load_deeptb_model(model["dir"], fermi_energy=float(params.get("fermi_energy", 0.0)))
     raise ValueError(f"model.kind {kind!r} has no metric executor")
 
 
