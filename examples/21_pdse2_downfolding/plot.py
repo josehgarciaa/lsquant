@@ -44,6 +44,9 @@ def main():
     for path, origin, label, i, ls in CURVES:
         E, s = np.loadtxt(path).T
         style = dict(prl.trace(i), linestyle=ls)
+        if "reduced12" in path:
+            # Thin line with circles: apart from the full SIESTA curve it overlaps.
+            style.update(linewidth=0.9, marker="o", markevery=12, markersize=3.5, markerfacecolor="none")
         ax1.plot(E - VBM[origin], s, label=label, **style)
         ax2.plot(E - VBM[origin], s, **style)
     ax1.set_xlim(0.0, 2.6)

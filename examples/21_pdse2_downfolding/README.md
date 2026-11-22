@@ -36,17 +36,20 @@ The three runs differ only in the `projection` section:
 | `run_siesta_projected.json` | `{"kind": "shift", "window": [-3, 3]}` | 220 orbitals; states outside the window moved to its edges |
 | `run_siesta_reduced12.json` | `{"kind": "orthogonal", "window": [-1.77, 3.17]}` | 12 orthonormal orbitals spanning the 12 bands inside the window |
 
+Window energies are in eV from E_F, the energy origin of the SIESTA files.
+
 The `orthogonal` projection needs a window that holds the same number of
-bands at every k point. For PdSe₂ the 12 bands from −1.75 to 2.05 eV are
-separated from the bands below by 56 meV and from the bands above by 2.2 eV;
-the window edges lie in those two gaps. See
+bands at every k point. For PdSe₂ the 12 bands from −1.75 to 2.05 eV (from
+E_F) are separated from the bands below by 56 meV and from the bands above by
+2.2 eV; the window edges lie in those two gaps. See
 [`projection`](../../docs/reference/run-file.md#projection) in the run-file
 reference.
 
 ## Step 2: the Wannier90 and PAOFLOW models
 
-Run steps 1, 2 and 4 of [example 20](../20_pdse2_spin_hall_routes/README.md)
-for `run_wannier_kpm.json` and `run_paoflow_kpm.json`.
+Run steps 1 and 2 of [example 20](../20_pdse2_spin_hall_routes/README.md),
+then the `run_wannier_kpm.json` and `run_paoflow_kpm.json` lines of its
+step 4.
 
 ## Step 3: the figure
 
@@ -58,14 +61,19 @@ It writes `fig_downfolding.png`.
 
 ## Runtime
 
-On an AMD EPYC 9374F:
+Total wall time of each run on an AMD EPYC 9374F:
 
-| Run | Wall time |
-|---|---|
-| `run_siesta_reduced12.json`, 16 threads | 15 min, plus 58 min once for the orbital dipoles of the covariant velocity |
-| `run_siesta_projected.json`, 16 threads | 3 h 10 min |
-| `run_wannier_kpm.json`, 8 threads | 5 min |
-| `run_paoflow_kpm.json`, 8 threads | 2 h 30 min |
+| Run | Threads | Wall time |
+|---|---|---|
+| `run_siesta_reduced12.json` | 16 | 1 h 17 min, of which 58 min for the orbital dipoles of the covariant velocity |
+| `run_siesta_projected.json` | 16 | 3 h 10 min |
+| `run_wannier_kpm.json` | 8 | 5 min |
+| `run_paoflow_kpm.json` | 8 | 2 h 30 min |
+
+The orbital dipoles are cached in a `.lsquant-cache` directory after the first SIESTA run
+with the covariant velocity, and later runs on the same SIESTA files reuse
+them. The cost of the Chebyshev expansion grows with the number of bands per
+k point: 220 for the window run, 12 for the reduced model.
 
 ## Files
 
