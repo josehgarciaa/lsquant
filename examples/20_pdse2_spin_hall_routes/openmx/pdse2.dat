@@ -1,0 +1,46 @@
+System.CurrrentDirectory    ./
+System.Name                 pdse2
+DATA.PATH                   /path/to/openmx/DFT_DATA19
+level.of.stdout             1
+level.of.fileout            1
+
+Species.Number              2
+<Definition.of.Atomic.Species
+ Pd   Pd7.0-s3p2d2   Pd_PBE19
+ Se   Se7.0-s3p2d2   Se_PBE19
+Definition.of.Atomic.Species>
+
+Atoms.Number                6
+Atoms.SpeciesAndCoordinates.Unit   Ang
+<Atoms.SpeciesAndCoordinates
+ 1 Pd 2.8752303408 5.9199349579 8.2253699393  8.0 8.0  0.0 0.0 0.0 0.0 0 off
+ 2 Pd 5.7504606650 2.9599674717 8.2253699353  8.0 8.0  0.0 0.0 0.0 0.0 0 off
+ 3 Se 0.6341168942 0.7084520231 7.4779217190  3.0 3.0  0.0 0.0 0.0 0.0 0 off
+ 4 Se 3.5093472325 2.2515154512 8.9728181620  3.0 3.0  0.0 0.0 0.0 0.0 0 off
+ 5 Se 5.1163437707 5.2114829246 8.9728181579  3.0 3.0  0.0 0.0 0.0 0.0 0 off
+ 6 Se 2.2411134371 3.6684194970 7.4779217203  3.0 3.0  0.0 0.0 0.0 0.0 0 off
+Atoms.SpeciesAndCoordinates>
+Atoms.UnitVectors.Unit      Ang
+<Atoms.UnitVectors
+ 5.75046066952370 0.0 0.0
+ 0.0 5.91993495884138 0.0
+ 0.0 0.0 16.45073988400000
+Atoms.UnitVectors>
+
+scf.XcType                  GGA-PBE
+scf.SpinPolarization        NC
+scf.SpinOrbit.Coupling      on
+scf.ElectronicTemperature   300.0
+scf.energycutoff            300.0
+scf.maxIter                 300
+scf.EigenvalueSolver        Band
+scf.Kgrid                   12 12 1
+scf.Mixing.Type             rmm-diisk
+scf.Init.Mixing.Weight      0.05
+scf.Min.Mixing.Weight       0.001
+scf.Max.Mixing.Weight       0.30
+scf.Mixing.History          30
+scf.Mixing.StartPulay       8
+scf.criterion               1.0e-9
+HS.fileout                  on
+MD.Type                     Nomd
