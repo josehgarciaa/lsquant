@@ -159,9 +159,9 @@ line: SIESTA, states in $[-3, 3]$ eV, exact sum, same mesh and Gaussian.
 Orange dotted line: the same projected states, KPM with $M = 1024$ moments, the
 Jackson kernel and an exact trace. Green dash-dotted line: Quantum ESPRESSO
 bands, Wannier90 model, covariant velocity and spin projected from DFT,
-$300 \times 300$ mesh, 6 meV Gaussian. Pink dashed line: the same Quantum
-ESPRESSO bands, PAOFLOW 3.0, $120 \times 120$ mesh, adaptive smearing. Dark
-grey band: gap of the SIESTA electronic structure; light grey band: gap of the
+$300 \times 300$ mesh, 6 meV Gaussian. Pink loosely dashed line with
+triangles: the same Quantum ESPRESSO bands, PAOFLOW 3.0, $120 \times 120$
+mesh, adaptive smearing. Dark grey band: gap of the SIESTA electronic structure; light grey band: gap of the
 Quantum ESPRESSO one, as reproduced by the Wannier90 model.
 
 | Route | Gap with $Z_2 = 1$, $E - E_F$ (eV) | Plateau ($e^2/h$) | At $E_F$ ($e^2/h$) |

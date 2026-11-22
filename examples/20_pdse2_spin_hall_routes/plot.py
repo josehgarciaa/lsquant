@@ -54,6 +54,9 @@ def main(data=os.path.join(_HERE, "data")):
             E, s = curves[f].T
             style = prl.trace(i)
             style["linestyle"] = ls
+            if f == "paoflow.dat":
+                # Loose dashes and sparse markers keep it apart from the other dashed line.
+                style.update(linestyle=(0, (6, 5)), marker="v", markevery=50, markersize=4)
             ax.plot(E, s, label=label, **style)
         ax.axhline(0.0, color="0.6", lw=0.5)
         ax.set_xlim(*xlim)
