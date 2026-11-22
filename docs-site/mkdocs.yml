@@ -78,6 +78,7 @@ nav:
           - An AI assistant through MCP: examples/18_mcp_session/README.md
           - One model, five observables: examples/19_observable_words/README.md
           - One spin Hall plateau, four codes: examples/20_pdse2_spin_hall_routes/PAGE.md
+          - Downfolding, 220 orbitals or 12: examples/21_pdse2_downfolding/PAGE.md
           - Scalar and magnetic disorder: examples/disorder_kinds/README.md
   - How-to:
       - Run a calculation: docs/how-to/run-lsquant.md

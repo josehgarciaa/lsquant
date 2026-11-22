@@ -1,0 +1,16 @@
+{
+  "model": {
+    "kind": "siesta",
+    "dir": "examples/08_spin_hall_pdse2_monolayer/siesta",
+    "label": "pdse2",
+    "params": {"velocity_mode": "covariant", "oracle": true, "oracle_degeneracy_tolerance": 1e-06}
+  },
+  "basis": {"name": "eigen", "supercell": [24, 24, 1]},
+  "metric": {"policy": "nonorthogonal", "route": "lowdin", "applier": "exact"},
+  "projection": {"kind": "orthogonal", "window": [-1.77, 3.17]},
+  "word": "Tr[JXSZ delta(E-H) VY dG-(E)/dE]",
+  "expansion": {"moments": 1024, "window": "eigen", "trace": "exact", "seed": 12345},
+  "reconstruction": {"kernel": "jackson", "formulas": ["shc"], "broadening_meV": 6.0,
+                     "energy_grid": [-0.5, 2.0, 1251]},
+  "output": {"legacy_layout": false, "write_chebmom": true, "dir": "out/pdse2_reduced12"}
+}
