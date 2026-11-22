@@ -77,7 +77,7 @@ nav:
           - LSQuant from Python: examples/17_python_api/README.md
           - An AI assistant through MCP: examples/18_mcp_session/README.md
           - One model, five observables: examples/19_observable_words/README.md
-          - One spin Hall plateau, four routes: examples/20_pdse2_spin_hall_routes/README.md
+          - One spin Hall plateau, four codes: examples/20_pdse2_spin_hall_routes/PAGE.md
           - Scalar and magnetic disorder: examples/disorder_kinds/README.md
   - How-to:
       - Run a calculation: docs/how-to/run-lsquant.md

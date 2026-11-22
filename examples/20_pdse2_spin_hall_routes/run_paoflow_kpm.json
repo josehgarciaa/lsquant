@@ -1,0 +1,51 @@
+{
+  "model": {
+    "kind": "paoflow",
+    "file": "examples/20_pdse2_spin_hall_routes/paoflow/pdse2_paoflow.npz",
+    "params": {
+      "velocity_mode": "berry_connection",
+      "oracle": true
+    }
+  },
+  "basis": {
+    "name": "eigen",
+    "supercell": [
+      24,
+      24,
+      1
+    ]
+  },
+  "metric": {
+    "policy": "orthogonal"
+  },
+  "projection": {
+    "kind": "shift",
+    "window": [
+      -3,
+      3
+    ]
+  },
+  "word": "Tr[JXSZ delta(E-H) VY dG-(E)/dE]",
+  "expansion": {
+    "moments": 1024,
+    "window": "eigen",
+    "trace": "exact",
+    "seed": 12345
+  },
+  "reconstruction": {
+    "kernel": "jackson",
+    "formulas": [
+      "shc"
+    ],
+    "broadening_meV": 6.0,
+    "energy_grid": [
+      -0.5,
+      2.0,
+      1251
+    ]
+  },
+  "output": {
+    "legacy_layout": false,
+    "dir": "out/pdse2_routes_paoflow"
+  }
+}
