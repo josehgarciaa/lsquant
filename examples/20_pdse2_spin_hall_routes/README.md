@@ -1,9 +1,8 @@
 # Example 20: set up and run the PdSe₂ spin Hall routes
 
-This page tells you how to reproduce the spin Hall conductivity of pentagonal
-PdSe₂ from SIESTA, OpenMX, Quantum ESPRESSO + Wannier90 and Quantum ESPRESSO +
-PAOFLOW. The result and what it shows are on the
-[example page](PAGE.md).
+Reproduce the spin Hall conductivity of pentagonal PdSe₂ from SIESTA, OpenMX,
+Quantum ESPRESSO + Wannier90 and Quantum ESPRESSO + PAOFLOW. The
+[example page](PAGE.md) shows the result.
 
 The figure is made from the curves in [`data/`](data/), so you can plot it
 without running anything (step 6). Steps 1 to 5 regenerate those curves.
@@ -17,8 +16,8 @@ without running anything (step 6). Steps 1 to 5 regenerate those curves.
 - About 1 h on 32 cores for the DFT steps; see [Runtime](#runtime).
 <!-- tested with Quantum ESPRESSO 7.4, Wannier90 3.1.0, PAOFLOW 3.0.0, OpenMX 3.9.9 -->
 
-The four connectors are described in
-[Bring a model to LSQuant](../../docs/how-to/bring-a-model.md).
+[Bring a model to LSQuant](../../docs/how-to/bring-a-model.md) describes how
+to load each of these models.
 
 ## The inputs
 
@@ -27,12 +26,12 @@ The four connectors are described in
 | Files | `siesta/` of [example 8](../08_spin_hall_pdse2_monolayer/README.md) | [`openmx/pdse2.dat`](openmx/pdse2.dat) | [`qe/`](qe/), [`paoflow/`](paoflow/) |
 | Functional | PBE + SOC | PBE + SOC | PBE + SOC |
 | Pseudopotentials | PseudoDojo NC FR (psml) | DFT_DATA19 `*_PBE19` | pslibrary 1.0.0 PAW: `Pd.rel-pbe-n-kjpaw_psl.1.0.0.UPF`, `Se.rel-pbe-dn-kjpaw_psl.1.0.0.UPF` |
-| Basis | DZP | Pd7.0-s3p2d2, Se7.0-s3p2d2 | plane waves, 80 / 800 Ry |
+| Basis | DZP | Pd7.0-s3p2d2, Se7.0-s3p2d2 | plane waves, 80 Ry (wave functions), 800 Ry (charge density) |
 | Self-consistent k mesh | 12 × 12 | 12 × 12 | 4 × 4 |
 
 All three use the same cell ($a = 5.750$ Å, $b = 5.920$ Å, 16.45 Å along $z$)
 and atomic positions.
-<!-- Geometry of wannier2sparse example 05. In the QE inputs the slab sits at
+<!-- Geometry of wannier2sparse example 05. In the QE inputs the slab is at
 z = 0: at z = c/2 the Wannier functions cross the cell boundary along z and
 Wannier90 returns spreads of about 100 A^2. Wannier model: 12 spinor functions
 (Pd dx2-y2, Se pz), nscf 12x12 with 96 bands, outer window -3.5..3.0 eV, frozen
@@ -84,7 +83,8 @@ Set `DATA.PATH` in `openmx/pdse2.dat` to your DFT_DATA19 directory. In
 mpirun -np 32 openmx pdse2.dat > pdse2.std
 ```
 
-`HS.fileout on` makes OpenMX write `pdse2.scfout`.
+The input sets `HS.fileout on`, so OpenMX writes `pdse2.scfout`, the file
+LSQuant reads.
 
 ## Step 4: LSQuant
 
@@ -108,6 +108,10 @@ k mesh (`word_0_oracle.json`) to its `output.dir`.
 | `run_wannier_kpm.json` | Wannier90, spin projected from DFT | covariant | 24 × 24 | 1024 |
 | `run_paoflow_kpm.json` | PAOFLOW model | berry_connection | 24 × 24 | 1024 |
 | `run_openmx_kpm.json` | OpenMX | covariant | 24 × 24 | 1024 |
+
+The PAOFLOW model has no position matrix between its orbitals, so it cannot use
+the covariant velocity; `berry_connection` is the velocity PAOFLOW itself uses
+(see [Use a PAOFLOW model](../../docs/how-to/use-paoflow.md)).
 
 ## Step 5: the exact Wannier90 and OpenMX curves
 
@@ -143,9 +147,12 @@ On an AMD EPYC 9374F:
 | `run_siesta_projected.json` | 3 h 10 min (16 threads) | 23.3 GB |
 | `run_wannier_kpm.json` | 5 min (8 threads) | — |
 | `run_paoflow_kpm.json` | 2 h 30 min (8 threads) | — |
-| `run_openmx_kpm.json` | more than 4 h (16 threads) | — |
+| `run_openmx_kpm.json` | stopped after 4 h (16 threads) | — |
 
-The KPM runs of PAOFLOW and OpenMX are slow because the `shift` projection keeps every band of the model at each k point (108 and 228); `openmx_exact.py` gives the OpenMX curve of the figure in a fraction of that time.
+The KPM runs of PAOFLOW and OpenMX are slow: the `shift` projection keeps
+every band of the model at each k point, 108 for PAOFLOW and 228 for OpenMX.
+We stopped the OpenMX run; the OpenMX curve of the figure comes from
+`openmx_exact.py`.
 
 ## Files
 
@@ -154,7 +161,7 @@ The KPM runs of PAOFLOW and OpenMX are slow because the `shift` projection keeps
 | `qe/`, `paoflow/`, `openmx/` | DFT and PAOFLOW inputs |
 | `run_*.json` | LSQuant run files |
 | `wannier_route.py`, `openmx_exact.py` | exact curves on dense meshes |
-| `data/*.dat` | $\sigma^z_{xy}(E - E_F)$ of each route, in $e^2/h$ (Pauli $\sigma_z$) |
+| `data/*.dat` | $\sigma^z_{xy}$ of each route against $E - E_F$ of its code, in $e^2/h$ (Pauli $\sigma_z$); `plot.py` shifts them to $E - E_\mathrm{VBM}$ |
 | `plot.py` | the figure |
 
 ## References

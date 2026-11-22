@@ -30,18 +30,18 @@ GAP = {"siesta": (1.986, 2.061), "qe": (2.009, 2.055), "openmx": (1.918, 1.982)}
 
 SMOOTH = [  # file, origin, label, trace index, line style
     ("siesta_projected_kpm.dat", "siesta", "SIESTA, KPM", 0, "-"),
-    ("wannier_kpm.dat", "qe", "QE + Wannier90, KPM", 3, "-"),
-    ("paoflow_kpm.dat", "paoflow", "QE + PAOFLOW, KPM", 4, "--"),
-    ("openmx_exact.dat", "openmx", "OpenMX, exact ($\\eta$ = 6 meV)", 1, "-."),
+    ("wannier_kpm.dat", "qe", "QE + Wannier90, KPM", 3, "--"),
+    ("paoflow_kpm.dat", "paoflow", "QE + PAOFLOW, KPM", 4, (0, (1, 1.5))),
+    ("openmx_exact.dat", "openmx", "OpenMX, exact", 1, "-."),
 ]
 # paoflow.dat is PAOFLOW's spin_Hall output times 4 pi: PAOFLOW gives e^2/hbar
 # with the spin operator sigma/2 (PAOFLOW.py: sP = 0.5 Pauli; do_Hall.py: sum
 # over k divided by N_k and by the cell area), and 2 pi * 2 converts it to e^2/h
 # with the Pauli sigma_z.
-EXACT = [  # exact curves, shown in the gap panel only
-    ("siesta_direct_exact.dat", "siesta", "SIESTA, exact", 0, ":"),
-    ("wannier_covariant_spn.dat", "qe", "QE + Wannier90, exact", 3, ":"),
-    ("paoflow.dat", "paoflow", "PAOFLOW's own", 4, ":"),
+EXACT = [  # exact curves, shown in the gap panel only: thin line and a marker each
+    ("siesta_direct_exact.dat", "siesta", "SIESTA, exact", 0, "o"),
+    ("wannier_covariant_spn.dat", "qe", "QE + Wannier90, exact", 3, "s"),
+    ("paoflow.dat", "paoflow", "PAOFLOW, own result", 4, "^"),
 ]
 
 
@@ -50,18 +50,19 @@ def main(data=os.path.join(_HERE, "data")):
     prl.use("web", height=4.2)
     fig, (ax1, ax2) = plt.subplots(1, 2, gridspec_kw=dict(width_ratios=[1.6, 1]))
     for ax in (ax1, ax2):
-        ax.axvspan(*GAP["siesta"], color="0.88", lw=0)
-        ax.axvspan(*GAP["qe"], color="0.80", lw=0, alpha=0.5)
-        ax.axvspan(*GAP["openmx"], color="0.94", lw=0)
+        for key in ("siesta", "qe", "openmx"):   # overlaps show darker
+            ax.axvspan(*GAP[key], color="0.6", lw=0, alpha=0.18)
         ax.axhline(0.0, color="0.6", lw=0.5)
     for f, origin, label, i, ls in SMOOTH:
         E, s = load(f)
         style = dict(prl.trace(i), linestyle=ls)
         ax1.plot(E - VBM[origin], s, label=label, **style)
         ax2.plot(E - VBM[origin], s, **style)
-    for f, origin, label, i, ls in EXACT:
+    for f, origin, label, i, marker in EXACT:
         E, s = load(f)
-        ax2.plot(E - VBM[origin], s, label=label, **dict(prl.trace(i), linestyle=ls, linewidth=1.0))
+        ax2.plot(E - VBM[origin], s, label=label, **dict(prl.trace(i), linestyle="-", linewidth=0.8,
+                                                           marker=marker, markevery=4, markersize=3.5,
+                                                           markerfacecolor="none"))
     ax1.set_xlim(0.0, 2.6)
     ax1.set_ylim(-1.5, 2.6)
     ax2.set_xlim(1.88, 2.12)
