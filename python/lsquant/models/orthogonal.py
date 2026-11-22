@@ -437,6 +437,10 @@ def load_runfile_model(model, velocity_mode, *, phase=None):
                                  orbital_dir=params.get("orbital_dir"),
                                  orbitals_per_element=params.get("orbitals_per_element"),
                                  fermi_energy=float(params.get("fermi_energy", 0.0)))
+    if kind == "gpaw":
+        from .gpaw import load_gpaw_model
+        return load_gpaw_model(model["file"], soc=bool(params.get("soc", True)),
+                               fermi_energy=_optional_float(params.get("fermi_energy")))
     raise ValueError(f"model.kind {kind!r} has no metric executor")
 
 

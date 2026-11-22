@@ -1532,6 +1532,9 @@ ML_MODEL_KINDS: dict[str, tuple[str, frozenset[str]]] = {
     "hamgnn": ("file", frozenset()),
     "threebodytb": ("file", frozenset({"orbitals_per_element"})),
     "abacus": ("file", frozenset({"overlap_file", "stru_file", "orbital_dir", "orbitals_per_element"})),
+    # Not machine learning, but the same kind of input: H(R) and S(R) of an
+    # atomic-orbital basis without a position matrix (models/gpaw.py).
+    "gpaw": ("file", frozenset({"soc"})),
 }
 
 
@@ -1570,6 +1573,8 @@ def _check_ml_params(kind: str, model: Mapping[str, Any]) -> None:
             if not params.get(name):
                 raise ValueError(f"model.params.{name} is required for model.kind='abacus' "
                                  "(the S(R) file and the STRU of the same structure)")
+    if kind == "gpaw" and not isinstance(params.get("soc", True), bool):
+        raise ValueError("model.params.soc must be true or false")
 
 
 def execute_runfile(
