@@ -1,0 +1,5 @@
+&PROJWFC
+  prefix = "PdSe2_wann"
+  outdir = "./tmp"
+  lwrite_overlaps = .true.
+/

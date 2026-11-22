@@ -1,0 +1,13 @@
+from PAOFLOW import PAOFLOW
+p = PAOFLOW.PAOFLOW(savedir="tmp/PdSe2_wann.save", outputdir="out", npool=1, verbose=True)
+p.read_atomic_proj_QE()
+p.projectability(pthr=0.90)
+p.pao_hamiltonian()
+p.write_Hamiltonian("pdse2_pao_hamiltonian.dat")
+p.interpolated_hamiltonian(nfft1=120, nfft2=120, nfft3=1)
+p.pao_eigh()
+p.gradient_and_momenta()
+p.adaptive_smearing()
+p.spin_operator()
+p.spin_Hall(twoD=True, delta=0.006, emin=-0.5, emax=2.0, ne=1251, s_tensor=[[0, 1, 2]])
+p.finish_execution()

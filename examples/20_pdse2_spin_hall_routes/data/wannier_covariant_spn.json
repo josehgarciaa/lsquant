@@ -1,0 +1,28 @@
+{
+ "gap at E_F": {
+  "gap_eV": [
+   -0.8218872780601438,
+   0.4940922229678717
+  ],
+  "spin_chern": -3.999999999999999,
+  "z2": 0,
+  "sigma_mid": -0.06555589964558159
+ },
+ "upper gap": {
+  "gap_eV": [
+   1.1876206374327754,
+   1.2334686644938422
+  ],
+  "spin_chern": -1.9999999999999991,
+  "z2": 1,
+  "sigma_mid": 1.945506976257402
+ },
+ "operators_at_upper_gap": {
+  "bare, diagonal sigma_z": 1.5834680581078258,
+  "bare, exact Wannier spin": 1.824495953919005,
+  "berry_connection, diagonal sigma_z": 1.5066985522503016,
+  "berry_connection, exact Wannier spin": 1.9468576737343537,
+  "covariant, diagonal sigma_z": 1.5766733074597954,
+  "covariant, exact Wannier spin": 1.9455425501797665
+ }
+}
