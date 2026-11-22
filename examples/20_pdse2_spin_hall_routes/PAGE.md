@@ -32,8 +32,8 @@ Quantum ESPRESSO 2.01–2.06 eV.
 Only for SIESTA do the KPM and exact columns use the same k mesh; for the
 other routes the exact result uses a denser mesh, so the difference between
 the columns mixes the mesh and the KPM. The KPM run of OpenMX is not shown: it
-keeps every band of the model and takes more than 4 h, so its curve comes from
-the exact calculation.
+keeps every band of the model and was stopped after 4 h, so its curve comes
+from the exact calculation.
 
 <!-- Plateau: mean over the central half of each topological gap, from the curves in data/ (plot.py constants VBM and GAP). OpenMX on a 24x24 mesh gives 1.850, not converged; 60x60 gives 1.974 without the regulator and 1.971 with it. -->
 

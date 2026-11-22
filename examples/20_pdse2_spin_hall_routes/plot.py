@@ -71,7 +71,7 @@ def main(data=os.path.join(_HERE, "data")):
     for ax in (ax1, ax2):
         ax.set_xlabel(r"$E - E_\mathrm{VBM}$ (eV)")
     ax1.legend(loc="upper left", fontsize="small")
-    ax2.legend(loc="lower center", fontsize="x-small")
+    ax2.legend(loc="lower center", fontsize="x-small", frameon=True, framealpha=0.9, edgecolor="0.8")
     prl.panel(ax1, "(a)", loc="lower right")
     prl.panel(ax2, "(b)", loc="upper left")
     prl.save(fig, os.path.join(_HERE, "fig_routes"))
