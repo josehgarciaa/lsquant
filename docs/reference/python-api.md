@@ -511,6 +511,25 @@ folded in), `seed_name`, `model_dir`, and the methods `Hk(k_points)`,
 `hamiltonian_csr(supercell)`, `velocity_csr(supercell, direction)`. A
 `WannierModel` can be passed to `make_basis`.
 
+```python
+WannierModel.velocity_blocks(k_points, direction, mode="berry_connection") -> ndarray
+```
+
+Velocity blocks of shape (N_k, W, W) at Cartesian `k_points` (1/Å), in the
+atom gauge of `Hk`, with the sign of `dHk`. A Hall word has two velocities,
+so an overall sign of the velocity cancels.
+
+| `mode` | Velocity | Extra file |
+|---|---|---|
+| `"bare"` | Derivative of the cell-gauge $H(\mathbf k)$, phases on $\mathbf R$ only. | — |
+| `"berry_connection"` | Derivative of the atom-gauge $H(\mathbf k)$, phases on $\mathbf R + \tau_j - \tau_i$; the same matrix as `dHk`. Uses the Wannier centres only. | — |
+| `"covariant"` | The `bare` derivative plus the commutator term $\propto [H, A]$, with $A$ the full position matrix $\langle 0m\vert\mathbf r\vert\mathbf Rn\rangle$, folded Hermitian with the degeneracies of `_hr.dat`. It adds the off-diagonal position elements between Wannier functions, which the other two modes take as zero. | `<seed>_r.dat` in `model_dir`, written by Wannier90 with `write_rmn = true`; read once per model. |
+
+The run-file executor of `model.kind = "wannier"` does not read
+`model.params`, so these modes are available from Python only.
+[Example 20](../../examples/20_pdse2_spin_hall_routes/README.md) uses the
+covariant mode.
+
 ### Other functions
 
 | Name | Module | Meaning |

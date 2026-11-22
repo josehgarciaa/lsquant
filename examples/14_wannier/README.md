@@ -84,7 +84,10 @@ so they must be the Wannier centres reported by Wannier90
 
 For a real Wannier90 calculation we copy `<seed>_hr.dat`, write `<seed>.uc`
 from the `unit_cell_cart` block, and write `<seed>.xyz` from the Wannier
-centres.
+centres. For the covariant velocity from Python we also copy `<seed>_r.dat`
+(Wannier90 option `write_rmn = true`); see `WannierModel.velocity_blocks` in
+the [Python API reference](../../docs/reference/python-api.md) and
+[example 20](../20_pdse2_spin_hall_routes/README.md).
 
 ## The run
 
