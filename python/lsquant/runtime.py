@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 DEFAULT_SPMV_MIN_NNZ = "16384"
@@ -25,10 +26,31 @@ def physical_core_count() -> int:
     return max(1, len(cores))
 
 
-def configure_threads() -> None:
-    """Respect caller overrides; spread binding avoids packing threads onto one CCD."""
-    os.environ.setdefault("OMP_PROC_BIND", "spread")
-    os.environ.setdefault("OMP_PLACES", "cores")
+def launched_as_cli(argv=None) -> bool:
+    """True when this process is the ``lsquant`` command (console script or ``python -m lsquant``).
+
+    ``sys.orig_argv`` keeps ``-m lsquant`` while the package is imported; ``sys.argv[0]`` is
+    still ``-m`` at that point.
+    """
+    args = list(argv if argv is not None else getattr(sys, "orig_argv", sys.argv))
+    for flag, value in zip(args, args[1:]):
+        if flag == "-m" and value in ("lsquant", "lsquant.cli"):
+            return True
+    return bool(args) and any(Path(a).name == "lsquant" for a in args[:2])
+
+
+def configure_threads(argv=None) -> None:
+    """Thread count for every process; core binding only for the ``lsquant`` command.
+
+    With ``OMP_PROC_BIND`` set, libgomp binds the initial thread to the first place when it
+    loads, so every Python process that imports the package (scripts, notebooks,
+    multiprocessing workers) would run on one core. Spread binding, which keeps engine threads
+    off a single CCD, is therefore applied only when the process is the command itself. Values
+    set by the caller always win.
+    """
+    if launched_as_cli(argv):
+        os.environ.setdefault("OMP_PROC_BIND", "spread")
+        os.environ.setdefault("OMP_PLACES", "cores")
     if "OMP_NUM_THREADS" not in os.environ:
         os.environ["OMP_NUM_THREADS"] = str(physical_core_count())
 

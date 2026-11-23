@@ -11,9 +11,9 @@ from lsquant import _core
 ```
 
 Import it through `lsquant`, as above, rather than as a top-level `_core`.
-Importing `lsquant` first sets each of `OMP_PROC_BIND`, `OMP_PLACES` and
-`OMP_NUM_THREADS`, but only if that variable is unset
-(`python/lsquant/runtime.py:30–33`). In every build it then calls
+Importing `lsquant` first sets `OMP_NUM_THREADS`, and, only when the process is
+the `lsquant` command, `OMP_PROC_BIND` and `OMP_PLACES`; each only if it is
+unset (`python/lsquant/runtime.py`, `configure_threads`). In every build it then calls
 `ConfigureEngineDiagnostics` with the settings of `LSQ_ENGINE_MEM`,
 `LSQ_ENGINE_TIMING` and `LSQ_CHECKPOINT_ABORT_AFTER` (`runtime.py:44–49`). In
 native builds (`build_profile == "native"`), it also calls
