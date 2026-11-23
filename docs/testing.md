@@ -158,6 +158,11 @@ moment, reports a missing output file, stops with exit code 2 when a driver is
 missing, and leaves `goldens/` unchanged; and, in tolerance mode, that a curve off by one unit
 of its last digit and moments off by 1e-13 pass while five units or 1e-9 fail.
 
+`tests/conftest.py` defaults `OMP_NUM_THREADS` to at most four threads for the suite. The
+tests use small matrices, and a team as large as the machine stalls on a node that other
+jobs share (one test took more than two minutes with 64 threads, 14 s with 32). A value you
+set yourself is kept: `OMP_NUM_THREADS=16 python3 -m pytest tests/unit`.
+
 ## Rules
 
 - Do not edit, regenerate or delete an existing golden. Add a new golden in a new
