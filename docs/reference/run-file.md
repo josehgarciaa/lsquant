@@ -150,7 +150,7 @@ are refused.
 ### PySCF models
 
 `model.kind = "pyscf"` reads the `.npz` file that `write_pyscf_model`
-(`models/pyscf.py`) writes from a converged periodic two-component PySCF
+(`models/pyscf_lcao.py`) writes from a converged periodic two-component PySCF
 calculation (`pyscf.pbc.dft.KGKS`, for example with `.x2c1e()`). The model is
 non-orthogonal and runs like an OpenMX model: `metric.policy =
 "nonorthogonal"`, `basis.name` `bloch` or `eigen`, `basis.disorder.W = 0`.

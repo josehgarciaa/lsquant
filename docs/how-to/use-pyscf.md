@@ -48,7 +48,7 @@ A slab is computed as a 3D cell with vacuum and one k point along it.
 After the SCF, write the model:
 
 ```python
-from lsquant.models.pyscf import write_pyscf_model
+from lsquant.models.pyscf_lcao import write_pyscf_model
 
 write_pyscf_model(mf, "mymodel.npz")
 ```

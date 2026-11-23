@@ -15,7 +15,7 @@ REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if os.path.join(REPO, "python") not in sys.path:
     sys.path.insert(0, os.path.join(REPO, "python"))
 
-from lsquant.models.pyscf import (ghf_to_interleaved, load_pyscf_model,  # noqa: E402
+from lsquant.models.pyscf_lcao import (ghf_to_interleaved, load_pyscf_model,  # noqa: E402
                                   mesh_fractions, minimal_image_blocks)
 
 
@@ -88,7 +88,7 @@ def test_reader_builds_spinor_overlap_and_midpoint_connection(tmp_path):
 def test_hydrogen_chain_round_trip(tmp_path):
     pytest.importorskip("pyscf")
     from pyscf.pbc import gto, scf
-    from lsquant.models.pyscf import BOHR, HARTREE, write_pyscf_model
+    from lsquant.models.pyscf_lcao import BOHR, HARTREE, write_pyscf_model
 
     cell = gto.Cell()
     cell.a = np.diag([1.6, 8.0, 8.0])
@@ -116,7 +116,7 @@ def test_band_veff_equals_two_component_veff_on_the_scf_mesh():
     """The off-mesh J + V_xc route reproduces PySCF's two-component veff at the SCF k points."""
     pytest.importorskip("pyscf")
     from pyscf.pbc import gto, dft
-    from lsquant.models.pyscf import _band_veff
+    from lsquant.models.pyscf_lcao import _band_veff
 
     cell = gto.Cell()
     cell.a = np.diag([1.6, 8.0, 8.0])
