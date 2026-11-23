@@ -118,6 +118,12 @@ def main():
     ap.add_argument("--broadening", type=float, default=0.006, help="Gaussian width, eV")
     ap.add_argument("--compare-operators", action="store_true",
                     help="also print the plateau for three velocities and two spin operators")
+    ap.add_argument("--eta", type=float, default=0.0,
+                    help="interband regulator in eV: denominators (E_n - E_m)^2 + eta^2, as in "
+                         "openmx_exact.py; 0 is the strict sum")
+    ap.add_argument("--filling", type=int, default=4,
+                    help="occupied Wannier bands at E_F (4 for the 12-function model); "
+                         "the quantum spin Hall gap is 4 bands higher")
     ap.add_argument("--grid", type=float, nargs=3, default=[-0.5, 2.0, 1251],
                     help="E - E_F grid: start stop points")
     args = ap.parse_args()
@@ -148,7 +154,17 @@ def main():
     Sz = spin_atom_gauge(kc)
     VX = model.velocity_blocks(kc, "x", mode="covariant")
     VY = model.velocity_blocks(kc, "y", mode="covariant")
-    omega = spin_hall.spin_berry_curvature(E, C, 0.5 * (VX @ Sz + Sz @ VX), VY)
+    if args.eta > 0:
+        omega = np.empty_like(E)
+        for c in np.array_split(np.arange(len(E)), max(1, len(E) // 2000)):
+            Cc, Cd = C[c], np.conj(np.swapaxes(C[c], 1, 2))
+            J = Cd @ (0.5 * (VX[c] @ Sz[c] + Sz[c] @ VX[c])) @ Cc
+            V = Cd @ VY[c] @ Cc
+            dE = E[c][:, :, None] - E[c][:, None, :]
+            omega[c] = -2 * np.sum(np.where(np.abs(dE) > 1e-6, np.imag(J * np.swapaxes(V, 1, 2))
+                                            / (dE**2 + args.eta**2), 0), axis=2)
+    else:
+        omega = spin_hall.spin_berry_curvature(E, C, 0.5 * (VX @ Sz + Sz @ VX), VY)
 
     energies = np.linspace(args.grid[0], args.grid[1], int(args.grid[2]))
     sigma = np.concatenate([
@@ -156,16 +172,17 @@ def main():
         for chunk in np.array_split(energies, max(1, len(energies) // 25))])
     np.savetxt(args.out_prefix + ".dat", np.column_stack([energies, sigma]),
                header="E-E_F (eV)  sigma^z_xy (e^2/h, Pauli sigma_z); Wannier90 + LSQuant, "
-                      "covariant velocity, exact Wannier spin")
+                      f"covariant velocity, exact Wannier spin, {N}x{N}, interband regulator {args.eta * 1e3:g} meV, "
+                      f"Gaussian {args.broadening * 1e3:g} meV")
 
-    # Topology of the two gaps: filling 4 (at E_F) and 8 (about 1.2 eV above).
+    # Topology of the two gaps: the gap at E_F and the one 4 bands higher (about 2 eV above the VBM).
     Nc = 60
     gc = np.arange(Nc) / Nc
     kc2 = np.array([[i, j, 0.0] for j in gc for i in gc]) @ recip
     E2, C2 = np.linalg.eigh(model.Hk(kc2))
     S2 = spin_atom_gauge(kc2)
     report = {}
-    for name, nocc in [("gap at E_F", 4), ("upper gap", 8)]:
+    for name, nocc in [("gap at E_F", args.filling), ("upper gap", args.filling + 4)]:
         lo, hi = E2[:, nocc - 1].max(), E2[:, nocc].min()
         r = spin_hall.spin_chern(E2, C2, np.broadcast_to(np.eye(nw), C2.shape), S2,
                                  0.5 * (lo + hi), (Nc, Nc, 1), k_points=kc2, centres=model.tau)
