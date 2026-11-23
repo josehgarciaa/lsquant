@@ -32,7 +32,7 @@ The quantities you can compute depend on where the Hamiltonian comes from:
 | HamGNN prediction, exported with `hamgnn.py` (`hamgnn`) | yes | no | no | yes, with spin–orbit coupling | no |
 | ThreeBodyTB `write_tb_crys` file (`threebodytb`) | yes | no | no | no (no spin–orbit coupling) | no |
 | NextHAM prediction or ABACUS matrices in the ABACUS sparse format (`abacus`) | yes | no | no | yes, with spin–orbit coupling | no |
-| GPAW LCAO calculation, exported with `gpaw.py` (`gpaw`) | yes | no | no | yes, with spin–orbit coupling (non-self-consistent, as in GPAW) | no |
+| GPAW LCAO calculation, exported with `gpaw.py` (`gpaw`) | yes | no | no | yes, with spin–orbit coupling (non-self-consistent, as in GPAW), covariant velocity | no |
 | DeePTB export (`deeptb`) | yes | no | no | no (the export has no spin–orbit term) | no |
 | Sparse-matrix files (`csr`) | yes, also projected | yes | yes | yes¹ | yes |
 | Model generators of examples 01–06 (`generator`) | yes | yes | yes | not documented | yes |

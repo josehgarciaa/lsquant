@@ -55,7 +55,7 @@ term. In a running GPAW script the same step is
   "model": {
     "kind": "gpaw",
     "file": "/path/to/pdse2_lsquant.npz",
-    "params": {"velocity_mode": "berry_connection"}
+    "params": {"velocity_mode": "covariant", "dipole_cache": "/path/to/pdse2_dipoles.npz"}
   },
   "basis": {"name": "eigen", "supercell": [24, 24, 1]},
   "projection": {"kind": "shift", "window": [-3, 3]},
@@ -74,7 +74,9 @@ python -m lsquant run run.json
 
 | Key | Value |
 |---|---|
-| `velocity_mode` | `"berry_connection"` or `"bare"`. The export has no position matrix between orbitals, so `"covariant"` is refused. |
+| `velocity_mode` | `"covariant"` (recommended), `"berry_connection"` or `"bare"`. For `"covariant"` LSQuant builds the position matrix of the orbitals from the radial functions in the export (a few minutes; see below). |
+| `dipole_cache` | Optional `.npz` path where LSQuant stores that position matrix and reuses it for the same export. |
+| `quadrature_order` | Gauss–Legendre order of that integration, default 48. LSQuant checks the overlap it integrates against GPAW's S(R) and stops if they differ by more than 10⁻⁴. |
 | `soc` | `true` (default): spinful model, H ⊗ 1 + spin–orbit. `false`: spinless model. |
 | `fermi_energy` | In eV, removed as H − E_F S. Default: the Fermi level of GPAW. |
 
@@ -85,12 +87,14 @@ python -m lsquant run run.json
 | H(R), S(R) | k matrices of the LCAO basis | inverse Bloch transform, each element at its nearest lattice image |
 | Spin–orbit coupling | the on-site PAW term of `soc_eigenstates` | its matrix in the orbitals, `P† (dV/dr / r) L·σ P` |
 | Spin | — | Pauli matrices on interleaved spinors |
-| Velocity | — | derivative of the Bloch sums (`berry_connection`) |
+| Position matrix | radial functions of the basis and of the PAW projectors, PAW corrections | `<M,0|r|N,R>` with the PAW terms, by numerical integration; the covariant velocity |
+| Velocity | — | covariant (or the derivative of the Bloch sums, `berry_connection`) |
 
 - **Spin–orbit coupling is not self-consistent.** This is how GPAW treats it.
   With every LCAO band, the eigenvalues of the LSQuant model equal those of
   `soc_eigenstates`.
 - **Basis.** Check the bands of the LCAO basis (`dzp` by default) against a
   plane-wave or a larger-basis calculation before you trust the transport.
-- **Positions.** Every orbital sits on its atom; intra-atomic dipoles are left
-  out, the usual approximation of `berry_connection`.
+- **Velocity.** Use `covariant`. `berry_connection` leaves out the dipoles
+  inside each atom; for the spin Hall plateau of PdSe₂ that changes the
+  result by about 1.5 %.

@@ -216,6 +216,8 @@ out. These runs need `basis.name` `bloch` or `eigen` and
 | `orbital_dir` | `abacus` | path | directory of `stru_file` | Where the numerical orbital files named in `STRU` are. They give the orbitals per atom and their angular momenta. |
 | `orbitals_per_element` | `abacus` | object, element → positive integer | from the orbital files | Orbitals of one atom of an element, when the orbital files are missing. |
 | `soc` | `gpaw` | `true`, `false` | `true` | Add GPAW's spin–orbit term (spinful model) or not (spinless). |
+| `velocity_mode` | `gpaw` | also `"covariant"` | `"berry_connection"` | The position matrix is integrated from the radial functions of the export. |
+| `quadrature_order`, `dipole_cache` | `gpaw` | integer; path | `48`; none | Order of that integration; file that stores it for reuse. |
 | `oracle`, `oracle_degeneracy_tolerance`, `bloch_memory_mb` | all | as for SIESTA | as for SIESTA | As in [SIESTA models](#siesta-models). |
 
 LSQuant makes H(R) Hermitian as the mean of H(R) and H(−R)† and writes the
