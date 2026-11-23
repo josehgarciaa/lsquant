@@ -56,8 +56,8 @@ describes.
 
 ## Requirements
 
-You need a C++17 compiler with OpenMP, CMake 3.21 or later for the presets
-(3.16 or later for a manual build), Eigen, FFTW3, GSL and Python 3.10 or later
+You need a C++17 compiler with OpenMP, CMake 3.21 or later, Eigen, Boost headers,
+FFTW3, GSL and Python 3.10 or later
 with NumPy, SciPy, SymPy and pybind11. [Install LSQuant](docs/how-to/install.md)
 gives the full list and the commands with and without root access.
 

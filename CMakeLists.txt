@@ -5,19 +5,24 @@
 # (nonexistent) icc+mkl toolchain are gone; dependencies are resolved with
 # find_package and consumed as imported targets, so no hand-passed toolchain file
 # is required:  cmake -B build && cmake --build build -j
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.21)
 
 project(LSQUANT VERSION 2.0.0 LANGUAGES CXX)
 
 include(GNUInstallDirs)
 
 # --- Language / build type ---------------------------------------------------
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-# The legacy drivers (src/) build as C++11; the new core (lsquant/) requires C++17 on its
-# targets (target_compile_features cxx_std_17, PUBLIC).
+# Current Boost.Math headers need at least C++14. Use C++17 throughout, matching
+# the new core, while preserving the legacy Boost Bessel implementation.
+# Warning: changing the numerical implementation can invalidate byte-exact goldens.
+if(NOT "cxx_std_17" IN_LIST CMAKE_CXX_COMPILE_FEATURES)
+    message(FATAL_ERROR
+        "LSQuant requires a compiler with C++17 support. Select one with -DCMAKE_CXX_COMPILER=...")
+endif()
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
@@ -66,6 +71,14 @@ target_compile_options(lsquant_warnings INTERFACE
     $<$<COMPILE_LANGUAGE:CXX>:-Wall;-Wextra;-Wpedantic>)
 
 # --- Dependencies ------------------------------------------------------------
+# Boost.Math is header-only here; no compiled Boost libraries are needed.
+find_package(Boost QUIET)
+if(NOT Boost_FOUND)
+    message(FATAL_ERROR
+        "Boost headers are required for the legacy Boost.Math Bessel functions. "
+        "Install libboost-dev or boost-cpp, or set Boost_ROOT to the Boost installation prefix.")
+endif()
+
 # Eigen3: prefer a real config-package (Eigen3::Eigen); fall back to a header dir.
 find_package(Eigen3 3.3 QUIET NO_MODULE)
 if(NOT TARGET Eigen3::Eigen)
@@ -101,7 +114,7 @@ endif()
 # pybind11_DIR is not given).
 if(LSQUANT_BUILD_NEW_CORE AND LSQUANT_BUILD_PYTHON)
     # Modern Python discovery avoids pybind11's removed FindPythonInterp/FindPythonLibs
-    # modules on recent CMake, while retaining the project's CMake 3.16 compatibility.
+    # modules on recent CMake.
     if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.18")
         set(_lsquant_legacy_python "${PYTHON_EXECUTABLE}")
         if(NOT Python_EXECUTABLE AND _lsquant_legacy_python)

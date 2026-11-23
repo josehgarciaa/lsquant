@@ -41,8 +41,9 @@ last digits, so check a `native` build against the golden files with
 | Dependency | Version | Needed by | How CMake finds it |
 |---|---|---|---|
 | C++ compiler | C++17 | all | `CMAKE_CXX_COMPILER` |
-| CMake | ≥ 3.16 (≥ 3.18 recommended for Python discovery) | all | — |
+| CMake | ≥ 3.21 | all | — |
 | Eigen | ≥ 3.3 | all | CMake package `Eigen3`, otherwise the header directory in `$CONDA_PREFIX/include/eigen3`, `/usr/include/eigen3` or `/usr/local/include/eigen3`. Override with `-DEIGEN3_INCLUDE_DIR=…`. |
+| Boost headers | — | legacy drivers (`kpm_lib`) | `find_package(Boost)`; override with `-DBoost_ROOT=…`. No compiled Boost library is needed. |
 | OpenMP | — | all | compiler support |
 | FFTW3, double precision | — | all | `pkg-config fftw3` (so `pkg-config` itself is required) |
 | GSL | — | Python module | `find_package(GSL)`; override with `-DGSL_ROOT_DIR=…` |
@@ -54,7 +55,7 @@ last digits, so check a `native` build against the golden files with
 On Ubuntu or Debian:
 
 ```bash
-sudo apt-get install g++ cmake pkg-config libeigen3-dev libfftw3-dev libgsl-dev python3-dev
+sudo apt-get install g++ cmake pkg-config libeigen3-dev libboost-dev libfftw3-dev libgsl-dev python3-dev
 ```
 
 ## Cache options
