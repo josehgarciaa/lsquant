@@ -26,6 +26,10 @@ def bloch_sum(r_cart, centres, matrices, k_points, *, derivative=None, cell=Fals
     multiplies by ``+i (R+tau_j-tau_i)_a``. Factor the phase into a lattice
     sum and orbital phases, with O(N_k N_R W^2) work. Chunk k to bound array
     workspace by memory_mb MiB, excluding caller inputs and the final result.
+    The bound sets the chunk size only: when the block stack alone does not
+    fit (large models, e.g. all-electron or big-basis LCAO with more than a
+    few hundred spinor orbitals), the sum proceeds one k point at a time and
+    the workspace is the minimum it needs, about four block stacks.
     """
     points = np.asarray(k_points, dtype=float)
     r_cart, centres = np.asarray(r_cart), np.asarray(centres)
@@ -37,9 +41,7 @@ def bloch_sum(r_cart, centres, matrices, k_points, *, derivative=None, cell=Fals
     # phase construction, orbital dressing and contraction output per k.
     fixed_bytes = 3*data.nbytes
     bytes_per_k = 32*nr + 48*width + 32*width*width
-    chunk = int((memory_mb*1024**2-fixed_bytes)//bytes_per_k)
-    if chunk < 1:
-        raise ValueError("Bloch workspace limit cannot hold the block stack and one k point")
+    chunk = max(1, int((memory_mb*1024**2-fixed_bytes)//bytes_per_k))
     if derivative is not None:
         displacement = r_cart[:, derivative, None, None]
         if not cell:

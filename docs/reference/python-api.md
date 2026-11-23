@@ -27,9 +27,9 @@ module (`runtime.py`, called from `__init__.py:14` and `__init__.py:25`).
 
 | Variable | Effect | Source |
 |---|---|---|
-| `OMP_PROC_BIND` | Set to `spread` if not already set. | `runtime.py:30` |
-| `OMP_PLACES` | Set to `cores` if not already set. | `runtime.py:31` |
-| `OMP_NUM_THREADS` | Set to the number of physical cores in the process CPU affinity if not already set. | `runtime.py:32–33` |
+| `OMP_PROC_BIND` | Set to `spread` if not already set, only when the process is the `lsquant` command. A plain import leaves it unset, because binding pins the importing process to one core. | `runtime.py`, `configure_threads` |
+| `OMP_PLACES` | Set to `cores` if not already set, only when the process is the `lsquant` command. | `runtime.py`, `configure_threads` |
+| `OMP_NUM_THREADS` | Set to the number of physical cores in the process CPU affinity if not already set. | `runtime.py`, `configure_threads` |
 | `LSQ_ENGINE_MEM` | Any value turns on the allocation report of the native rank-2 path, on stderr. Passed to `_core.ConfigureEngineDiagnostics`. | `runtime.py:44–49` |
 | `LSQ_ENGINE_TIMING` | Any value turns on the phase timings of the native rank-2 path, on stderr. Passed to `_core.ConfigureEngineDiagnostics`. | `runtime.py:44–49` |
 | `LSQ_CHECKPOINT_ABORT_AFTER` | `k` stops a checkpointed run right after the k-th checkpoint write (default `-1`, never). Used by the resume test. Passed to `_core.ConfigureEngineDiagnostics`. | `runtime.py:44–49` |
