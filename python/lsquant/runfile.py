@@ -1533,6 +1533,10 @@ ML_MODEL_KINDS: dict[str, tuple[str, frozenset[str]]] = {
     "threebodytb": ("file", frozenset({"orbitals_per_element"})),
     "abacus": ("file", frozenset({"overlap_file", "stru_file", "orbital_dir", "orbitals_per_element",
                                   "position_file"})),
+    # Not machine learning, but the same kind of input: H(R) and S(R) of an
+    # atomic-orbital basis (models/gpaw.py); its position matrix is built by
+    # quadrature of the radial functions in the export, so covariant is allowed.
+    "gpaw": ("file", frozenset({"soc", "quadrature_order", "dipole_cache"})),
 }
 
 
@@ -1553,7 +1557,8 @@ def _check_ml_params(kind: str, model: Mapping[str, Any]) -> None:
     _check_keys(f"model.params ({kind})", params, frozenset({
         "velocity_mode", "fermi_energy", "oracle", "oracle_degeneracy_tolerance", "bloch_memory_mb"}) | extra)
     modes = ("bare", "berry_connection")
-    if kind == "abacus" and params.get("position_file"):
+    # GPAW exports carry the radial functions: LSQuant builds the position matrix.
+    if kind == "gpaw" or (kind == "abacus" and params.get("position_file")):
         modes += ("covariant",)
     if params.get("velocity_mode", "berry_connection") not in modes:
         if kind == "abacus":
@@ -1578,6 +1583,8 @@ def _check_ml_params(kind: str, model: Mapping[str, Any]) -> None:
             if not params.get(name):
                 raise ValueError(f"model.params.{name} is required for model.kind='abacus' "
                                  "(the S(R) file and the STRU of the same structure)")
+    if kind == "gpaw" and not isinstance(params.get("soc", True), bool):
+        raise ValueError("model.params.soc must be true or false")
 
 
 def execute_runfile(

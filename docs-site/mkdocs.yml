@@ -93,6 +93,7 @@ nav:
       - Use a HamGNN model: docs/how-to/use-hamgnn.md
       - Use a ThreeBodyTB model: docs/how-to/use-threebodytb.md
       - Use a NextHAM model: docs/how-to/use-nextham.md
+      - Use a GPAW calculation: docs/how-to/use-gpaw.md
       - Run on a cluster: docs/how-to/run-on-a-cluster.md
       - Connect an AI assistant: docs/how-to/mcp-server.md
   - Background:

@@ -31,6 +31,7 @@ Every source follows the same three steps:
 | HamGNN | a prediction run (`stage: test`) on the `graph_data.npz` of the structure | `python lsquant/models/hamgnn.py graph_data.npz prediction_hamiltonian.npy model.npz --nao-max N --spin soc --dft-code openmx` in the HamGNN environment | `"kind": "hamgnn"`, `"file"`, `params.fermi_energy` | [Use a HamGNN model](use-hamgnn.md) |
 | ThreeBodyTB | nothing: build the model (`scf_energy` for charge transfer) | `write_tb_crys("model.xml", tbc)` in Julia (a ThreeBodyTB function) | `"kind": "threebodytb"`, `"file"` | [Use a ThreeBodyTB model](use-threebodytb.md) |
 | NextHAM (ABACUS basis) | save the predictions of the test run (`test.py`) | NextHAM's `run_bands_compare.py` writes `hr_tot`; LSQuant reads it with ABACUS's `srs1_nao.csr` and `STRU` | `"kind": "abacus"`, `"file"`, `params.overlap_file`, `params.stru_file`, `params.fermi_energy` | [Use a NextHAM model](use-nextham.md) |
+| GPAW (LCAO) | `mode='lcao'`, `symmetry='off'`, `parallel={'domain': 1}`; `calc.write('calc.gpw')` | `python lsquant/models/gpaw.py calc.gpw model.npz` in the GPAW environment | `"kind": "gpaw"`, `"file"` | [Use a GPAW calculation](use-gpaw.md) |
 
 For every source, step 3 is the same. Check the run file, then compute:
 

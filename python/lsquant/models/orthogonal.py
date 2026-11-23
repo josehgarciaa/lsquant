@@ -438,6 +438,13 @@ def load_runfile_model(model, velocity_mode, *, phase=None):
                                  orbitals_per_element=params.get("orbitals_per_element"),
                                  fermi_energy=float(params.get("fermi_energy", 0.0)),
                                  position_file=params.get("position_file") if velocity_mode == "covariant" else None)
+    if kind == "gpaw":
+        from .gpaw import load_gpaw_model
+        return load_gpaw_model(model["file"], soc=bool(params.get("soc", True)),
+                               fermi_energy=_optional_float(params.get("fermi_energy")),
+                               dipoles=velocity_mode == "covariant",
+                               quadrature_order=int(params.get("quadrature_order", 48)),
+                               dipole_cache=params.get("dipole_cache"))
     raise ValueError(f"model.kind {kind!r} has no metric executor")
 
 
