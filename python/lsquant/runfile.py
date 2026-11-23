@@ -391,14 +391,14 @@ def validate_runfile_dict(raw: Mapping[str, Any]) -> None:
     metric_kind = uses_metric_executor(model)
     if reference is not None and not isinstance(reference, bool):
         raise ValueError(f"Expected boolean for 'reference', got {type(reference).__name__}")
-    metric_names = ", ".join(("siesta", "openmx", "paoflow") + tuple(ML_MODEL_KINDS))
+    metric_names = ", ".join(("siesta", "openmx", "pyscf", "paoflow") + tuple(ML_MODEL_KINDS))
     if reference is not None and not metric_kind:
         raise ValueError(f"Expected a metric-executor model ({metric_names}, or wannier with "
                          f"params.velocity_mode or params.spin) when 'reference' is set, got {kind!r}")
     if projection["kind"] != "none" and not metric_kind:
         raise ValueError(f"Expected a metric-executor model ({metric_names}, or wannier with "
                          f"params.velocity_mode or params.spin) when projection is enabled, got {kind!r}")
-    known_kinds = ("csr", "wannier", "siesta", "generator", "openmx", "paoflow") + tuple(ML_MODEL_KINDS)
+    known_kinds = ("csr", "wannier", "siesta", "generator", "openmx", "pyscf", "paoflow") + tuple(ML_MODEL_KINDS)
     if kind not in known_kinds:
         raise ValueError(
             f"Unknown model.kind '{kind}'; expected one of {', '.join(repr(k) for k in known_kinds)}"
@@ -425,6 +425,10 @@ def validate_runfile_dict(raw: Mapping[str, Any]) -> None:
         if not model.get("file"):
             raise ValueError("Run file with model.kind='openmx' requires 'file' (the .scfout file)")
         _check_metric_params("openmx", model, ("bare", "berry_connection", "covariant"))
+    elif kind == "pyscf":
+        if not model.get("file"):
+            raise ValueError("Run file with model.kind='pyscf' requires 'file' (see write_pyscf_model)")
+        _check_metric_params("pyscf", model, ("bare", "berry_connection", "covariant"))
     elif kind == "paoflow":
         if not model.get("file"):
             raise ValueError("Run file with model.kind='paoflow' requires 'file' (see write_paoflow_model)")
@@ -1498,7 +1502,7 @@ def uses_metric_executor(model: Mapping[str, Any]) -> bool:
     """
     kind = str(_get_or(model, "kind", "csr"))
     params = model.get("params") or {}
-    if kind in ("siesta", "paoflow", "openmx") or kind in ML_MODEL_KINDS:
+    if kind in ("siesta", "paoflow", "openmx", "pyscf") or kind in ML_MODEL_KINDS:
         return True
     return kind == "wannier" and isinstance(params, Mapping) and (
         "velocity_mode" in params or "spin" in params or "fermi_energy" in params)
@@ -1514,6 +1518,9 @@ def _check_metric_params(kind: str, model: Mapping[str, Any], modes: tuple[str, 
     if kind == "openmx" and ("spin" in params or "fermi_energy" in params):
         raise ValueError("an OpenMX model carries its spinors and stores energies from the chemical "
                          "potential; remove model.params.spin and model.params.fermi_energy")
+    if kind == "pyscf" and ("spin" in params or "fermi_energy" in params):
+        raise ValueError("a PySCF model carries its spinors and stores energies from its Fermi energy; "
+                         "remove model.params.spin and model.params.fermi_energy")
     if kind == "paoflow" and ("spin" in params or "fermi_energy" in params):
         raise ValueError("a PAOFLOW model carries its own on-site spin and energies from E_F; "
                          "remove model.params.spin and model.params.fermi_energy")
@@ -1605,11 +1612,11 @@ def execute_runfile(
         out_dir_override if out_dir_override is not None else rf.output["dir"]
     )
     kind = str(rf.model["kind"])
-    if (kind in ("wannier", "paoflow", "openmx") or kind in ML_MODEL_KINDS) and uses_metric_executor(rf.model):
+    if (kind in ("wannier", "paoflow", "openmx", "pyscf") or kind in ML_MODEL_KINDS) and uses_metric_executor(rf.model):
         if rf.basis["name"] == "real" or rf.basis["disorder"]["W"] != 0:
             raise ValueError(f"model.kind={kind!r} with params.velocity_mode/spin runs in the "
                              "clean bloch or eigen basis")
-        if kind != "openmx" and str(rf.metric["policy"]) == "orthogonal":
+        if kind not in ("openmx", "pyscf") and str(rf.metric["policy"]) == "orthogonal":
             # S = 1: the exact Lowdin route of the metric executors is the orthogonal one.
             # A non-orthogonal machine-learning model takes the same exact route with its S.
             rf.metric.update(policy="nonorthogonal", route="lowdin", applier="exact")

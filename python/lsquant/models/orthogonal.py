@@ -413,6 +413,9 @@ def load_runfile_model(model, velocity_mode, *, phase=None):
     if kind == "openmx":
         from .openmx import load_openmx_model
         return load_openmx_model(model["file"], dipoles=velocity_mode == "covariant")
+    if kind == "pyscf":
+        from .pyscf_lcao import load_pyscf_model
+        return load_pyscf_model(model["file"], connection=velocity_mode == "covariant")
     if kind == "paoflow":
         if velocity_mode == "covariant":
             raise ValueError("a PAOFLOW model has no position matrix; use bare or berry_connection")
