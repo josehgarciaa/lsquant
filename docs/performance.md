@@ -7,10 +7,12 @@ the checkpointing available in both profiles. None of them changes what a run fi
 
 ## Thread placement
 
-At import, the Python package sets `OMP_PROC_BIND=spread` and `OMP_PLACES=cores`. If
-`OMP_NUM_THREADS` is unset, it also sets it to the number of physical cores in the process's
-CPU affinity (`lsquant.runtime`). Each variable is set only when it is unset, so a value from
-the caller wins.
+When the process is the `lsquant` command (`lsquant run` or `python -m lsquant run`), the
+package sets `OMP_PROC_BIND=spread` and `OMP_PLACES=cores` at import. A plain `import lsquant`
+in a script or notebook does not set them: with binding, OpenMP pins the importing process to
+one core. If `OMP_NUM_THREADS` is unset, the package sets it to the number of physical cores in
+the process's CPU affinity (`lsquant.runtime`). Each variable is set only when it is unset, so a
+value from the caller wins.
 
 In the native profile two kernel settings reach the engine once, at import:
 - `LSQUANT_SPMV_MIN_NNZ`: below this number of non-zeros a matrix-vector product runs on one
