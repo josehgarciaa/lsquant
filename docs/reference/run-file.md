@@ -203,18 +203,19 @@ out. These runs need `basis.name` `bloch` or `eigen` and
 | `deeptb` | DeePTB-SK, DeePTB-E3 (spinless) | `dir`: the directory written by `TBSystem.to_pardiso_json` or `dptb pdso` | `models/deeptb.py`, see [Use a DeePTB model](../how-to/use-deeptb.md) |
 | `hamgnn` | HamGNN (OpenMX, ABACUS and SIESTA/HONPAS bases) | `file`: the `.npz` of `write_hamgnn_model` (script `models/hamgnn.py`) | `models/hamgnn.py`, see [Use a HamGNN model](../how-to/use-hamgnn.md) |
 | `threebodytb` | ThreeBodyTB (TB3) | `file`: the XML of `write_tb_crys` (`.xml` or `.xml.gz`) | `models/threebodytb.py`, see [Use a ThreeBodyTB model](../how-to/use-threebodytb.md) |
-| `abacus` | NextHAM, and ABACUS itself | `file`: H(R) in the ABACUS sparse format (NextHAM `hr_tot`, ABACUS `hrs1_nao.csr`), text or binary | `models/abacus.py`, see [Use a NextHAM model](../how-to/use-nextham.md) |
-| `gpaw` | GPAW, LCAO mode (not machine learning: the same input, atomic-orbital H(R) and S(R) without a position matrix) | `file`: the `.npz` of `export_gpaw_lcao` (script `models/gpaw.py`) | `models/gpaw.py`, see [Use a GPAW calculation](../how-to/use-gpaw.md) |
+| `abacus` | ABACUS (LCAO), NextHAM | `file`: H(R) in the ABACUS sparse format (ABACUS `data-HR-sparse_SPIN0.csr` or `hrs1_nao.csr`, NextHAM `hr_tot`), text or binary | `models/abacus.py`, see [Use an ABACUS calculation](../how-to/use-abacus.md) and [Use a NextHAM model](../how-to/use-nextham.md) |
+| `gpaw` | GPAW, LCAO mode (not machine learning: the same input, atomic-orbital H(R) and S(R); the position matrix is built from the radial functions of the export) | `file`: the `.npz` of `export_gpaw_lcao` (script `models/gpaw.py`) | `models/gpaw.py`, see [Use a GPAW calculation](../how-to/use-gpaw.md) |
 
 | Key | Kinds | Allowed values | Default | Meaning |
 |---|---|---|---|---|
-| `velocity_mode` | all | `"bare"`, `"berry_connection"` | `"berry_connection"` | As for SIESTA. There is no position matrix, so `"covariant"` is refused. |
+| `velocity_mode` | all | `"bare"`, `"berry_connection"`; for `abacus` with `position_file` and for `gpaw` also `"covariant"` | `"berry_connection"` | As for SIESTA. Without a position matrix `"covariant"` is refused. |
 | `fermi_energy` | all | number (eV) | `deeph`: `fermi_level` or `fermi_energy_eV` of `info.json`, else `0.0`; `deeptb`: `0.0`; `hamgnn`: `0.0`; `threebodytb`: `efermi` of the file; `abacus`: `0.0`; `gpaw`: the Fermi level of GPAW in the file | Removed as H(R) − E_F S(R). Energies, `projection.window` and `reconstruction.fermi_energies` are then measured from it. |
 | `hamiltonian_file` | `deeph` | file name in `dir` | `hamiltonians_pred.h5` or `hamiltonian_pred.h5`, then the DFT file `hamiltonians.h5` or `hamiltonian.h5` | The H(R) file to read. |
 | `orbitals_per_element` | `threebodytb` | object, element → positive integer | ThreeBodyTB's table (`Atomdata.jl`) | Orbitals of one atom of an element; for elements missing from the table or a modified database. |
 | `overlap_file`, `stru_file` | `abacus` | paths | required | S(R) in the ABACUS sparse format and the ABACUS `STRU` of the same structure. Resolved like `model.file`. |
 | `orbital_dir` | `abacus` | path | directory of `stru_file` | Where the numerical orbital files named in `STRU` are. They give the orbitals per atom and their angular momenta. |
 | `orbitals_per_element` | `abacus` | object, element → positive integer | from the orbital files | Orbitals of one atom of an element, when the orbital files are missing. |
+| `position_file` | `abacus` | path | none | ABACUS's position matrix `data-rR-sparse.csr` (`out_mat_r 1`), text or binary, of the same run. Gives the connection A = Q − (τ_i + τ_j + R) S/2 of `"covariant"`; read only for that velocity. The removed anti-Hermitian part goes to `basis.json` as `connection_hermiticity_residual`. Resolved like `model.file`. |
 | `soc` | `gpaw` | `true`, `false` | `true` | Add GPAW's spin–orbit term (spinful model) or not (spinless). |
 | `velocity_mode` | `gpaw` | also `"covariant"` | `"berry_connection"` | The position matrix is integrated from the radial functions of the export. |
 | `quadrature_order`, `dipole_cache` | `gpaw` | integer; path | `48`; none | Order of that integration; file that stores it for reuse. |
