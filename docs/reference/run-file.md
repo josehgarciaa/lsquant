@@ -120,7 +120,7 @@ Allowed keys in `model.params`:
 | `velocity_mode` | string | `"bare"`, `"berry_connection"`, `"covariant"` | `"berry_connection"` (clean and projected runs); `"covariant"` (disordered and real-space runs) | How velocity operators are built from H, S and the dipoles. See [Non-orthogonal bases](../explanation/nonorthogonal-bases.md). |
 | `oracle` | boolean | — | `false` | Clean runs: also compute the exact per-k spin Hall oracle (`exact_shc.json`, `spin_chern.json`). Disordered runs refuse `true`. |
 | `oracle_degeneracy_tolerance` | number | positive, finite | `1e-6` | Degeneracy tolerance of the oracle, in eV. |
-| `bloch_memory_mb` | number | positive, finite | `256.0` | Workspace limit of the Bloch sums, in MiB (clean runs). |
+| `bloch_memory_mb` | number | positive, finite | `256.0` | Workspace limit of the Bloch sums, in MiB (clean runs). It sets how many k points are summed at once; a model too large for one k point within the limit is summed one k point at a time. |
 | `quadrature_order` | integer | ≥ 2 | `24` | Initial Gauss–Legendre order of the dipole quadrature. |
 | `quadrature_max_order` | integer | ≥ 2 × `quadrature_order` | `384` | Maximum quadrature order. |
 | `quadrature_tolerance` | number | positive | `1e-5` | Refinement tolerance of the dipole quadrature. |
