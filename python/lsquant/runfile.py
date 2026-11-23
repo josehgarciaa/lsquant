@@ -979,7 +979,7 @@ class RunFile:
             model_cfg["file"] = _resolve_path(raw_model["file"])
         if kind == "abacus":
             # The S(R) file, the STRU and the orbital directory resolve like model.file.
-            for key in ("overlap_file", "stru_file", "orbital_dir"):
+            for key in ("overlap_file", "stru_file", "orbital_dir", "position_file"):
                 if isinstance(model_cfg["params"].get(key), str):
                     model_cfg["params"][key] = _resolve_path(model_cfg["params"][key])
 
@@ -1538,7 +1538,12 @@ ML_MODEL_KINDS: dict[str, tuple[str, frozenset[str]]] = {
     "deeptb": ("dir", frozenset()),
     "hamgnn": ("file", frozenset()),
     "threebodytb": ("file", frozenset({"orbitals_per_element"})),
-    "abacus": ("file", frozenset({"overlap_file", "stru_file", "orbital_dir", "orbitals_per_element"})),
+    "abacus": ("file", frozenset({"overlap_file", "stru_file", "orbital_dir", "orbitals_per_element",
+                                  "position_file"})),
+    # Not machine learning, but the same kind of input: H(R) and S(R) of an
+    # atomic-orbital basis (models/gpaw.py); its position matrix is built by
+    # quadrature of the radial functions in the export, so covariant is allowed.
+    "gpaw": ("file", frozenset({"soc", "quadrature_order", "dipole_cache"})),
 }
 
 
@@ -1546,7 +1551,8 @@ def _check_ml_params(kind: str, model: Mapping[str, Any]) -> None:
     """Validate a machine-learning model: its path key and params.
 
     These models carry no position matrix and no radial orbitals, so the
-    covariant velocity is refused. ``fermi_energy`` (eV) replaces the
+    covariant velocity is refused, except for an ABACUS model given its
+    position matrix (``position_file``). ``fermi_energy`` (eV) replaces the
     reference energy the reader would otherwise use.
     """
     key, extra = ML_MODEL_KINDS[kind]
@@ -1557,7 +1563,14 @@ def _check_ml_params(kind: str, model: Mapping[str, Any]) -> None:
         raise ValueError(f"model.params ({kind}) must be a JSON object")
     _check_keys(f"model.params ({kind})", params, frozenset({
         "velocity_mode", "fermi_energy", "oracle", "oracle_degeneracy_tolerance", "bloch_memory_mb"}) | extra)
-    if params.get("velocity_mode", "berry_connection") not in ("bare", "berry_connection"):
+    modes = ("bare", "berry_connection")
+    # GPAW exports carry the radial functions: LSQuant builds the position matrix.
+    if kind == "gpaw" or (kind == "abacus" and params.get("position_file")):
+        modes += ("covariant",)
+    if params.get("velocity_mode", "berry_connection") not in modes:
+        if kind == "abacus":
+            raise ValueError("model.params.velocity_mode for abacus must be 'bare' or 'berry_connection'; "
+                             "'covariant' needs model.params.position_file (ABACUS's data-rR-sparse.csr)")
         raise ValueError(f"model.params.velocity_mode for {kind} must be 'bare' or 'berry_connection' "
                          "(no position matrix, so no 'covariant')")
     if "fermi_energy" in params and not np.isfinite(float(params["fermi_energy"])):
@@ -1577,6 +1590,8 @@ def _check_ml_params(kind: str, model: Mapping[str, Any]) -> None:
             if not params.get(name):
                 raise ValueError(f"model.params.{name} is required for model.kind='abacus' "
                                  "(the S(R) file and the STRU of the same structure)")
+    if kind == "gpaw" and not isinstance(params.get("soc", True), bool):
+        raise ValueError("model.params.soc must be true or false")
 
 
 def execute_runfile(

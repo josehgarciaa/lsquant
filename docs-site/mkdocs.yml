@@ -85,6 +85,7 @@ nav:
       - Bring a model to LSQuant: docs/how-to/bring-a-model.md
       - Use a SIESTA calculation: docs/how-to/use-siesta.md
       - Use an OpenMX calculation: docs/how-to/use-openmx.md
+      - Use an ABACUS calculation: docs/how-to/use-abacus.md
       - Use a PySCF periodic calculation: docs/how-to/use-pyscf.md
       - Use a Wannier90 model: docs/how-to/use-wannier90.md
       - Use a PAOFLOW model: docs/how-to/use-paoflow.md
@@ -93,6 +94,7 @@ nav:
       - Use a HamGNN model: docs/how-to/use-hamgnn.md
       - Use a ThreeBodyTB model: docs/how-to/use-threebodytb.md
       - Use a NextHAM model: docs/how-to/use-nextham.md
+      - Use a GPAW calculation: docs/how-to/use-gpaw.md
       - Run on a cluster: docs/how-to/run-on-a-cluster.md
       - Connect an AI assistant: docs/how-to/mcp-server.md
   - Background:

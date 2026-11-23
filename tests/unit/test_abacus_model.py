@@ -14,7 +14,13 @@ fastest. The checks:
   NextHAM's blocks;
 - a dimension that does not match the basis is refused;
 - the run file routes ``model.kind = "abacus"``, resolves the param paths
-  and runs DOS and spin Hall.
+  and runs DOS and spin Hall;
+- the position matrix ``data-rR-sparse.csr`` (text and binary, as
+  ``cal_r_overlap_R.cpp`` writes it) gives the connection
+  ``A = Q - (tau_i + tau_j + R) S / 2``; with point orbitals on their atoms
+  (``Q = (tau_i + tau_j + R) S / 2``) the covariant velocity equals the
+  ``berry_connection`` velocity, and the run file accepts ``covariant`` only
+  with ``position_file``.
 """
 import json
 import os
@@ -30,7 +36,8 @@ if os.path.join(REPO, "python") not in sys.path:
 
 pytest.importorskip("lsquant", reason="lsquant._core not built")
 from lsquant.bases import BlochMetricBasis  # noqa: E402
-from lsquant.models.abacus import ANGSTROM_BOHR, RYDBERG_EV, load_abacus_model, read_abacus_csr  # noqa: E402
+from lsquant.models.abacus import (ANGSTROM_BOHR, RYDBERG_EV, load_abacus_model, read_abacus_csr,  # noqa: E402
+                                   read_abacus_rr)  # noqa: E402
 from lsquant.models.lcao import cell_gauge_hk  # noqa: E402
 from lsquant.models.orthogonal import load_runfile_model  # noqa: E402
 from lsquant.runfile import RunFile, execute_runfile, uses_metric_executor  # noqa: E402
@@ -240,3 +247,101 @@ def test_runfile_routes_and_runs_abacus(tmp_path):
             "output": {"dir": str(out)},
         })
         assert json.loads((out / "basis.json").read_text())["source"] == "abacus"
+
+
+def _write_rr(path, q, binary=False):
+    """ABACUS r(R) file: per R the cell, then nnz and CSR for x, y and z."""
+    n = q.shape[-1]
+    if binary:
+        buf = [struct.pack("iii", 0, n, len(CELLS))]
+    else:
+        out = ["STEP: 0", f"Matrix Dimension of r(R): {n}", f"Matrix number of r(R): {len(CELLS)}"]
+    for r, R in enumerate(CELLS):
+        if binary:
+            buf.append(struct.pack("iii", *R))
+        else:
+            out.append(f"{R[0]} {R[1]} {R[2]}")
+        for a in range(3):
+            m = q[a, r]
+            rows, cols = np.nonzero(m)
+            indptr = np.concatenate([[0], np.cumsum(np.bincount(rows, minlength=n))])
+            if binary:
+                buf.append(struct.pack("i", len(rows)))
+                if len(rows):
+                    buf += [m[rows, cols].astype(float).tobytes(), cols.astype(np.int32).tobytes(),
+                            indptr.astype(np.int32).tobytes()]
+            else:
+                out.append(str(len(rows)))
+                if len(rows):
+                    out += [" ".join(repr(float(v)) for v in m[rows, cols]), " ".join(map(str, cols)),
+                            " ".join(map(str, indptr))]
+    if binary:
+        path.write_bytes(b"".join(buf))
+    else:
+        path.write_text("\n".join(out) + "\n")
+
+
+def _point_orbital_positions(s_orb, spinful):
+    """Q(R) in Bohr of orbitals that sit on their atoms: (tau_i + tau_j + R) S / 2."""
+    lattice = VECTORS * ALAT
+    tau = np.repeat(DIRECT @ lattice, NORB, axis=0)
+    q = np.zeros((3, len(CELLS)) + s_orb.shape[1:])
+    for r, R in enumerate(CELLS):
+        mid = (tau[:, None, :] + tau[None, :, :] + np.array(R) @ lattice) / 2
+        q[:, r] = np.moveaxis(mid, -1, 0) * s_orb[r]
+    if spinful:
+        q = np.array([[np.kron(m, np.eye(2)) for m in qa] for qa in q])
+    return q
+
+
+@pytest.mark.parametrize("binary", [False, True])
+def test_position_matrix_gives_the_connection(tmp_path, binary):
+    _, s_file, _ = _fixture(tmp_path, True, seed=5)
+    s_orb = s_file[:, 0::2, 0::2].real
+    rng = np.random.default_rng(6)
+    q_point = _point_orbital_positions(s_orb, True)
+    # An intra-atomic dipole that keeps the translation rule Q(-R)^+ = Q(R) - R S(R).
+    extra = np.zeros_like(q_point)
+    d = rng.normal(scale=0.05, size=(3, 2 * NORB.sum(), 2 * NORB.sum()))
+    d = 0.5 * (d + np.swapaxes(d, 1, 2))
+    d[:, 0::2, 1::2] = d[:, 1::2, 0::2] = 0
+    extra[:, 0] = d
+    q = q_point + extra
+    _write_rr(tmp_path / "rr.csr", q, binary=binary)
+    r_int, q_read = read_abacus_rr(tmp_path / "rr.csr")
+    np.testing.assert_array_equal(r_int, CELLS)
+    np.testing.assert_allclose(q_read, q, atol=1e-14)
+    args = dict(overlap_file=tmp_path / "srs1_nao.csr", stru_file=tmp_path / "STRU")
+    model = load_abacus_model(tmp_path / "hr_tot", position_file=tmp_path / "rr.csr", **args)
+    assert model.metadata["connection_hermiticity_residual"] < 1e-12
+    origin = [tuple(r) for r in model.r_int].index((0, 0, 0))
+    np.testing.assert_allclose(model.dipoles[:, origin], d / ANGSTROM_BOHR, atol=1e-12)
+    others = [n for n in range(len(model.r_int)) if n != origin]
+    np.testing.assert_allclose(model.dipoles[:, others], 0, atol=1e-12)
+    # Point orbitals: A = 0, so the covariant velocity is the atom-gauge velocity.
+    _write_rr(tmp_path / "rr0.csr", q_point[:, :, 0::2, 0::2], binary=binary)  # spinless file, lifted
+    point = load_abacus_model(tmp_path / "hr_tot", position_file=tmp_path / "rr0.csr", **args)
+    np.testing.assert_allclose(point.dipoles, 0, atol=1e-12)
+    cov = BlochMetricBasis(point, [2, 2, 1], velocity_mode="covariant")
+    berry = BlochMetricBasis(point, [2, 2, 1], velocity_mode="berry_connection")
+    for op in ("VX", "VY"):
+        np.testing.assert_allclose(cov.operator_blocks(op), berry.operator_blocks(op), atol=1e-10)
+    with pytest.raises(ValueError, match="dimension"):
+        _write_rr(tmp_path / "bad.csr", q[:, :, :3, :3])
+        load_abacus_model(tmp_path / "hr_tot", position_file=tmp_path / "bad.csr", **args)
+
+
+def test_runfile_accepts_covariant_with_position_file(tmp_path):
+    _, s_file, _ = _fixture(tmp_path, True, seed=7)
+    _write_rr(tmp_path / "rr.csr", _point_orbital_positions(s_file[:, 0::2, 0::2].real, True))
+    params = {"overlap_file": "srs1_nao.csr", "stru_file": "STRU", "position_file": "rr.csr",
+              "velocity_mode": "covariant"}
+    runfile = tmp_path / "run.json"
+    runfile.write_text(json.dumps(dict(word="Tr[delta(E-H)]", expansion={"moments": 8},
+                                       basis={"name": "eigen", "supercell": [2, 2, 1]},
+                                       model={"kind": "abacus", "file": "hr_tot", "params": params})))
+    rf = RunFile.from_file(str(runfile))
+    assert rf.model["params"]["position_file"] == str(tmp_path / "rr.csr")
+    model = load_runfile_model(rf.model, "covariant")
+    assert model.dipoles is not None
+    assert load_runfile_model(rf.model, "berry_connection").dipoles is None

@@ -23,6 +23,7 @@ Every source follows the same three steps:
 |---|---|---|---|---|
 | SIESTA | `Spin spin-orbit`; `TS.HS.Save true` (or `SaveHS true`) | nothing to run: LSQuant reads `<label>.fdf`, `<label>.TSHS` and, for the covariant velocity, the `<species>.ion.xml` files | `"kind": "siesta"`, `"dir"`, `"label"` | [Use a SIESTA calculation](use-siesta.md) |
 | OpenMX | `scf.SpinPolarization NC`; `scf.SpinOrbit.Coupling on`; `HS.fileout on` | nothing to run: LSQuant reads `<System.Name>.scfout` | `"kind": "openmx"`, `"file"` | [Use an OpenMX calculation](use-openmx.md) |
+| ABACUS (LCAO) | `nspin 4`; `lspinorb 1`; `out_mat_hs2 1`; `out_mat_r 1` | nothing to run: LSQuant reads `data-HR-sparse_SPIN0.csr`, `data-SR-sparse_SPIN0.csr`, `data-rR-sparse.csr` and `STRU` | `"kind": "abacus"`, `"file"`, `params.overlap_file`, `params.position_file`, `params.stru_file`, `params.fermi_energy` | [Use an ABACUS calculation](use-abacus.md) |
 | PySCF (periodic Gaussians) | `dft.KGKS(cell, kpts).x2c1e()` on a full Γ-centred mesh | `write_pyscf_model(mf, "model.npz")` after the SCF | `"kind": "pyscf"`, `"file"` | [Use a PySCF periodic calculation](use-pyscf.md) |
 | Quantum ESPRESSO + Wannier90 | in `<seed>.win`: `write_hr`, `write_xyz`, `write_rmn`, `write_u_matrices`; in `pw2wannier90.x`: `write_spn` | nothing to run: LSQuant reads the Wannier90 directory and, the first time, writes `<seed>.uc` and `<seed>.xyz` there | `"kind": "wannier"`, `"dir"`, `"seed"`, `params.velocity_mode`, `params.spin`, `params.fermi_energy` | [Use a Wannier90 model](use-wannier90.md) |
 | Quantum ESPRESSO + PAOFLOW | `projwfc.x` with `lwrite_overlaps = .true.` | `write_paoflow_model(p, "model.npz")` at the end of the PAOFLOW script | `"kind": "paoflow"`, `"file"` | [Use a PAOFLOW model](use-paoflow.md) |
@@ -31,6 +32,7 @@ Every source follows the same three steps:
 | HamGNN | a prediction run (`stage: test`) on the `graph_data.npz` of the structure | `python lsquant/models/hamgnn.py graph_data.npz prediction_hamiltonian.npy model.npz --nao-max N --spin soc --dft-code openmx` in the HamGNN environment | `"kind": "hamgnn"`, `"file"`, `params.fermi_energy` | [Use a HamGNN model](use-hamgnn.md) |
 | ThreeBodyTB | nothing: build the model (`scf_energy` for charge transfer) | `write_tb_crys("model.xml", tbc)` in Julia (a ThreeBodyTB function) | `"kind": "threebodytb"`, `"file"` | [Use a ThreeBodyTB model](use-threebodytb.md) |
 | NextHAM (ABACUS basis) | save the predictions of the test run (`test.py`) | NextHAM's `run_bands_compare.py` writes `hr_tot`; LSQuant reads it with ABACUS's `srs1_nao.csr` and `STRU` | `"kind": "abacus"`, `"file"`, `params.overlap_file`, `params.stru_file`, `params.fermi_energy` | [Use a NextHAM model](use-nextham.md) |
+| GPAW (LCAO) | `mode='lcao'`, `symmetry='off'`, `parallel={'domain': 1}`; `calc.write('calc.gpw')` | `python lsquant/models/gpaw.py calc.gpw model.npz` in the GPAW environment | `"kind": "gpaw"`, `"file"` | [Use a GPAW calculation](use-gpaw.md) |
 
 For every source, step 3 is the same. Check the run file, then compute:
 
