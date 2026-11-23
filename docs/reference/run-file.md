@@ -64,16 +64,16 @@ directory.
 
 | Key | Type | Allowed values | Default | Used by | Meaning |
 |---|---|---|---|---|---|
-| `kind` | string | `"csr"`, `"wannier"`, `"siesta"`, `"openmx"`, `"paoflow"`, `"generator"`, `"deeph"`, `"deeptb"`, `"hamgnn"`, `"threebodytb"`, `"abacus"` | `"csr"` | all | Input source. |
+| `kind` | string | `"csr"`, `"wannier"`, `"siesta"`, `"openmx"`, `"pyscf"`, `"paoflow"`, `"generator"`, `"deeph"`, `"deeptb"`, `"hamgnn"`, `"threebodytb"`, `"abacus"` | `"csr"` | all | Input source. |
 | `dir` | path | — | `null` | `csr`, `wannier`, `siesta`, `deeph`, `deeptb`, `generator` (tutorials 3 and 4) | Directory that holds the model files. |
 | `label` | string | — | `null` | `csr`, `siesta` | File prefix: `<label>.HAM.CSR` (`csr`) or `<label>.fdf` (`siesta`). |
 | `seed` | string | — | `null` | `wannier` | Wannier90 seed: LSQuant reads `<seed>_hr.dat`, `<seed>.uc` and `<seed>.xyz`. |
-| `file` | path | — | `null` | `openmx`, `paoflow`, `hamgnn`, `threebodytb`, `abacus` | `openmx`: the `<System.Name>.scfout` file. `paoflow`: the model file written by `write_paoflow_model` (`.npz`). `hamgnn`: the `.npz` of `write_hamgnn_model`. `threebodytb`: the XML of ThreeBodyTB's `write_tb_crys` (`.xml`, `.xml.gz`). `abacus`: H(R) in the ABACUS sparse format. |
+| `file` | path | — | `null` | `openmx`, `pyscf`, `paoflow`, `hamgnn`, `threebodytb`, `abacus` | `openmx`: the `<System.Name>.scfout` file. `pyscf`: the model file written by `write_pyscf_model` (`.npz`). `paoflow`: the model file written by `write_paoflow_model` (`.npz`). `hamgnn`: the `.npz` of `write_hamgnn_model`. `threebodytb`: the XML of ThreeBodyTB's `write_tb_crys` (`.xml`, `.xml.gz`). `abacus`: H(R) in the ABACUS sparse format. |
 | `operators` | list of strings | operator names | `null` | `csr` | Operators to load as `<label>.<OP>.CSR`. If absent, every `<label>.*.CSR` except `HAM` and `S` is loaded. A listed operator without a file is skipped, except with `numerics.operator = "atom_block"`. |
 | `csr_dir` | path | — | `null` | `wannier`, `basis.name = "real"` | Directory with a prebuilt supercell `<seed>.HAM.CSR` and its `wannier2sparse` receipt `<seed>.out`. LSQuant checks it against `seed` and `basis.supercell` before it loads anything. |
 | `name` | string | see [Generator models](#generator-models) | `null` | `generator` | Generator from the catalogue. |
 | `tutorial` | integer | `1`–`6` | from `name` | `generator` | Tutorial driver to run. Not validated; an unknown value fails at execution with `Unsupported generator`. |
-| `params` | object | depends on `kind` | `{}` | `siesta`, `openmx`, `wannier`, `paoflow`, `deeph`, `deeptb`, `hamgnn`, `threebodytb`, `abacus`, `generator` | Model parameters. See [SIESTA models](#siesta-models), [OpenMX models](#openmx-models), [Wannier90 and PAOFLOW models in the metric executors](#wannier90-and-paoflow-models-in-the-metric-executors), [Machine-learning Hamiltonians in the metric executors](#machine-learning-hamiltonians-in-the-metric-executors) and [Generator models](#generator-models). For `csr` the object is not checked and not used; for `wannier` it is checked only when it holds `velocity_mode`, `spin` or `fermi_energy`. |
+| `params` | object | depends on `kind` | `{}` | `siesta`, `openmx`, `pyscf`, `wannier`, `paoflow`, `deeph`, `deeptb`, `hamgnn`, `threebodytb`, `abacus`, `generator` | Model parameters. See [SIESTA models](#siesta-models), [OpenMX models](#openmx-models), [PySCF models](#pyscf-models), [Wannier90 and PAOFLOW models in the metric executors](#wannier90-and-paoflow-models-in-the-metric-executors), [Machine-learning Hamiltonians in the metric executors](#machine-learning-hamiltonians-in-the-metric-executors) and [Generator models](#generator-models). For `csr` the object is not checked and not used; for `wannier` it is checked only when it holds `velocity_mode`, `spin` or `fermi_energy`. |
 | `positions` | path or array | file of `x y z` lines, `.xyz`-like file, or `(N, 2)`/`(N, 3)` array | `null` | `csr` with `atom_block` | Orbital positions. |
 | `orbitals_per_atom` | integer | positive | `null` | `csr` with `atom_block` | Uniform number of orbitals per atom. Give this or `atom_map`, not both. Required with `hr_file`. |
 | `atom_map` | path or array | one integer per orbital | `null` | `csr` with `atom_block` | Atom index of every orbital. |
@@ -89,6 +89,7 @@ directory.
 | `wannier` | `dir` and `seed` | `Run file with model.kind='wannier' requires 'dir' and 'seed'` |
 | `siesta` | `dir` and `label` | `SIESTA model requires dir and label` |
 | `openmx` | `file` | `Run file with model.kind='openmx' requires 'file' (the .scfout file)` |
+| `pyscf` | `file` | `Run file with model.kind='pyscf' requires 'file' (see write_pyscf_model)` |
 | `paoflow` | `file` | `Run file with model.kind='paoflow' requires 'file' (see write_paoflow_model)` |
 | `deeph` | `dir` | `Run file with model.kind='deeph' requires 'dir'` |
 | `deeptb` | `dir` | `Run file with model.kind='deeptb' requires 'dir'` |
@@ -140,6 +141,22 @@ E_F = 0. `velocity_mode = "covariant"` uses the position matrix of the basis
 orbitals written in the same file. H, S and that position matrix are folded
 Hermitian; the removed relative parts are recorded in the model metadata
 (`hermitian_fold_relative`, copied to `basis.json` by the clean executor).
+
+Allowed keys in `model.params`: `velocity_mode` (`"bare"`,
+`"berry_connection"`, `"covariant"`; default `"berry_connection"`), `oracle`,
+`oracle_degeneracy_tolerance`, `bloch_memory_mb`. `spin` and `fermi_energy`
+are refused.
+
+### PySCF models
+
+`model.kind = "pyscf"` reads the `.npz` file that `write_pyscf_model`
+(`models/pyscf.py`) writes from a converged periodic two-component PySCF
+calculation (`pyscf.pbc.dft.KGKS`, for example with `.x2c1e()`). The model is
+non-orthogonal and runs like an OpenMX model: `metric.policy =
+"nonorthogonal"`, `basis.name` `bloch` or `eigen`, `basis.disorder.W = 0`.
+Energies are measured from the `fermi_energy` stored in the file (by default
+the middle of the gap). `velocity_mode = "covariant"` uses the analytic
+position matrix of the Gaussian basis.
 
 Allowed keys in `model.params`: `velocity_mode` (`"bare"`,
 `"berry_connection"`, `"covariant"`; default `"berry_connection"`), `oracle`,
@@ -341,7 +358,7 @@ there only changes the default window to `"eigen"`, which `csr` refuses.
 ## `projection`
 
 Spectral projection works with the models of the metric executors: `siesta`,
-`openmx`, `paoflow`, the machine-learning kinds (`deeph`, `deeptb`, `hamgnn`, `threebodytb`, `abacus`), and `wannier` with
+`openmx`, `pyscf`, `paoflow`, the machine-learning kinds (`deeph`, `deeptb`, `hamgnn`, `threebodytb`, `abacus`), and `wannier` with
 `params.velocity_mode`, `spin` or `fermi_energy`. For any other model the validator stops with
 `Expected a metric-executor model (...) when projection is enabled`.
 
