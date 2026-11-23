@@ -161,8 +161,11 @@ def test_runfile_routes_and_runs_gpaw(tmp_path):
     assert RunFile.from_dict(dict(base, model=model)).model["kind"] == "gpaw"
     with pytest.raises(ValueError, match="requires 'file'"):
         RunFile.from_dict(dict(base, model={"kind": "gpaw"}))
-    with pytest.raises(ValueError, match="covariant"):
-        RunFile.from_dict(dict(base, model=dict(model, params={"velocity_mode": "covariant"})))
+    RunFile.from_dict(dict(base, model=dict(model, params={"velocity_mode": "covariant"})))
+    with pytest.raises(ValueError, match="velocity_mode for gpaw"):
+        RunFile.from_dict(dict(base, model=dict(model, params={"velocity_mode": "position"})))
+    with pytest.raises(ValueError, match="no radial functions"):
+        load_runfile_model(model, "covariant")
     with pytest.raises(ValueError, match="true or false"):
         RunFile.from_dict(dict(base, model=dict(model, params={"soc": "yes"})))
     for word, formula, name in [("Tr[delta(E-H)]", "dos", "dos"),
@@ -200,3 +203,73 @@ def test_exporter_matches_soc_eigenstates(tmp_path):
         h = np.block([[d["H"][n] + d["A"][n, 0, 0], d["A"][n, 0, 1]], [d["A"][n, 1, 0], d["H"][n] + d["A"][n, 1, 1]]])
         e = sl.eigh(h, np.kron(np.eye(2), d["S"][n]), eigvals_only=True)
         np.testing.assert_allclose(e, d["soc_eigenvalues"][n], atol=1e-6)
+
+
+C0, C1 = 0.28209479177387814, 0.4886025119029199     # GPAW's r^l Y_L for l = 0, 1
+YL_TABLE = np.array([(0, C0, 0, 0, 0), (1, C1, 0, 1, 0), (2, C1, 0, 0, 1), (3, C1, 1, 0, 0)], float)
+
+
+def _radial(alpha, rc, l, norm):
+    from lsquant.models.gpaw import RADIAL_POINTS
+    r = np.linspace(0.0, rc, RADIAL_POINTS)
+    return norm * np.exp(-alpha * r**2) * np.ones_like(r) if l >= 0 else None
+
+
+def _gaussian_atoms(positions, lattice, dO=0.0):
+    """Atoms with a normalised s and p Gaussian (alpha = 1) and one s projector."""
+    alpha, rc = 1.0, 6.0
+    ns = 1 / (C0 * (np.pi / (2 * alpha)) ** 0.75)
+    npx = 1 / (C1 * np.sqrt((np.pi / (2 * alpha)) ** 1.5 / (4 * alpha)))
+    data = {"bohr": 1.0, "YL": YL_TABLE, "lattice": np.asarray(lattice, float),
+            "positions": np.asarray(positions, float), "orbitals_per_atom": np.array([4] * len(positions))}
+    for a in range(len(positions)):
+        data[f"basis_l_{a}"] = np.array([0, 1])
+        data[f"basis_rc_{a}"] = np.array([rc, rc])
+        data[f"basis_f_{a}"] = np.array([_radial(alpha, rc, 0, ns), _radial(alpha, rc, 1, npx)])
+        data[f"proj_l_{a}"] = np.array([0])
+        data[f"proj_rc_{a}"] = np.array([3.0])
+        data[f"proj_f_{a}"] = np.array([_radial(2.0, 3.0, 0, 1.0)])
+        data[f"dO_{a}"] = np.array([[dO]])
+        data[f"Delta_{a}"] = np.zeros((1, 1, 3))
+    return data, alpha, ns, npx
+
+
+def test_connection_on_site_analytic():
+    from lsquant.models.gpaw import gpaw_connection
+    data, alpha, ns, npx = _gaussian_atoms([[0.0, 0.0, 0.0]], np.diag([30.0, 30.0, 30.0]))
+    S, A = gpaw_connection(data, np.array([[0, 0, 0]]), order=48)
+    # linear interpolation of the tabulated radial functions: about 2e-6
+    np.testing.assert_allclose(S[0], np.eye(4), atol=1e-5)
+    want = ns * C0 * npx * C1 * (np.pi / (2 * alpha)) ** 1.5 / (4 * alpha)
+    # <s|x|p_x>, <s|y|p_y>, <s|z|p_z>: p order y, z, x (GPAW's L = 1, 2, 3)
+    for axis, orbital in ((0, 3), (1, 1), (2, 2)):
+        assert abs(A[axis, 0, 0, orbital] - want) < 1e-5
+        assert abs(A[axis, 0, orbital, 0] - want) < 1e-5
+    assert np.abs(A[:, 0, 1:, 1:]).max() < 1e-10
+
+
+def test_connection_two_atoms_translation_and_paw_overlap():
+    from lsquant.models.gpaw import _Functions, _pair_integrals, gpaw_connection
+    lattice = np.diag([4.0, 30.0, 30.0])
+    positions = [[0.3, 0.2, 0.0], [1.9, -0.4, 0.7]]
+    cells = np.array([[n, 0, 0] for n in range(-3, 4)])
+    data0, *_ = _gaussian_atoms(positions, lattice, dO=0.0)
+    data1, *_ = _gaussian_atoms(positions, lattice, dO=0.3)
+    S0, A0 = gpaw_connection(data0, cells, order=40)
+    S1, A1 = gpaw_connection(data1, cells, order=40)
+    # A(-R)^T = A(R), here checked against an independent pseudo integral of the partner block.
+    yl = {}
+    for L, c, nx, ny, nz in YL_TABLE:
+        yl.setdefault(int(L), []).append((c, int(nx), int(ny), int(nz)))
+    f = [_Functions(data0, a, "basis", yl) for a in range(2)]
+    R = np.array([1, 0, 0])
+    d = R @ lattice + np.array(positions[0]) - np.array(positions[1])
+    s, a = _pair_integrals(f[1], f[0], d, 40)
+    n = int(np.where((cells == R).all(axis=1))[0][0])
+    np.testing.assert_allclose(A0[:, n, 4:, :4], a, atol=1e-8)
+    np.testing.assert_allclose(S0[n, 4:, :4], s, atol=1e-8)
+    minus = [int(np.where((cells == -r).all(axis=1))[0][0]) for r in cells]
+    np.testing.assert_allclose(A1, A1[:, minus].transpose(0, 1, 3, 2), atol=1e-12)
+    # The PAW term adds sum <M|p> dO <p|N> to the overlap and shifts nothing else for a symmetric pair.
+    assert np.abs(S1 - S0).max() > 1e-3
+    assert np.all(np.linalg.eigvalsh(S1[cells.tolist().index([0, 0, 0])]) > 0)
