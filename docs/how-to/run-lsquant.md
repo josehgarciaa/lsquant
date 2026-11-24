@@ -133,10 +133,10 @@ python -m lsquant words
 python -m lsquant words describe "Tr[VX delta(E-H) VY dG-(E)/dE]"
 ```
 
-> **Known limitation.** With `model.kind` set to `csr` or `wannier`, the
-> formula `shc` fails at the end of `run`. We run with `bastin` and then apply
-> `shc` with `reconstruct`, as described in the
-> [run-file reference](../reference/run-file.md#reconstruction).
+With an ordinary `csr` or `wannier` model, set `reconstruction.num_cells`
+and `reconstruction.cell_area` when requesting `shc`. Validation requires
+both keys before moments are computed; the run writes the curve directly.
+See the [run-file reference](../reference/run-file.md#reconstruction).
 
 ## The representation: supercell or k-mesh
 
@@ -194,7 +194,8 @@ resolution of the curve, much as the smearing does for a DFT DOS. The finest
 broadening we can resolve is $\pi a/M$, where $a$ is the half-width of the
 spectral window. We therefore choose $M$ from the resolution we need.
 
-A broadening finer than $\pi a/M$ is replaced by $\pi a/M$ without a warning.
+A broadening finer than $\pi a/M$ is replaced by $\pi a/M$ with a
+`RuntimeWarning`; the effective estimate is recorded in the curve metadata or run receipt.
 A wide window, as in most DFT Hamiltonians, therefore needs many moments: a
 20 eV window and a 10 meV broadening need $M \ge 3142$.
 [The kernel polynomial method](../explanation/kpm.md) explains the kernel and

@@ -7,6 +7,7 @@ import glob
 import hashlib
 import json
 import os
+import re
 import shutil
 from typing import Any, Mapping, Sequence
 
@@ -21,9 +22,13 @@ from .bases import (
     make_basis,
     validate_w2s_csr_dir,
 )
+from .models.registry import CONNECTORS, ML_BASE_PARAMS, validate_connector_params
 from .models.wannier import load_wannier_model
 from .moments import run_plan, velocity_window, window_from_gershgorin
+from .trace_coverage import trace_coverage
 from .reconstruct import (
+    resolution_metadata,
+    record_resolution,
     dos_curve,
     shc,
     kubo_bastin,
@@ -34,7 +39,7 @@ from .reconstruct import (
     time_correlation_curve,
 )
 from .words import compile as compile_word, parse as parse_word
-from .words.catalogue import SHAPE_ALLOWED_FORMULAS
+from .words.catalogue import SHAPE_ALLOWED_FORMULAS, match_catalogue
 
 
 ALLOWED_TOP_KEYS: frozenset[str] = frozenset(
@@ -85,7 +90,6 @@ GENERATOR_CATALOGUE: dict[str, str] = {
     "make_square": "examples/05_charge_transport_square/make_square.py",
     "make_ey": "examples/06_spin_relaxation_square/make_ey.py",
     "make_rashba": "examples/06_spin_relaxation_square/make_rashba.py",
-    "gen_models": "python/lsquant/models/wannier.py",
 }
 
 _GENERATOR_TO_TUTORIAL: dict[str, int] = {
@@ -156,7 +160,6 @@ ALLOWED_GENERATOR_PARAMS: dict[str, frozenset[str]] = {
             "disorder_seed",
         }
     ),
-    "gen_models": frozenset(),
 }
 
 
@@ -209,6 +212,7 @@ ALLOWED_EXPANSION_KEYS: frozenset[str] = frozenset(
         "left_window",
         "right_window",
         "state_block_rule",
+        "trace_coverage",
         "checkpoint",
     }
 )
@@ -278,7 +282,7 @@ def default_window_for_basis(basis_name: str) -> str:
 DEFAULT_RUNFILE_DEFAULTS: dict[str, Any] = {
     "model": {
         "kind": "csr",
-        "operators": [],
+        "operators": None,
         "csr_dir": None,
         "name": None,
         "tutorial": None,
@@ -305,10 +309,10 @@ DEFAULT_RUNFILE_DEFAULTS: dict[str, Any] = {
         "trace": "exact",
         "states": None,
         "seed": 12345,
-        "batch": None,
+        "batch": 64,
         "state_label": None,
         "state_block": 1,
-        "left_window": None,
+        "left_window": 32,
     },
     "time": None,
     "reconstruction": {
@@ -391,14 +395,25 @@ def validate_runfile_dict(raw: Mapping[str, Any]) -> None:
     metric_kind = uses_metric_executor(model)
     if reference is not None and not isinstance(reference, bool):
         raise ValueError(f"Expected boolean for 'reference', got {type(reference).__name__}")
-    metric_names = ", ".join(("siesta", "openmx", "pyscf", "paoflow") + tuple(ML_MODEL_KINDS))
+    # Kinds that always run through the metric executors, in registry order;
+    # a Wannier90 model joins them only with a trigger param (below).
+    metric_names = ", ".join(
+        k for k, connector in CONNECTORS.items()
+        if connector.metric_trigger is None
+    )
     if reference is not None and not metric_kind:
         raise ValueError(f"Expected a metric-executor model ({metric_names}, or wannier with "
                          f"params.velocity_mode or params.spin) when 'reference' is set, got {kind!r}")
     if projection["kind"] != "none" and not metric_kind:
         raise ValueError(f"Expected a metric-executor model ({metric_names}, or wannier with "
                          f"params.velocity_mode or params.spin) when projection is enabled, got {kind!r}")
-    known_kinds = ("csr", "wannier", "siesta", "generator", "openmx", "pyscf", "paoflow") + tuple(ML_MODEL_KINDS)
+    # Non-connector kinds first; the connector kinds follow in registry order
+    # (siesta and wannier are named above: siesta keeps its own dispatch and
+    # wannier is also a plain CSR executor kind).
+    known_kinds = (
+        ("csr", "wannier", "siesta", "generator")
+        + tuple(k for k in CONNECTORS if k not in ("siesta", "wannier"))
+    )
     if kind not in known_kinds:
         raise ValueError(
             f"Unknown model.kind '{kind}'; expected one of {', '.join(repr(k) for k in known_kinds)}"
@@ -412,50 +427,15 @@ def validate_runfile_dict(raw: Mapping[str, Any]) -> None:
             raise ValueError(
                 "Run file with model.kind='csr' requires 'dir' and 'label'"
             )
-    elif kind == "wannier":
-        if not model.get("dir") or not model.get("seed"):
-            raise ValueError(
-                "Run file with model.kind='wannier' requires 'dir' and 'seed'"
-            )
-        if metric_kind:
-            _check_metric_params("wannier", model, ("bare", "berry_connection", "covariant"))
-            if (model.get("params") or {}).get("spin", "labels") not in ("labels", "exact"):
-                raise ValueError("model.params.spin must be 'labels' or 'exact'")
-    elif kind == "openmx":
-        if not model.get("file"):
-            raise ValueError("Run file with model.kind='openmx' requires 'file' (the .scfout file)")
-        _check_metric_params("openmx", model, ("bare", "berry_connection", "covariant"))
-    elif kind == "pyscf":
-        if not model.get("file"):
-            raise ValueError("Run file with model.kind='pyscf' requires 'file' (see write_pyscf_model)")
-        _check_metric_params("pyscf", model, ("bare", "berry_connection", "covariant"))
-    elif kind == "paoflow":
-        if not model.get("file"):
-            raise ValueError("Run file with model.kind='paoflow' requires 'file' (see write_paoflow_model)")
-        _check_metric_params("paoflow", model, ("bare", "berry_connection"))
-    elif kind in ML_MODEL_KINDS:
-        _check_ml_params(kind, model)
-    elif kind == "siesta":
-        if not model.get("dir") or not model.get("label"):
-            raise ValueError("SIESTA model requires dir and label")
-        if model.get("params") is not None and not isinstance(model["params"], Mapping):
-            raise ValueError("SIESTA model.params must be a JSON object")
-        _check_keys("model.params (siesta)", model.get("params") or {}, frozenset({
-            "velocity_mode", "oracle", "oracle_degeneracy_tolerance", "bloch_memory_mb",
-            "quadrature_order", "quadrature_max_order", "quadrature_tolerance",
-            "nonorthogonal_disorder"}))
-        if "nonorthogonal_disorder" in (model.get("params") or {}) and not isinstance(
-                model["params"]["nonorthogonal_disorder"], bool):
-            raise ValueError("model.params.nonorthogonal_disorder must be a boolean")
-        degeneracy_tolerance = float((model.get("params") or {}).get("oracle_degeneracy_tolerance", 1e-6))
-        if not np.isfinite(degeneracy_tolerance) or degeneracy_tolerance <= 0:
-            raise ValueError("oracle_degeneracy_tolerance must be positive and finite (eV)")
-        bloch_memory_mb = float((model.get("params") or {}).get("bloch_memory_mb", 256.0))
-        if not np.isfinite(bloch_memory_mb) or bloch_memory_mb <= 0:
-            raise ValueError("bloch_memory_mb must be positive and finite (MiB)")
-        if (model.get("params") or {}).get("velocity_mode", "berry_connection") not in (
-                "bare", "berry_connection", "covariant"):
-            raise ValueError("unknown SIESTA velocity_mode")
+    elif kind in CONNECTORS:
+        connector = CONNECTORS[kind]
+        for path_key in connector.path_keys:
+            if not model.get(path_key):
+                raise ValueError(connector.missing_path_error)
+        # A Wannier90 model without a trigger param keeps the plain CSR
+        # executor and its params stay unvalidated (preserved behaviour).
+        if connector.metric_trigger is None or metric_kind:
+            validate_connector_params(connector, model)
     elif kind == "generator":
         gen_name = model.get("name")
         if not gen_name or not isinstance(gen_name, str):
@@ -522,6 +502,8 @@ def validate_runfile_dict(raw: Mapping[str, Any]) -> None:
             _check_keys("basis.disorder", dis, ALLOWED_DISORDER_KEYS)
             if float(_get_or(dis, "W", 0.0)) < 0.0:
                 raise ValueError("basis.disorder.W must be non-negative")
+            if kind == "csr" and float(_get_or(dis, "W", 0.0)) != 0.0:
+                raise ValueError("Nonzero basis.disorder.W is not supported for model.kind='csr'")
             dkind = str(_get_or(dis, "kind", "scalar"))
             if dkind not in ("scalar", "magnetic", "independent"):
                 raise ValueError(
@@ -656,6 +638,15 @@ def validate_runfile_dict(raw: Mapping[str, Any]) -> None:
                     "Each entry in reconstruction.targets must be a JSON object"
                 )
             _check_keys("reconstruction.targets", tgt, ALLOWED_RECON_TARGET_KEYS)
+
+        requested = list(rec.get("formulas") or ())
+        for tgt in rec.get("targets") or ():
+            requested.extend(tgt.get("formulas") or ())
+        if (kind in ("csr", "wannier")
+                and any(str(f).lower() == "shc" for f in requested)
+                and not metric_kind):
+            if rec.get("num_cells") is None or rec.get("cell_area") is None:
+                raise ValueError("shc requires reconstruction.num_cells and reconstruction.cell_area")
 
     if "output" in raw and raw["output"] is not None:
         out = raw["output"]
@@ -809,6 +800,8 @@ def validate_runfile_dict(raw: Mapping[str, Any]) -> None:
                 )
 
     # Validate word(s) syntax, catalogue membership, basis consistency, and time requirements
+    if projection["kind"] != "none" and exp.get("state_block") == "auto":
+        raise ValueError("Projected runs require an integer expansion.state_block; 'auto' is not supported")
     word_str = raw["word"]
     if not isinstance(word_str, str) or not word_str.strip():
         raise ValueError("Run file 'word' must be a non-empty string")
@@ -854,6 +847,28 @@ def validate_runfile_dict(raw: Mapping[str, Any]) -> None:
         w_allowed = SHAPE_ALLOWED_FORMULAS.get(
             comp_base.match.entry.shape_id, frozenset()
         )
+        effective_formulas = (
+            comp_base.match.default_formulas
+            if req_formulas_raw is None
+            else [str(f).lower() for f in req_formulas_raw if str(f).lower() in w_allowed]
+        )
+        if (
+            kind != "generator"
+            and raw_rec_obj is not None
+            and raw_rec_obj.get("broadening_meV") is not None
+            and {"time_correlation", "time_correlation_curve"}.intersection(effective_formulas)
+            and not raw_rec_obj.get("fermi_energies")
+        ):
+            raise ValueError("Time-correlation curve reconstruction requires nonempty reconstruction.fermi_energies")
+        for target in (raw_rec_obj or {}).get("targets") or ():
+            if (
+                kind != "generator"
+                and {"time_correlation", "time_correlation_curve"}.intersection(
+                    str(f).lower() for f in target.get("formulas") or ()
+                )
+                and not target.get("fermi_energies")
+            ):
+                raise ValueError("Time-correlation targets require nonempty reconstruction.targets.fermi_energies")
         union_allowed_formulas.update(w_allowed)
         if raw_rec_obj is not None:
             rec_for_w = dict(raw_rec_obj)
@@ -977,9 +992,11 @@ class RunFile:
         }
         if raw_model.get("file") is not None:
             model_cfg["file"] = _resolve_path(raw_model["file"])
-        if kind == "abacus":
-            # The S(R) file, the STRU and the orbital directory resolve like model.file.
-            for key in ("overlap_file", "stru_file", "orbital_dir", "position_file"):
+        connector = CONNECTORS.get(kind)
+        if connector is not None:
+            # ABACUS's S(R) file, STRU, orbital directory and position matrix
+            # resolve like model.file.
+            for key in connector.path_params:
                 if isinstance(model_cfg["params"].get(key), str):
                     model_cfg["params"][key] = _resolve_path(model_cfg["params"][key])
 
@@ -1192,6 +1209,8 @@ class RunFile:
         }
         if self.reference is not None:
             out["reference"] = self.reference
+        if self.model["kind"] == "generator":
+            out["basis"].pop("disorder", None)
         if len(self.words) > 1 or self.words != [self.word]:
             out["words"] = list(self.words)
         if self.projection["kind"] != "none":
@@ -1254,6 +1273,74 @@ def _discover_csr_operators(model_dir: str, label: str) -> list[str]:
     return ops
 
 
+def _moment_allowed_formulas(mu: _core.ChebyshevMoments) -> frozenset[str]:
+    """Find admissible formulas without requiring a model or recompiling a plan.
+
+    Pitfall: legacy files have no word, and static engine words erase the
+    distinction between Greenwood and Bastin. For those files use the union
+    of catalogue formulas for their rank and time axis. A full observable
+    word retains its shape restrictions. Reading the tensor dominates cost.
+    """
+    if mu.rank == 1:
+        shapes = ("dos_identity", "dos_operator")
+    elif mu.rank == 2 and mu.number_of_time_steps > 0:
+        shapes = ("msd", "projected_evolution", "time_correlation")
+    elif mu.rank == 2:
+        shapes = ("kubo_greenwood", "kubo_bastin")
+    else:
+        return frozenset()
+    allowed = frozenset().union(*(SHAPE_ALLOWED_FORMULAS[s] for s in shapes))
+    if mu.word.strip().startswith(("Tr[", "sea[")):
+        try:
+            match = match_catalogue(parse_word(mu.word))
+        except ValueError:
+            return frozenset()
+        allowed = allowed & SHAPE_ALLOWED_FORMULAS[match.entry.shape_id]
+    elif "U(t)" in mu.word:
+        # Unified files currently omit time-axis metadata, but retain the word.
+        allowed = allowed & frozenset().union(*(
+            SHAPE_ALLOWED_FORMULAS[s]
+            for s in ("msd", "projected_evolution", "time_correlation")
+        ))
+    return allowed
+
+
+def _shc_curve_header(mu: _core.ChebyshevMoments) -> str:
+    """Label the normalised Bastin tensor using its stored operators.
+
+    A spin-current name J?S? determines the Pauli component and current
+    direction; a velocity on the right supplies the second tensor index.
+    Pitfall: the normalisation also accepts charge tensors, and legacy files
+    have no word. Neither case justifies a Pauli spin Hall label. This only
+    changes descriptive text, never units conversion or numerical values.
+    """
+    tokens = mu.word.split()
+    left, right = "unknown", "unknown"
+    if mu.word.strip().startswith(("Tr[", "sea[")):
+        match = match_catalogue(parse_word(mu.word))
+        if len(match.operators) == 2:
+            left, right = (op.operator_key for op in match.operators)
+    elif len(tokens) == 4 and tokens[1] == tokens[3] == "delta":
+        left, right = tokens[0], tokens[2]
+    spin = re.fullmatch(r"J([XYZ])S([XYZ])", left)
+    if spin:
+        axis, component = (s.lower() for s in spin.groups())
+        indices = (
+            axis + right[1].lower()
+            if re.fullmatch(r"V[XYZ]", right) else f"[{left},{right}]"
+        )
+        return f"energy_eV sigma_{component}_{indices} [e^2/h, sigma_{component} Pauli]"
+    return f"energy_eV normalised_bastin[{left},{right}] [2*pi/(num_cells*cell_area)]"
+
+
+def _write_reconstructed_curve(path, x, y, formula, mu):
+    """Keep legacy curve bytes, adding operator-aware labels only for shc."""
+    if formula.lower() == "shc":
+        np.savetxt(path, np.column_stack((x, y)), fmt="%.17g", header=_shc_curve_header(mu))
+    else:
+        _core.WriteCurveText(path, x, y)
+
+
 def _reconstruct_single_formula(
     formula: str,
     mu: _core.ChebyshevMoments,
@@ -1263,11 +1350,14 @@ def _reconstruct_single_formula(
     num_points: int | None = None,
     num_cells: int | None = None,
     cell_area: float | None = None,
+    receipt_path: str | None = None,
 ) -> list[tuple[str, str, np.ndarray, np.ndarray]]:
     """Run one named reconstruction formula on ``mu``.
 
     Returns a list of ``(legacy_prefix, legacy_suffix, x_grid, values)`` tuples.
     """
+    if receipt_path:
+        record_resolution(receipt_path, mu, broadening_meV)
     f = formula.lower()
     if f == "shc":
         if num_cells is None or cell_area is None:
@@ -1501,97 +1591,69 @@ def uses_metric_executor(model: Mapping[str, Any]) -> bool:
     original Wannier executor and its CSR and real-space bases.
     """
     kind = str(_get_or(model, "kind", "csr"))
-    params = model.get("params") or {}
-    if kind in ("siesta", "paoflow", "openmx", "pyscf") or kind in ML_MODEL_KINDS:
+    connector = CONNECTORS.get(kind)
+    if connector is None:
+        return False
+    if connector.metric_trigger is None:
         return True
-    return kind == "wannier" and isinstance(params, Mapping) and (
-        "velocity_mode" in params or "spin" in params or "fermi_energy" in params)
-
-
-def _check_metric_params(kind: str, model: Mapping[str, Any], modes: tuple[str, ...]) -> None:
-    """Validate params of an orthogonal model in the metric executor."""
     params = model.get("params") or {}
-    if not isinstance(params, Mapping):
-        raise ValueError(f"model.params ({kind}) must be a JSON object")
-    _check_keys(f"model.params ({kind})", params, frozenset({
-        "velocity_mode", "spin", "fermi_energy", "oracle", "oracle_degeneracy_tolerance", "bloch_memory_mb"}))
-    if kind == "openmx" and ("spin" in params or "fermi_energy" in params):
-        raise ValueError("an OpenMX model carries its spinors and stores energies from the chemical "
-                         "potential; remove model.params.spin and model.params.fermi_energy")
-    if kind == "pyscf" and ("spin" in params or "fermi_energy" in params):
-        raise ValueError("a PySCF model carries its spinors and stores energies from its Fermi energy; "
-                         "remove model.params.spin and model.params.fermi_energy")
-    if kind == "paoflow" and ("spin" in params or "fermi_energy" in params):
-        raise ValueError("a PAOFLOW model carries its own on-site spin and energies from E_F; "
-                         "remove model.params.spin and model.params.fermi_energy")
-    if params.get("velocity_mode", "berry_connection") not in modes:
-        raise ValueError(f"model.params.velocity_mode for {kind} must be one of {list(modes)}")
-    tolerance = float(params.get("oracle_degeneracy_tolerance", 1e-6))
-    if not np.isfinite(tolerance) or tolerance <= 0:
-        raise ValueError("oracle_degeneracy_tolerance must be positive and finite (eV)")
+    return isinstance(params, Mapping) and any(
+        key in params for key in connector.metric_trigger)
 
 
 #: Machine-learning Hamiltonians read by models/<kind>.py for the metric
 #: executors: kind -> (required model key, extra model.params keys).
+#: Derived from the connector registry (entries with the H(R)/S(R) input
+#: style); kept importable with the same content for tests and docs. GPAW is
+#: not machine learning, but shares the same kind of input: H(R) and S(R) of
+#: an atomic-orbital basis (models/gpaw.py); its position matrix is built by
+#: quadrature of the radial functions in the export, so covariant is allowed.
 ML_MODEL_KINDS: dict[str, tuple[str, frozenset[str]]] = {
-    "deeph": ("dir", frozenset({"hamiltonian_file"})),
-    "deeptb": ("dir", frozenset()),
-    "hamgnn": ("file", frozenset()),
-    "threebodytb": ("file", frozenset({"orbitals_per_element"})),
-    "abacus": ("file", frozenset({"overlap_file", "stru_file", "orbital_dir", "orbitals_per_element",
-                                  "position_file"})),
-    # Not machine learning, but the same kind of input: H(R) and S(R) of an
-    # atomic-orbital basis (models/gpaw.py); its position matrix is built by
-    # quadrature of the radial functions in the export, so covariant is allowed.
-    "gpaw": ("file", frozenset({"soc", "quadrature_order", "dipole_cache"})),
+    connector.kind: (connector.path_keys[0], connector.allowed_params - ML_BASE_PARAMS)
+    for connector in CONNECTORS.values() if connector.ml_style
 }
 
 
-def _check_ml_params(kind: str, model: Mapping[str, Any]) -> None:
-    """Validate a machine-learning model: its path key and params.
+def _checkpoint_file_identity(path: str) -> dict[str, Any]:
+    """Hash model bytes with bounded memory, without trusting modification times.
 
-    These models carry no position matrix and no radial orbitals, so the
-    covariant velocity is refused, except for an ABACUS model given its
-    position matrix (``position_file``). ``fermi_energy`` (eV) replaces the
-    reference energy the reader would otherwise use.
+    Checkpoint identity must change even for an in-place matrix edit of the same
+    size. Streaming costs one extra sequential read per input per execution and
+    bounded temporary storage using 1 MiB chunks. Pitfall: inputs must remain unchanged
+    throughout loading and execution, just as for a run without checkpoints.
     """
-    key, extra = ML_MODEL_KINDS[kind]
-    if not model.get(key):
-        raise ValueError(f"Run file with model.kind={kind!r} requires {key!r}")
-    params = model.get("params") or {}
-    if not isinstance(params, Mapping):
-        raise ValueError(f"model.params ({kind}) must be a JSON object")
-    _check_keys(f"model.params ({kind})", params, frozenset({
-        "velocity_mode", "fermi_energy", "oracle", "oracle_degeneracy_tolerance", "bloch_memory_mb"}) | extra)
-    modes = ("bare", "berry_connection")
-    # GPAW exports carry the radial functions: LSQuant builds the position matrix.
-    if kind == "gpaw" or (kind == "abacus" and params.get("position_file")):
-        modes += ("covariant",)
-    if params.get("velocity_mode", "berry_connection") not in modes:
-        if kind == "abacus":
-            raise ValueError("model.params.velocity_mode for abacus must be 'bare' or 'berry_connection'; "
-                             "'covariant' needs model.params.position_file (ABACUS's data-rR-sparse.csr)")
-        raise ValueError(f"model.params.velocity_mode for {kind} must be 'bare' or 'berry_connection' "
-                         "(no position matrix, so no 'covariant')")
-    if "fermi_energy" in params and not np.isfinite(float(params["fermi_energy"])):
-        raise ValueError("model.params.fermi_energy must be a finite number (eV)")
-    tolerance = float(params.get("oracle_degeneracy_tolerance", 1e-6))
-    if not np.isfinite(tolerance) or tolerance <= 0:
-        raise ValueError("oracle_degeneracy_tolerance must be positive and finite (eV)")
-    memory = float(params.get("bloch_memory_mb", 256.0))
-    if not np.isfinite(memory) or memory <= 0:
-        raise ValueError("bloch_memory_mb must be positive and finite (MiB)")
-    per_element = params.get("orbitals_per_element")
-    if per_element is not None and (not isinstance(per_element, Mapping) or not all(
-            isinstance(v, int) and not isinstance(v, bool) and v > 0 for v in per_element.values())):
-        raise ValueError("model.params.orbitals_per_element must map element symbols to positive integers")
-    if kind == "abacus":
-        for name in ("overlap_file", "stru_file"):
-            if not params.get(name):
-                raise ValueError(f"model.params.{name} is required for model.kind='abacus' "
-                                 "(the S(R) file and the STRU of the same structure)")
-    if kind == "gpaw" and not isinstance(params.get("soc", True), bool):
-        raise ValueError("model.params.soc must be true or false")
+    digest = hashlib.sha256()
+    size = 0
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            size += len(chunk)
+            digest.update(chunk)
+    return {"size": size, "sha256": digest.hexdigest()}
+
+
+def _checkpoint_path(out_dir: str, identity: Mapping[str, Any]) -> str:
+    """Select only checkpoints from the same calculation, including model bytes.
+
+    The versioned, full SHA-256 filename leaves the binary checkpoint format
+    unchanged. Legacy word-only names cannot match. Other checkpoints are kept
+    for their original runs and explicitly reported, including when a matching
+    checkpoint also exists. Output and reconstruction settings are deliberately
+    absent: they do not determine the accumulated moments.
+    """
+    import warnings
+
+    payload = json.dumps(identity, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    tag = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    path = os.path.join(out_dir, f"checkpoint_v2_{tag}.lsqckpt")
+    for other in sorted(glob.glob(os.path.join(out_dir, "checkpoint_*.lsqckpt"))):
+        if other != path:
+            warnings.warn(
+                f"Ignoring checkpoint {os.path.basename(other)}: different calculation "
+                "fingerprint or legacy checkpoint without calculation identity",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+    return path
 
 
 def execute_runfile(
@@ -1612,11 +1674,14 @@ def execute_runfile(
         out_dir_override if out_dir_override is not None else rf.output["dir"]
     )
     kind = str(rf.model["kind"])
-    if (kind in ("wannier", "paoflow", "openmx", "pyscf") or kind in ML_MODEL_KINDS) and uses_metric_executor(rf.model):
+    connector = CONNECTORS.get(kind)
+    # Every connector except SIESTA runs the clean/projection metric executor;
+    # SIESTA keeps its own dispatch below (disorder, projection, clean).
+    if connector is not None and kind != "siesta" and uses_metric_executor(rf.model):
         if rf.basis["name"] == "real" or rf.basis["disorder"]["W"] != 0:
             raise ValueError(f"model.kind={kind!r} with params.velocity_mode/spin runs in the "
                              "clean bloch or eigen basis")
-        if kind not in ("openmx", "pyscf") and str(rf.metric["policy"]) == "orthogonal":
+        if not connector.keep_metric_policy and str(rf.metric["policy"]) == "orthogonal":
             # S = 1: the exact Lowdin route of the metric executors is the orthogonal one.
             # A non-orthogonal machine-learning model takes the same exact route with its S.
             rf.metric.update(policy="nonorthogonal", route="lowdin", applier="exact")
@@ -1654,6 +1719,10 @@ def execute_runfile(
             raise FileNotFoundError(
                 f"Hamiltonian CSR file not found: {ham_path}"
             )
+        for op_name in rf.model.get("operators") or ():
+            op_path = os.path.join(model_dir, f"{label}.{op_name}.CSR")
+            if not os.path.isfile(op_path):
+                raise FileNotFoundError(f"Operator CSR file not found: {op_path}")
         if str(rf.metric["policy"]) != "orthogonal":
             s_path = os.path.join(model_dir, f"{label}.S.CSR")
             if not os.path.isfile(s_path):
@@ -1693,7 +1762,10 @@ def execute_runfile(
         parsed_w = parse_word(w_str)
         comp_preview = compile_word(
             parsed_w,
-            basis={"name": rf.basis["name"]},
+            basis={"name": rf.basis["name"], **(
+                {"operators": list(rf.model["operators"])}
+                if rf.model.get("operators") is not None else {}
+            )},
             params={
                 "expansion": rf.expansion,
                 "time": rf.time,
@@ -1773,6 +1845,8 @@ def execute_runfile(
             seed=rng_seed,
         )
         num_states = int(state_gen.number_of_states)
+        if trace_mode == "exact" and isinstance(state_gen, _core.LocalStates):
+            trace_coverage(num_states, int(basis_obj.dimension), receipt_path=resolved_path, warn=False)
         num_moments = int(rf.expansion["moments"])
         batch_size = int(rf.expansion["batch"] or num_moments)
         left_window = int(rf.expansion.get("left_window") or 16)
@@ -1864,16 +1938,20 @@ def execute_runfile(
                         broad,
                         fermi_energies=compiled.reconstruction.fermi_energies,
                         num_points=compiled.reconstruction.num_points,
+                        receipt_path=resolved_path,
+                        num_cells=rf.reconstruction.get("num_cells"),
+                        cell_area=rf.reconstruction.get("cell_area"),
                     ):
                         if rf.output["legacy_names"]:
                             c_path = os.path.join(
                                 out_dir, f"{c_pref}{stem}{c_suf}"
                             )
-                            _core.WriteCurveText(c_path, x_arr, y_arr)
+                            _write_reconstructed_curve(c_path, x_arr, y_arr, form, mu)
                             curve_files.append(c_path)
                             written_files.append(c_path)
                         else:
                             curves_json_payload[f"{stem}:{form}"] = {
+                                **resolution_metadata(mu, broad),
                                 "grid": [float(v) for v in x_arr],
                                 "values": [float(v) for v in y_arr],
                             }
@@ -1973,6 +2051,7 @@ def execute_runfile(
                 raise ValueError(
                     f"expansion.states ({num_states}) exceeds Hamiltonian dimension ({dim})"
                 )
+            trace_coverage(num_states, dim, receipt_path=resolved_path)
             state_gen: _core.StateGenerator = _core.LocalStates(
                 dim, list(range(num_states))
             )
@@ -2179,8 +2258,9 @@ def execute_runfile(
         else:
             for op_n in discovered_ops:
                 op_p = os.path.join(model_dir, f"{label}.{op_n}.CSR")
-                if os.path.isfile(op_p):
-                    raw_csr_mats[op_n] = _core.ReadCsrText(op_p)
+                if not os.path.isfile(op_p):
+                    raise FileNotFoundError(f"Operator CSR file not found: {op_p}")
+                raw_csr_mats[op_n] = _core.ReadCsrText(op_p)
 
         if use_atom_block and spatial_receipt is not None:
             perm_path = os.path.join(out_dir, "permutation.npy")
@@ -2196,6 +2276,26 @@ def execute_runfile(
         num_moments = int(rf.expansion["moments"])
         batch_size = int(rf.expansion["batch"] or num_moments)
         captured_idx = 0
+
+        checkpoint_inputs: dict[str, Any] = {}
+        if rf.expansion.get("checkpoint"):
+            input_paths = {"HAM": str(hr_file) if hr_file is not None else ham_path}
+            if s_mat is not None:
+                input_paths["S"] = s_path
+            if hr_file is None:
+                for op_n in (op_block_arrays if use_atom_block else raw_csr_mats):
+                    input_paths[f"operator:{op_n}"] = os.path.join(
+                        model_dir, f"{label}.{op_n}.CSR"
+                    )
+            if use_atom_block:
+                for key in ("positions", "atom_map"):
+                    source = rf.model.get(key)
+                    if isinstance(source, str):
+                        input_paths[key] = source
+            checkpoint_inputs = {
+                key: _checkpoint_file_identity(path)
+                for key, path in input_paths.items()
+            }
 
         for w_str, w_formulas in words_to_run:
             parsed_w = parse_word(w_str)
@@ -2293,8 +2393,25 @@ def execute_runfile(
             # to an uninterrupted run.
             ckpt_path = ""
             if rf.expansion.get("checkpoint"):
-                ckpt_tag = hashlib.sha256(compiled.plan.word.encode()).hexdigest()[:12]
-                ckpt_path = os.path.join(out_dir, f"checkpoint_{ckpt_tag}.lsqckpt")
+                ckpt_path = _checkpoint_path(out_dir, {
+                    "version": 2,
+                    "word": compiled.plan.word,
+                    "plan_sizes": [instruction.num_moments for instruction in compiled.plan.code
+                                   if isinstance(instruction, _core.Expand)],
+                    "dimension": dim,
+                    "window": [float(window.lower), float(window.upper)],
+                    "expansion": dict(rf.expansion, window=None, states=num_states,
+                                      state_block=state_block),
+                    "basis": rf.basis,
+                    "metric": rf.metric,
+                    "numerics": rf.numerics,
+                    "domain_atoms": da if use_atom_block else None,
+                    "build_profile": _core.build_profile,
+                    "time": rf.time,
+                    "dt": compiled.dt,
+                    "model": rf.model,
+                    "inputs": checkpoint_inputs,
+                })
             mu = engine.run(compiled.plan, checkpoint_path=ckpt_path)
             if ckpt_path and os.path.isfile(ckpt_path):
                 os.remove(ckpt_path)
@@ -2390,12 +2507,15 @@ def execute_runfile(
                         broad,
                         fermi_energies=compiled.reconstruction.fermi_energies,
                         num_points=compiled.reconstruction.num_points,
+                        receipt_path=resolved_path,
+                        num_cells=rf.reconstruction.get("num_cells"),
+                        cell_area=rf.reconstruction.get("cell_area"),
                     ):
                         if rf.output["legacy_names"]:
                             c_path = os.path.join(
                                 out_dir, f"{c_pref}{stem}{c_suf}"
                             )
-                            _core.WriteCurveText(c_path, x_arr, y_arr)
+                            _write_reconstructed_curve(c_path, x_arr, y_arr, form, mu_for_recon)
                             curve_files.append(c_path)
                             written_files.append(c_path)
                             if rf.output["capture_tutorial"]:
@@ -2410,6 +2530,7 @@ def execute_runfile(
                                 captured_idx += 1
                         else:
                             curves_json_payload[f"{stem}:{form}"] = {
+                                **resolution_metadata(mu_for_recon, broad),
                                 "grid": [float(v) for v in x_arr],
                                 "values": [float(v) for v in y_arr],
                             }
@@ -2468,10 +2589,13 @@ def execute_runfile(
                         mu_tgt,
                         t_broad,
                         fermi_energies=t_fermi,
+                        receipt_path=resolved_path,
+                        num_cells=rf.reconstruction.get("num_cells"),
+                        cell_area=rf.reconstruction.get("cell_area"),
                     ):
                         fname = f"{c_pref}{stem}{c_suf}"
                         c_path = os.path.join(dest_d, fname)
-                        _core.WriteCurveText(c_path, x_arr, y_arr)
+                        _write_reconstructed_curve(c_path, x_arr, y_arr, form, mu_tgt)
                         curve_files.append(c_path)
                         written_files.append(c_path)
                         if also_top and dest_d != out_dir:
@@ -2479,6 +2603,12 @@ def execute_runfile(
                             if not os.path.exists(top_p):
                                 shutil.copyfile(c_path, top_p)
                                 written_files.append(top_p)
+
+    if "state_block_rule" in rf.expansion:
+        resolved_dict["expansion"].update(rf.expansion)
+        with open(resolved_path, "w", encoding="utf-8") as fh:
+            json.dump(resolved_dict, fh, indent=2)
+            fh.write("\n")
 
     if not rf.output["legacy_names"] and curves_json_payload:
         cjson_path = os.path.join(out_dir, "curves.json")
@@ -2537,8 +2667,23 @@ def reconstruct_target(
             if fermi_energies is not None
             else list(rf_rec.get("fermi_energies") or [0.0])
         )
-        written: list[str] = []
+        skipped: list[dict[str, str]] = []
+        compatible: list[str] = []
         for mp in mom_candidates:
+            if formula is not None:
+                mu = _core.ReadChebmom(mp)
+                if formula.lower() not in _moment_allowed_formulas(mu):
+                    skipped.append({
+                        "moment_file": mp,
+                        "reason": (f"formula '{formula}' is incompatible with "
+                                   f"rank {mu.rank} and word '{mu.word}'"),
+                    })
+                    continue
+            compatible.append(mp)
+        if not compatible:
+            raise ValueError(f"No moment files in '{abs_target}' admit formula '{formula}'")
+        written: list[str] = []
+        for mp in compatible:
             res = reconstruct_target(
                 mp,
                 formula=formula,
@@ -2547,7 +2692,7 @@ def reconstruct_target(
                 out_dir=dest_dir,
             )
             written.extend(res["curve_files"])
-        return {"output_dir": dest_dir, "curve_files": written}
+        return {"output_dir": dest_dir, "curve_files": written, "skipped_files": skipped}
 
     if not os.path.isfile(abs_target):
         raise FileNotFoundError(f"Moment file not found: '{abs_target}'")
@@ -2576,6 +2721,7 @@ def reconstruct_target(
         else:
             formula = "dos"
 
+    formula = formula.lower()
     shc_metadata = {}
     resolved_path = os.path.join(os.path.dirname(abs_target), "run.resolved.json")
     if formula == "shc" and os.path.isfile(resolved_path):
@@ -2584,14 +2730,10 @@ def reconstruct_target(
         shc_metadata = {key: reconstruction.get(key) for key in ("num_cells", "cell_area")}
     written_curves: list[str] = []
     for c_pref, c_suf, x_arr, y_arr in _reconstruct_single_formula(
-        formula, mu, eff_broad, fermi_energies=eff_fermi, **shc_metadata
+        formula, mu, eff_broad, fermi_energies=eff_fermi, receipt_path=resolved_path, **shc_metadata
     ):
         c_path = os.path.join(dest_dir, f"{c_pref}{stem}{c_suf}")
-        if formula == "shc":
-            np.savetxt(c_path, np.column_stack((x_arr, y_arr)), fmt="%.17g",
-                       header="energy_eV sigma_z_xy [e^2/h, sigma_z Pauli]")
-        else:
-            _core.WriteCurveText(c_path, x_arr, y_arr)
+        _write_reconstructed_curve(c_path, x_arr, y_arr, formula, mu)
         written_curves.append(c_path)
 
     return {

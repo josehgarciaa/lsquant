@@ -177,11 +177,10 @@ of the expansion.
 > $M = \pi a / \eta$ moments. For example, a 20 eV window ($a = 10$ eV) and
 > $\eta = 10$ meV need $M \ge 3142$.
 
-> **Known limitation: a broadening finer than $\pi a / M$ is silently
-> replaced.** When $\eta < \pi a / M$, the reconstruction uses all $M$
-> moments without a warning, and the actual broadening is $\pi a / M$, not
-> the value in `broadening_meV`. A finer curve then needs more moments,
-> following the rule of thumb above.
+> **Finite-M resolution.** A broadening finer than $\pi a / M$ emits a
+> `RuntimeWarning` naming the requested and effective values. Reconstruction
+> still uses all M moments and records the effective estimate in the curve
+> metadata or run receipt. A finer curve needs more moments.
 <!-- source: python/lsquant/reconstruct.py:89–96 and :136–145 -->
 
 > **Rule of thumb.** In a finite system of $N$ orbitals, keep the number of

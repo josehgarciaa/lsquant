@@ -69,9 +69,9 @@ import sys
 
 import numpy as np
 
+from .units import BOHR_ANGSTROM, HARTREE_EV
+
 FORMAT = "lsquant-hamgnn-1"
-HARTREE_EV = 27.211386245988
-BOHR_ANGSTROM = 0.529177210903
 SPIN_MODES = ("none", "collinear", "soc")
 DFT_CODES = ("openmx", "abacus", "siesta")
 
@@ -283,7 +283,7 @@ def load_hamgnn_model(path, *, fermi_energy=0.0):
     with the orbitals on their atoms, and the spin from the Pauli matrices
     on the spinor labels.
     """
-    from .lcao import assemble_blocks, build_lcao_model
+    from .lcao import assemble_blocks, build_lcao_model, seed_name_from_file
 
     path = os.path.abspath(os.path.expanduser(str(path)))
     with np.load(path, allow_pickle=False) as f:
@@ -312,7 +312,7 @@ def load_hamgnn_model(path, *, fermi_energy=0.0):
                 orbital_positions="atom-centred: every orbital on its atom")
     return build_lcao_model(data["lattice"] * BOHR_ANGSTROM, data["positions"] * BOHR_ANGSTROM, norb,
                             r_int, hamiltonian, overlap, spinful=spinful,
-                            seed_name=os.path.splitext(os.path.basename(path))[0], metadata=meta,
+                            seed_name=seed_name_from_file(path), metadata=meta,
                             fermi_energy=float(fermi_energy), overlap_r_int=s_r_int)
 
 

@@ -26,10 +26,9 @@ You need:
 
 - A C++17 compiler with OpenMP, to build the engine. The reference build
   used the system compiler, GCC 9.4.
-- CMake 3.21 or later for the presets (the version declared in
-  `CMakePresets.json`), or 3.16 or later for a build by hand.
-- Eigen 3.3 or later, FFTW3 (double precision) and `pkg-config`, for the
-  engine.
+- CMake 3.21 or later for both preset and manual builds.
+- Eigen 3.4 or later (the legacy drivers do not compile with 3.3), Boost headers (for legacy Boost.Math Bessel functions),
+  FFTW3 (double precision) and `pkg-config`, for the engine.
 - GSL, Python 3.10 or later with its development headers, and pybind11, for
   the Python binding.
 - NumPy, SciPy and SymPy, for the Python package.
@@ -62,13 +61,12 @@ commands are the same with `mamba` or `micromamba`.
 1. Create and activate the environment:
 
    ```bash
-   conda create -n lsq -c conda-forge python=3.10 cmake pkg-config eigen fftw gsl pybind11 \
+   conda create -n lsq -c conda-forge python=3.10 cmake pkg-config eigen boost-cpp fftw gsl pybind11 \
        numpy scipy sympy matplotlib
    conda activate lsq
    ```
 
-   This is the set of packages in the environment of the reference `golden`
-   build.
+   Boost headers are explicitly included for the legacy drivers.
 
 2. Install the optional packages you need:
 
@@ -155,7 +153,7 @@ Run these commands from the top of the source tree.
    test programs, used by the check against the reference outputs.
    <!-- source: build/golden/lsquant_core also holds stage1_moments, stage6_nonorth and stage_1_check (docs/build.md:21, 49; docs/core-engine.md:20) -->
 
-With CMake 3.16 to 3.20, configure the same build by hand:
+To configure without a preset (also requires CMake 3.21 or later):
 
 ```bash
 cmake -S . -B build/golden -DCMAKE_BUILD_TYPE=Release -DLSQUANT_BUILD_PROFILE=golden
@@ -179,13 +177,10 @@ preset name.
 Keep one build on `PYTHONPATH` at a time, because Python loads the first
 `_core` it finds.
 
-> **Known limitation: `pip install -e python/` fails.** The package metadata
-> points to the top-level `README.md`, a file outside the package directory,
-> and recent versions of setuptools refuse it. With setuptools 84.0 the install
-> stops with `Cannot access '…/python/../README.md' (or anything outside
-> '…/python')`. Use `PYTHONPATH` as shown above, and run the command-line
-> interface as `python -m lsquant`.
-<!-- source: python/pyproject.toml:9 (readme = "../README.md") -->
+The Python package can also be installed with `pip install -e python/` from
+the repository root. Its metadata uses the package-local `python/README.md`,
+which is also included in source distributions. This installs the Python
+interface and CLI; build the compiled `_core` extension separately as above.
 
 ## Check the installation
 
@@ -210,10 +205,11 @@ Keep one build on `PYTHONPATH` at a time, because Python loads the first
    <!-- source: python/lsquant/words/catalogue.py:45-123 (7 entries); compiler.py:764-766; cli.py:171-174 -->
 
 On import, `lsquant` sets `OMP_NUM_THREADS` (the number of physical cores the
-process may use) and, for the `lsquant` command only, `OMP_PROC_BIND=spread`
+process may use) and, for the `lsquant` command with its own cores only
+(a CPU set from the batch system, or `LSQUANT_BIND_THREADS=1`), `OMP_PROC_BIND=spread`
 and `OMP_PLACES=cores`; each only if it is unset. Set `OMP_NUM_THREADS` yourself on a shared node; see
 [Run on a cluster](run-on-a-cluster.md).
-<!-- source: python/lsquant/runtime.py configure_threads (binding only for the command) -->
+<!-- source: python/lsquant/runtime.py configure_threads, binding_requested -->
 
 If the import fails:
 
@@ -276,7 +272,8 @@ cmake --build --preset native-cuda
 After the import, `_core.cuda_available` is `True`.
 
 The GPU code is compiled for compute capability 9.0 (H100 class) by default.
-Only 90 is tested. For another GPU, set `LSQUANT_CUDA_ARCHITECTURES`; see
+Only 90 is tested. For another GPU, set `CMAKE_CUDA_ARCHITECTURES` on a fresh
+configure, or override it with `LSQUANT_CUDA_ARCHITECTURES`; see
 [CUDA architecture](../reference/build-presets.md#presets).
 
 The GPU is used by two run-file settings, both for real-space `csr` models.

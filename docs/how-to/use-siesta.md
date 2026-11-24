@@ -289,6 +289,10 @@ the cache goes to `.lsquant-cache` in the parent of `model.dir` when that
 directory is named `siesta`. Otherwise it goes to `lsquant-cache` in the
 system temporary directory when `model.dir` is not writable, and to
 `.lsquant-cache` in `model.dir` itself in every other case.
+For compatibility, reads also check the legacy location
+`model.dir/.lsquant-cache/dipoles-<key>.npz` after the current location.
+The same cache-key and certificate validation applies to both locations;
+this fallback does not change where new caches are written.
 <!-- source: python/lsquant/models/siesta.py:287-289 (docstring: cache outside siesta/ input directories, content-based invalidation), 382-391 (order: LSQUANT_CACHE_DIR, parent of siesta/, temp dir if not writable, model.dir) -->
 
 The accuracy of the dipole integrals is set by `quadrature_order`,
@@ -303,7 +307,8 @@ Choose the number of moments M from the broadening you need. M sets the
 energy resolution of every curve, as the smearing does for a DFT density of
 states. The finest broadening of a run is πa/M, with a the half-width of the
 energy window. A finer value in `broadening_meV` uses all M moments, and
-LSQuant applies πa/M instead, without a warning.
+LSQuant applies πa/M instead, emits a RuntimeWarning, and records the effective
+resolution in the run receipt.
 
 > **Rule of thumb.** For a broadening η, use M ≈ πa/η moments, where a is
 > the half-width of the energy window in eV.
@@ -374,10 +379,11 @@ To see the residuals of a run, look at `metric_residuals` in its
 `basis.json`. Example 12 shows the case and checks the result against the
 `bloch` basis.
 
-> **Known limitation: `metric.tol` and its error message.** The default
-> tolerance stays at 10⁻¹³ whatever cond(S) is. The message suggests changing
-> the Chebyshev order or `coeff_tol` even with `"applier": "exact"`, where
-> those keys have no effect. Set `tol` as shown above.
+> **Known limitation: `metric.tol` ignores conditioning.** The default
+> tolerance stays at 10⁻¹³ whatever cond(S) is. Exact-applier failures now
+> report the residual, estimated cond(S), and rounding floor, with advice to
+> raise `metric.tol`. Chebyshev failures retain their order/coefficient advice.
+> Set `tol` as shown above.
 <!-- source: python/lsquant/disorder_bases.py:315–319, python/lsquant/runfile.py:297 -->
 
 ## Results and units

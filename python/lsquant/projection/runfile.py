@@ -12,9 +12,9 @@ import numpy as np
 from .. import _core
 from ..apps.stage6b_siesta import (PhaseReceipt, _write_json, oracle_energies, SHC_WORD)
 from ..bases import BlochMetricBasis
-from ..models.orthogonal import load_runfile_model
+from ..models.registry import load_runfile_model
 from ..oracle.spin_hall import spin_berry_curvature, sigma_xy, UNITS
-from ..reconstruct import dos_curve, shc
+from ..reconstruct import dos_curve, shc, resolution_metadata
 from ..words import parse as parse_word
 from ..words.grammar import OperatorSlot
 from .bases import ProjectedBlochBasis, ProjectedRealSpaceBasis
@@ -239,6 +239,8 @@ def execute_projection_runfile(rf, out_dir):
                 writer(str(path), mu)
                 moments.append(str(path))
             reconstruction_mu = _core.ReadChebmom(str(path)) if rf.reconstruction["legacy_text_round_trip"] else mu
+        resolved["receipt"].setdefault("curve_resolution", []).append(
+            dict(word=word, **resolution_metadata(reconstruction_mu, broadening_meV)))
         with timing.phase("reconstruction", word=word):
             if mu.rank == 2:
                 E, values = shc(reconstruction_mu, broadening_meV, projected.num_cells, area,

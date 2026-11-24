@@ -10,6 +10,7 @@ moments (``M = 1024``) and reconstructs at ``80`` meV broadening.
 
 from __future__ import annotations
 
+
 import argparse
 import importlib.util
 import os
@@ -21,7 +22,7 @@ from types import ModuleType
 
 from .. import _core
 from ..moments import run_plan, velocity_window
-from ..reconstruct import dos_curve, time_correlation_curve
+from ..reconstruct import dos_curve, time_correlation_curve, record_resolution
 from ..words import compile as compile_word
 
 L_SIDE: int = 200
@@ -170,6 +171,7 @@ def run_tutorial05(
                         else mu_msd
                     )
 
+                    record_resolution(os.path.join(out_dir, "run.resolved.json"), mu_msd_disk, broadening_meV)
                     for ef in ef_list:
                         times, msd_vals = time_correlation_curve(
                             mu_msd_disk, float(broadening_meV), ef
@@ -218,6 +220,7 @@ def run_tutorial05(
                         else mu_dos
                     )
 
+                    record_resolution(os.path.join(out_dir, "run.resolved.json"), mu_dos_disk, broadening_meV)
                     energies, dos_vals = dos_curve(
                         mu_dos_disk, float(broadening_meV)
                     )
