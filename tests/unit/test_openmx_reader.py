@@ -137,6 +137,10 @@ def test_runfile_validates_openmx():
                 basis={"name": "eigen", "supercell": [2, 2, 1]})
     with pytest.raises(ValueError, match="requires 'file'"):
         RunFile.from_dict(dict(base, model={"kind": "openmx"}))
-    with pytest.raises(ValueError, match="fermi_energy"):
+    # fermi_energy selects the energy origin (H - x S); spin stays refused.
+    rf = RunFile.from_dict(dict(base, model={"kind": "openmx", "file": "x.scfout",
+                                             "params": {"fermi_energy": 0.1}}))
+    assert rf.model["params"]["fermi_energy"] == 0.1
+    with pytest.raises(ValueError, match="spin"):
         RunFile.from_dict(dict(base, model={"kind": "openmx", "file": "x.scfout",
-                                            "params": {"fermi_energy": 0.1}}))
+                                            "params": {"spin": "labels"}}))

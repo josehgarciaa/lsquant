@@ -202,6 +202,21 @@ def kubo_plan(
     return _core.Plan(code, word)
 
 
+def velocity_window(window: _core.SpectralWindow) -> _core.SpectralWindow:
+    """Return the symmetric window that scales an MSD velocity by ``1/a``.
+
+    The Hamiltonian keeps its physical window; its commutator velocity needs
+    only the inverse half-width, in inverse energy units. This O(1) helper
+    uses the same ``0.5 * (upper - lower)`` arithmetic as SpectralWindow.
+    For centred windows it preserves the scale bits and the shift of -0.0.
+
+    Pitfall: rescaling a velocity with the Hamiltonian's off-centre window
+    adds an identity term and corrupts the derived time-evolution series.
+    """
+    a = 0.5 * (window.upper - window.lower)
+    return _core.SpectralWindow(-a, a)
+
+
 def msd_plan(
     num_moments: int,
     num_steps: int,
@@ -230,11 +245,11 @@ def msd_plan(
 
     The operator at ``velocity_index`` is the velocity of the rescaled Hamiltonian,
     ``V~ = i[H~, X] = V / a`` for ``V = i[H, X]`` and window half-width ``a``. Pass
-    ``RescaledOperator(V, window)``, as the stage-4 apps do: for a window centred on 0 it
-    is exactly ``V / a`` and the moments equal ``Tr[[X, U(t)]^+ T_m(H~) [X, U(t)]]``
-    (``hbar`` in eV fs, ``U(t) = exp(-i H t / hbar)``). For an off-centre window
-    ``RescaledOperator`` adds ``shift * I = -(c / a) I`` to ``V / a`` and the moments
-    differ from the MSD; ``tests/unit/test_python_stage4.py`` pins both cases.
+    ``RescaledOperator(V, velocity_window(window))`` so the moments equal
+    ``Tr[[X, U(t)]^+ T_m(H~) [X, U(t)]]`` for centred and off-centre windows
+    (``hbar`` in eV fs, ``U(t) = exp(-i H t / hbar)``).
+    Pitfall: passing the physical window directly adds ``-(c / a) I`` to
+    ``V / a`` when its centre ``c`` is nonzero.
     """
     if num_moments <= 0:
         raise ValueError("msd_plan: num_moments must be positive")

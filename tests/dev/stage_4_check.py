@@ -32,6 +32,7 @@ from lsquant import (
     bessel_series_coefficients,
     legacy_bessel_coefficients,
     msd_plan,
+    velocity_window,
     projected_evolution_plan,
     run_plan,
     time_correlation_curve,
@@ -152,7 +153,7 @@ def main() -> int:
     b_vx = _core.ReadCsrText(os.path.join(g6_op_dir, "chain1d.VX.CSR"))
     b_dim = b_ham.dimension
     b_win = _core.SpectralWindow(-2.0, 2.0)
-    b_vx_op = _core.RescaledOperator(b_vx, b_win)
+    b_vx_op = _core.RescaledOperator(b_vx, velocity_window(b_win))
     b_dt = time_step_from_tmax(64, 20.0)
     # Byte identity with the legacy captures requires the GSL Bessel values.
     b_coeffs, b_phase = time_evolution_series(

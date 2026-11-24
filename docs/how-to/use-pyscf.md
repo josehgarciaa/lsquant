@@ -64,8 +64,10 @@ at the cost of the core Hamiltonian at each new k point; this needs a
 non-magnetic density and a pure functional.
 
 Energies are measured from `fermi_energy`, by default the middle of the gap;
-for a metal, pass it. Give every energy in the run file relative to it. The
-model takes no `model.params.fermi_energy` and no `model.params.spin`.
+for a metal, pass it when writing the file. Give every energy in the run file
+relative to it. The model takes no `model.params.spin`; `model.params.fermi_energy`
+(eV) overrides the origin the file was written with, shifting H by
+`−(x − E_F(file)) S`.
 
 ## 3. Run LSQuant
 

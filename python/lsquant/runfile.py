@@ -9,6 +9,7 @@ import json
 import os
 import re
 import shutil
+import warnings
 from typing import Any, Mapping, Sequence
 
 import numpy as np
@@ -22,9 +23,17 @@ from .bases import (
     make_basis,
     validate_w2s_csr_dir,
 )
-from .models.registry import CONNECTORS, ML_BASE_PARAMS, validate_connector_params
+from .models.registry import (
+    CONNECTORS,
+    ML_BASE_PARAMS,
+    NON_CONNECTOR_MODEL_KEYS,
+    metric_trigger_clause,
+    validate_bare_params,
+    validate_connector_params,
+    validate_model_keys,
+)
 from .models.wannier import load_wannier_model
-from .moments import run_plan, window_from_gershgorin
+from .moments import run_plan, velocity_window, window_from_gershgorin
 from .trace_coverage import trace_coverage
 from .reconstruct import (
     resolution_metadata,
@@ -401,12 +410,13 @@ def validate_runfile_dict(raw: Mapping[str, Any]) -> None:
         k for k, connector in CONNECTORS.items()
         if connector.metric_trigger is None
     )
+    trigger_clause = metric_trigger_clause()
     if reference is not None and not metric_kind:
         raise ValueError(f"Expected a metric-executor model ({metric_names}, or wannier with "
-                         f"params.velocity_mode or params.spin) when 'reference' is set, got {kind!r}")
+                         f"{trigger_clause}) when 'reference' is set, got {kind!r}")
     if projection["kind"] != "none" and not metric_kind:
         raise ValueError(f"Expected a metric-executor model ({metric_names}, or wannier with "
-                         f"params.velocity_mode or params.spin) when projection is enabled, got {kind!r}")
+                         f"{trigger_clause}) when projection is enabled, got {kind!r}")
     # Non-connector kinds first; the connector kinds follow in registry order
     # (siesta and wannier are named above: siesta keeps its own dispatch and
     # wannier is also a plain CSR executor kind).
@@ -419,24 +429,27 @@ def validate_runfile_dict(raw: Mapping[str, Any]) -> None:
             f"Unknown model.kind '{kind}'; expected one of {', '.join(repr(k) for k in known_kinds)}"
         )
     if kind == "csr":
+        validate_model_keys(kind, NON_CONNECTOR_MODEL_KEYS["csr"] | {"kind", "params"}, model)
         if model.get("hr_file"):
             operator_config = raw.get("numerics") or {}
             if not isinstance(operator_config, Mapping) or operator_config.get("operator") != "atom_block":
                 raise ValueError("model.hr_file requires numerics.operator='atom_block'")
         if not model.get("hr_file") and (not model.get("dir") or not model.get("label")):
             raise ValueError(
-                "Run file with model.kind='csr' requires 'dir' and 'label'"
+                "model.kind='csr' requires 'dir' and 'label'"
             )
+        validate_bare_params(kind, model)
     elif kind in CONNECTORS:
         connector = CONNECTORS[kind]
+        validate_model_keys(kind, connector.model_keys, model)
         for path_key in connector.path_keys:
             if not model.get(path_key):
                 raise ValueError(connector.missing_path_error)
-        # A Wannier90 model without a trigger param keeps the plain CSR
-        # executor and its params stay unvalidated (preserved behaviour).
-        if connector.metric_trigger is None or metric_kind:
-            validate_connector_params(connector, model)
+        validate_connector_params(connector, model, for_metric_executor=metric_kind)
     elif kind == "generator":
+        validate_model_keys(
+            kind, NON_CONNECTOR_MODEL_KEYS["generator"] | {"kind", "params"}, model
+        )
         gen_name = model.get("name")
         if not gen_name or not isinstance(gen_name, str):
             raise ValueError(
@@ -897,6 +910,28 @@ def validate_runfile_dict(raw: Mapping[str, Any]) -> None:
                     f"does not match any word in {words_list} "
                     f"(allowed formulas for given word(s): {sorted(union_allowed_formulas)})"
                 )
+
+    # Pitfall: these compatibility keys do not control KPM curve grids. Warn
+    # once per validation, without changing resolved input or numerical work.
+    if raw_rec_obj is not None:
+        requested = list(req_formulas_raw or ())
+        for target in raw_rec_obj.get("targets") or ():
+            requested.extend(target.get("formulas") or ())
+        inert_keys = []
+        if raw_rec_obj.get("fft_grid") and not any(
+            str(formula).lower().endswith("_fft") for formula in requested
+        ):
+            inert_keys.append(
+                "reconstruction.fft_grid has no effect without a *_fft formula; "
+                "use greenwood_fft or bastin_fft to select the FFT grid"
+            )
+        if raw_rec_obj.get("num_points") is not None and not metric_kind:
+            inert_keys.append(
+                "reconstruction.num_points has no effect for this model; "
+                "it only sets the default SIESTA oracle grid, not KPM curve grids"
+            )
+        if inert_keys:
+            warnings.warn("; ".join(inert_keys), RuntimeWarning, stacklevel=2)
 
 
 @dataclass
@@ -1594,9 +1629,9 @@ def uses_metric_executor(model: Mapping[str, Any]) -> bool:
     """True when the model runs through BlochMetricBasis (velocity modes, physical spin).
 
     SIESTA, OpenMX, PAOFLOW and machine-learning models (``ML_MODEL_KINDS``)
-    always do. A Wannier90 model does when its
-    ``params`` set ``velocity_mode`` or ``spin``; without them it keeps the
-    original Wannier executor and its CSR and real-space bases.
+    always do. A Wannier90 model does when its ``params`` set ``velocity_mode``,
+    ``spin`` or ``fermi_energy``; without them it keeps the original Wannier
+    executor and its CSR and real-space bases.
     """
     kind = str(_get_or(model, "kind", "csr"))
     connector = CONNECTORS.get(kind)
@@ -1687,8 +1722,8 @@ def execute_runfile(
     # SIESTA keeps its own dispatch below (disorder, projection, clean).
     if connector is not None and kind != "siesta" and uses_metric_executor(rf.model):
         if rf.basis["name"] == "real" or rf.basis["disorder"]["W"] != 0:
-            raise ValueError(f"model.kind={kind!r} with params.velocity_mode/spin runs in the "
-                             "clean bloch or eigen basis")
+            raise ValueError(f"model.kind='{kind}' runs in the clean bloch or eigen basis "
+                             "(real basis and disorder are available for siesta)")
         if not connector.keep_metric_policy and str(rf.metric["policy"]) == "orthogonal":
             # S = 1: the exact Lowdin route of the metric executors is the orthogonal one.
             # A non-orthogonal machine-learning model takes the same exact route with its S.
@@ -2307,7 +2342,8 @@ def execute_runfile(
 
         for w_str, w_formulas in words_to_run:
             parsed_w = parse_word(w_str)
-            # For MSD, the velocity operator passed to the engine is RescaledOperator(V, window)
+            # The MSD commutator needs V/a without the Hamiltonian shift.
+            vel_window = velocity_window(window)
             concrete_ops = {}
             atom_op_refs: list[Any] = []
             if use_atom_block:
@@ -2323,7 +2359,7 @@ def execute_runfile(
                         for s in parsed_w.slots
                     )
                     if is_velocity:
-                        res_op = _core.RescaledOperator(op_core, window)
+                        res_op = _core.RescaledOperator(op_core, vel_window)
                         atom_op_refs.append(res_op)
                         concrete_ops[op_n] = res_op
                     else:
@@ -2336,7 +2372,7 @@ def execute_runfile(
                 if use_ginkgo:
                     gko_mat = (
                         mat.rescaled(
-                            complex(window.scale, 0.0), complex(window.shift, 0.0)
+                            complex(vel_window.scale, 0.0), complex(vel_window.shift, 0.0)
                         )
                         if is_velocity
                         else mat
@@ -2345,7 +2381,7 @@ def execute_runfile(
                         gko_mat, ginkgo_executor, ginkgo_format
                     )
                 elif is_velocity:
-                    concrete_ops[op_n] = _core.RescaledOperator(mat, window)
+                    concrete_ops[op_n] = _core.RescaledOperator(mat, vel_window)
                 else:
                     concrete_ops[op_n] = _core.SparseMatrixOperator(mat)
             concrete_ops["1"] = _core.IdentityOperator(dim)

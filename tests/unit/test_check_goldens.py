@@ -22,8 +22,10 @@ Run with:  python3 -m pytest tests/unit
 import hashlib
 import os
 import pathlib
+import shlex
 import stat
 import subprocess
+import sys
 
 import pytest
 
@@ -176,6 +178,30 @@ def test_fail_and_localise_when_output_corrupted(fake_build, tmp_path):
     assert "first-diff line 3" in proc.stdout
 
 
+@pytest.mark.parametrize("tol", [False, True])
+def test_python_override_is_used_for_gate_helpers(fake_build, tmp_path, monkeypatch, tol):
+    """Exercise both the numeric diagnostic and tolerance-classifier calls.
+
+    Pitfall: a passing byte comparison never invokes Python in stage 0, so
+    corrupt a moment file to ensure the override is actually exercised.
+    """
+    marker = tmp_path / "interpreter-calls"
+    wrapper = tmp_path / "python wrapper"
+    _write_exe(wrapper, '#!/usr/bin/env bash\n'
+               'printf "%s\\n" "$1" >> "$PYTHON_CALLS"\n'
+               f'exec {shlex.quote(sys.executable)} "$@"\n')
+    monkeypatch.setenv("PYTHON", str(wrapper))
+    monkeypatch.setenv("PYTHON_CALLS", str(marker))
+    proc = run_gate(["0", fake_build], mode="corrupt", tmp_path=tmp_path, tol=tol)
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert "first-diff line 3" in proc.stdout
+    assert marker.exists(), "gate ignored PYTHON"
+    calls = marker.read_text().splitlines()
+    assert str(REPO / "scripts/golden_diff.py") in calls
+    if tol:
+        assert any(path.endswith("/tolcmp.py") for path in calls)
+
+
 def test_fail_when_output_not_produced(fake_build, tmp_path):
     proc = run_gate(["0", fake_build], mode="skip", tmp_path=tmp_path)
     assert proc.returncode == 1
@@ -187,6 +213,8 @@ def test_missing_driver_stops_before_running(fake_build, tmp_path):
     proc = run_gate(["0", fake_build], tmp_path=tmp_path)
     assert proc.returncode == 2
     assert "legacy driver" in proc.stdout and "missing" in proc.stdout
+    assert "stage 0 needs the legacy inline_* drivers" in proc.stdout
+    assert "cmake --preset golden" in proc.stdout
     assert "IDENTICAL" not in proc.stdout
 
 

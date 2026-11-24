@@ -217,6 +217,7 @@ def load_threebodytb_model(path, *, fermi_energy=None, orbitals_per_element=None
     meta = dict(source="threebodytb", file=path, elements=list(d["types"]), scf=bool(d["scf"]),
                 nonorthogonal=bool(d["nonorth"]), nspin=int(d["nspin"]),
                 fermi_energy_from_file_eV=d["efermi"] * RYDBERG_EV, nelec=d["nelec"],
+                fermi_energy_source="file" if fermi_energy is None else "run file",
                 basis="ThreeBodyTB minimal atomic orbitals (fit to DFT, see Atomdata.jl)",
                 orbital_positions="atom-centred: every orbital on its atom",
                 orbital_labels=orbital_labels(d["types"], orbitals_per_element))

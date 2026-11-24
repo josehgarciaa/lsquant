@@ -290,7 +290,7 @@ def _write_dipole_cache(path, key, A, certificate):
 
 def load_siesta_model(directory, label=None, *, dipoles=False, quadrature_order=24,
                       quadrature_tolerance=1e-5, quadrature_max_order=384, phase=None,
-                      cache_dir=None):
+                      cache_dir=None, fermi_energy=None):
     """Read .fdf/.TSHS or .HSX and optional .ion.xml radial functions with sisl.
 
     sisl 0.16.4 SOC storage is (Re Huu,Re Hdd,Re Hud,Im Hud,Im Huu,
@@ -302,6 +302,11 @@ def load_siesta_model(directory, label=None, *, dipoles=False, quadrature_order=
     Certified A(R) is cached in a .lsquant-cache directory (outside siesta/
     input directories), independently of the k mesh/metric/word, with
     content-based invalidation.
+
+    ``fermi_energy`` (eV) selects the energy origin. The stored H already has
+    the printed Fermi level subtracted (E_F = 0 on the file's scale); an
+    explicit value shifts H by ``-(x - printed) S``. Without a printed level
+    in the file the override is impossible and is refused.
     """
     import sisl
 
@@ -381,6 +386,20 @@ def load_siesta_model(directory, label=None, *, dipoles=False, quadrature_order=
             checks[name+gauge+"_anti_relative"] = float(
                 np.linalg.norm(rebuilt-adjoint(rebuilt)) / (2*max(np.linalg.norm(rebuilt), 1e-300)))
     metadata["sisl_public_api_checks"] = checks
+    printed = metadata["printed_fermi_level_eV"]
+    if fermi_energy is None:
+        origin = printed if printed is not None else 0.0
+        metadata["fermi_energy_source"] = "file" if printed is not None else "none"
+    else:
+        if printed is None:
+            raise ValueError("model.params.fermi_energy cannot set the energy origin of this "
+                             "file: the SIESTA output has no printed Fermi level to shift from")
+        origin = float(fermi_energy)
+        metadata["fermi_energy_source"] = "run file"
+        shift = origin - printed
+        if shift != 0.0:
+            model.hoppings = model.hoppings - shift * model.overlaps
+    metadata["fermi_energy_subtracted_eV"] = origin
     with (phase("dipole quadrature", enabled=dipoles) if phase is not None else nullcontext()):
         cache_path, cache_key = None, None
         if dipoles:

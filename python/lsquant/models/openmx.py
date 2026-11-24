@@ -97,13 +97,16 @@ def read_scfout(path):
                 electronic_temperature=float(tail[1]), valence_electrons=float(tail[8]))
 
 
-def load_openmx_model(path, *, dipoles=False):
+def load_openmx_model(path, *, dipoles=False, fermi_energy=None):
     """Return a :class:`~lsquant.models.siesta.SiestaModel` of an OpenMX scfout file.
 
     Requires a non-collinear calculation with spin-orbit coupling
     (``scf.SpinPolarization NC``, ``scf.SpinOrbit.Coupling on``).
     ``dipoles=True`` builds the connection of the covariant velocity from
     the position matrix that OpenMX writes in the same file.
+    ``fermi_energy`` (eV) selects the energy origin: by default the chemical
+    potential of the file shifts H (``H - mu S``); an explicit value replaces
+    it (``H - x S``), energies staying on the code's scale.
     """
     d = read_scfout(path)
     if d["spin"] != 3:
@@ -142,6 +145,15 @@ def load_openmx_model(path, *, dipoles=False):
     H[:, 0::2, 1::2], H[:, 1::2, 0::2] = ud, du
     S_spin = spinor_lift(S)
     H = (H - mu * S_spin) * HARTREE
+    if fermi_energy is None:
+        origin_eV, source = mu * HARTREE, "file"
+    else:
+        # Shift relative to the already-subtracted chemical potential, so
+        # passing the file's own value (mu * HARTREE) changes nothing.
+        origin_eV, source = float(fermi_energy), "run file"
+        shift = origin_eV - mu * HARTREE
+        if shift != 0.0:
+            H = H - shift * S_spin
     # OpenMX integrates part of H and S on a real-space grid, so H(R) and
     # H(-R)^+ differ by round-off (about 1e-10 relative). Fold both Hermitian,
     # as the SIESTA reader does, and record the removed part.
@@ -166,6 +178,8 @@ def load_openmx_model(path, *, dipoles=False):
     model = SiestaModel(uc, tau, r_int, H, S_spin, dipoles=A, seed_name=seed,
                         metadata=dict(source="openmx", file=os.path.abspath(path),
                                       printed_fermi_level_eV=mu * HARTREE,
+                                      fermi_energy_subtracted_eV=origin_eV,
+                                      fermi_energy_source=source,
                                       valence_electrons=d["valence_electrons"],
                                       hermitian_fold_relative=folded))
     return model

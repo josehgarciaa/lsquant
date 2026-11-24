@@ -246,25 +246,27 @@ class OrthogonalModel:
         return self.spin.blocks(k, component)
 
 
-def load_wannier_metric_model(model_dir, seed, *, spin="labels", positions=None, fermi_energy=0.0):
+def load_wannier_metric_model(model_dir, seed, *, spin="labels", positions=None, fermi_energy=None):
     """Wannier90 model for the metric executor.
 
     ``spin`` is ``"labels"`` (diagonal Pauli matrices on the spinor labels,
     as Wannier90 orders each spinor projection up then down) or ``"exact"``
     (:class:`WannierSpin`). ``positions=True`` reads ``<seed>_r.dat``;
-    ``None`` reads it when present. ``fermi_energy`` (eV) is subtracted from
-    ``H(R=0)``, so energies, windows and Fermi energies of the run file are
-    measured from it.
+    ``None`` reads it when present. ``fermi_energy`` (eV) selects the energy
+    origin and is removed as ``H(R) - E_F 1``; a Wannier90 file carries none,
+    so the default is 0.0. Energies, windows and Fermi energies of the run
+    file are measured from it.
     """
     base = os.path.join(model_dir, seed)
     if not (os.path.isfile(base + ".uc") and os.path.isfile(base + ".xyz")):
         write_wannier_geometry(model_dir, seed)
     w = load_wannier_model(model_dir, seed)
     hoppings = np.array(w.hoppings, complex)
-    origin = np.where(~np.any(w.r_int, axis=1))[0]
-    if len(origin) != 1:
+    origin = 0.0 if fermi_energy is None else float(fermi_energy)
+    origin_index = np.where(~np.any(w.r_int, axis=1))[0]
+    if len(origin_index) != 1:
         raise ValueError("the Wannier model has no unique R = 0 block")
-    hoppings[origin[0]] -= float(fermi_energy) * np.eye(w.num_wann)
+    hoppings[origin_index[0]] -= origin * np.eye(w.num_wann)
     if positions is None:
         positions = os.path.isfile(base + "_r.dat")
     pos = read_position_matrix(base + "_r.dat", base + "_hr.dat") if positions else None
@@ -273,7 +275,8 @@ def load_wannier_metric_model(model_dir, seed, *, spin="labels", positions=None,
     spin_obj = WannierSpin(model_dir, seed, w.uc, w.tau) if spin == "exact" else None
     return OrthogonalModel(w.uc, w.tau, w.r_int, hoppings, seed_name=seed, positions=pos,
                            spin=spin_obj, metadata=dict(source="wannier90", model_dir=os.path.abspath(model_dir),
-                                                        fermi_energy_subtracted_eV=float(fermi_energy)))
+                                                        fermi_energy_subtracted_eV=origin,
+                                                        fermi_energy_source="none" if fermi_energy is None else "run file"))
 
 
 def write_wannier_geometry(model_dir, seed):
@@ -379,12 +382,33 @@ def write_paoflow_model(paoflow, path, *, sh_l=None, sh_j=None, locality_warning
              mesh=np.array([n1, n2, n3]), edge_ratio=edge_ratio)
 
 
-def load_paoflow_model(path):
-    """Read a file of :func:`write_paoflow_model` as an orthogonal model with on-site spin."""
+def load_paoflow_model(path, *, fermi_energy=None):
+    """Read a file of :func:`write_paoflow_model` as an orthogonal model with on-site spin.
+
+    ``fermi_energy`` (eV) selects the energy origin. The file stores H on
+    PAOFLOW's scale (its Fermi energy already the origin) and records that
+    energy; an explicit value shifts ``H(R=0)`` by ``-(x - E_F(file)) 1``,
+    the default keeps the file's origin.
+    """
     from .lcao import seed_name_from_file
 
     d = np.load(path)
     seed = seed_name_from_file(path)
-    return OrthogonalModel(d["uc"], d["tau"], d["r_int"], d["hoppings"], seed_name=seed,
+    ef_file = float(d["fermi_energy"])
+    if fermi_energy is None:
+        origin, source = ef_file, "file"
+        hoppings = d["hoppings"]
+    else:
+        origin, source = float(fermi_energy), "run file"
+        hoppings = np.array(d["hoppings"], complex)
+        shift = origin - ef_file
+        if shift != 0.0:
+            r0 = np.where(~np.any(np.asarray(d["r_int"], int), axis=1))[0]
+            if len(r0) != 1:
+                raise ValueError("the PAOFLOW model has no unique R = 0 block")
+            hoppings[r0[0]] -= shift * np.eye(hoppings.shape[1])
+    return OrthogonalModel(d["uc"], d["tau"], d["r_int"], hoppings, seed_name=seed,
                            spin=np.asarray(d["spin"], complex),
-                           metadata=dict(source="paoflow", file=os.path.abspath(path)))
+                           metadata=dict(source="paoflow", file=os.path.abspath(path),
+                                         fermi_energy_subtracted_eV=origin,
+                                         fermi_energy_source=source))

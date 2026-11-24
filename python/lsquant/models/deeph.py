@@ -223,7 +223,7 @@ def load_deeph_model(directory, *, hamiltonian_file=None, fermi_energy=None):
         meta["overlap_file"] = str(s_path)
     if fermi_energy is None:
         fermi_energy = float(info_fermi) if info_fermi is not None else 0.0
-        meta["fermi_energy_source"] = "info.json" if info_fermi is not None else "none (0 eV)"
+        meta["fermi_energy_source"] = "file" if info_fermi is not None else "none"
     else:
         meta["fermi_energy_source"] = "run file"
     seed = os.path.basename(str(root))

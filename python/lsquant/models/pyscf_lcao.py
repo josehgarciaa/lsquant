@@ -242,12 +242,15 @@ def _infer_mesh(cell, kpts):
     return mesh
 
 
-def load_pyscf_model(path, *, connection=True, bloch_memory_mb=4096.0):
+def load_pyscf_model(path, *, connection=True, bloch_memory_mb=4096.0, fermi_energy=None):
     """Return a :class:`~lsquant.models.siesta.SiestaModel` from a file of ``write_pyscf_model``.
 
     ``connection=True`` adds the midpoint connection of the covariant
     velocity, built from the analytic position matrix. An all-electron
     basis gives large blocks, so the Bloch-sum workspace defaults to 4 GiB.
+    ``fermi_energy`` (eV) selects the energy origin: the file stores H with
+    its own Fermi energy already subtracted, so an explicit value shifts H by
+    ``-(x - E_F(file)) S``; the default keeps the file's origin.
     """
     from .siesta import SiestaModel, midpoint_connection, spinor_lift
     from .lcao import seed_name_from_file
@@ -256,6 +259,16 @@ def load_pyscf_model(path, *, connection=True, bloch_memory_mb=4096.0):
     uc, tau, r_int = d["uc"], d["tau"], d["r_int"]
     s_orb = d["overlap_orb"]
     S = spinor_lift(s_orb)
+    ef_file = float(d["fermi_energy"])
+    if fermi_energy is None:
+        origin, source = ef_file, "file"
+        hoppings = d["hoppings"]
+    else:
+        origin, source = float(fermi_energy), "run file"
+        hoppings = np.asarray(d["hoppings"], complex)
+        shift = origin - ef_file
+        if shift != 0.0:
+            hoppings = hoppings - shift * S
     A = None
     if connection:
         q = d["position_orb"]  # (3, N_R, n, n)
@@ -263,9 +276,11 @@ def load_pyscf_model(path, *, connection=True, bloch_memory_mb=4096.0):
         a_orb = midpoint_connection(q, s_orb, tau_orb, r_int @ uc)
         A = np.asarray(spinor_lift(a_orb), complex)
     seed = seed_name_from_file(path)
-    return SiestaModel(uc, tau, r_int, d["hoppings"], S, dipoles=A, seed_name=seed,
+    return SiestaModel(uc, tau, r_int, hoppings, S, dipoles=A, seed_name=seed,
                        bloch_memory_mb=float(bloch_memory_mb),
                        metadata=dict(source="pyscf", file=os.path.abspath(str(path)),
-                                     printed_fermi_level_eV=float(d["fermi_energy"]),
+                                     printed_fermi_level_eV=ef_file,
+                                     fermi_energy_subtracted_eV=origin,
+                                     fermi_energy_source=source,
                                      mesh=d["mesh"].tolist(), edge_ratio=float(d["edge_ratio"]),
                                      valence_electrons=int(d["nelectron"])))
