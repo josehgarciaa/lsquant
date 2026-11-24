@@ -62,6 +62,11 @@ python3 -m lsquant run examples/07_spin_hall_bi_bilayer/run_dos_quick.json --out
 python3 -m lsquant run examples/07_spin_hall_bi_bilayer/run_shc_quick.json --out /tmp/bi_quick
 ```
 
+The quick DOS and SHC curves have an effective Jackson resolution of about
+597 meV: `pi*a/M`, with the documented padded eigen window approximately
+[−32.8, 64.5] eV (`a = (upper-lower)/2 = 48.65 eV`) and `M = 256`.
+The warning and receipt report the estimate from the actual resolved window.
+
 For the production setting (`48x48x1`, $M = 1024$, $\eta = 10\ \mathrm{meV}$,
 `covariant` velocity + `lowdin` metric):
 

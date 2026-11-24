@@ -183,7 +183,9 @@ example 12, $1.4 \times 10^{-13}$, is of rounding size.
 > overlap with $\kappa$ in the thousands, the default $10^{-13}$ can be smaller than the
 > rounding error of double precision, and the probe can fail on rounding
 > noise. Example 12 sets `metric.tol` to $10^{-10}$, which avoids the
-> failure.
+> failure. Exact-applier failures now report the residual, estimated cond(S),
+> and rounding floor, with advice to raise `metric.tol`; Chebyshev failures
+> retain their order/coefficient advice.
 <!-- source: python/lsquant/disorder_bases.py:315–319, python/lsquant/runfile.py:297 -->
 
 The [run-file reference](../reference/run-file.md#metric) lists the `metric`
