@@ -1,0 +1,3 @@
+&inputpp
+ outdir="./tmp", prefix="y", seedname="y", write_amn=.true., write_mmn=.true., write_unk=.false.
+/

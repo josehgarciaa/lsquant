@@ -1372,6 +1372,8 @@ def _write_reconstructed_curve(path, x, y, formula, mu):
     """Keep legacy curve bytes, adding operator-aware labels only for shc."""
     if formula.lower() == "shc":
         np.savetxt(path, np.column_stack((x, y)), fmt="%.17g", header=_shc_curve_header(mu))
+    elif formula.lower() == "ahc":
+        np.savetxt(path, np.column_stack((x, y)), fmt="%.17g", header="energy_eV sigma_xy [e^2/h]")
     else:
         _core.WriteCurveText(path, x, y)
 
@@ -1399,6 +1401,12 @@ def _reconstruct_single_formula(
             raise ValueError("shc reconstruction requires num_cells and cell_area in the resolved run file")
         energies, values = shc(mu, broadening_meV, num_cells, cell_area)
         return [("SpinHall_", "JACKSON.dat", energies, values)]
+    if f == "ahc":
+        # Anomalous Hall: the shc normalisation applied to the VX/VY Bastin word, in e^2/h.
+        if num_cells is None or cell_area is None:
+            raise ValueError("ahc reconstruction requires num_cells and cell_area in the resolved run file")
+        energies, values = shc(mu, broadening_meV, num_cells, cell_area)
+        return [("AnomalousHall_", "JACKSON.dat", energies, values)]
     if f in ("dos", "dos_curve"):
         energies, values = dos_curve(mu, broadening_meV)
         return [("mean", "JACKSON.dat", energies, values)]
@@ -2759,7 +2767,7 @@ def reconstruct_target(
     formula = formula.lower()
     shc_metadata = {}
     resolved_path = os.path.join(os.path.dirname(abs_target), "run.resolved.json")
-    if formula == "shc" and os.path.isfile(resolved_path):
+    if formula in ("shc", "ahc") and os.path.isfile(resolved_path):
         with open(resolved_path, encoding="utf-8") as fh:
             reconstruction = json.load(fh).get("reconstruction", {})
         shc_metadata = {key: reconstruction.get(key) for key in ("num_cells", "cell_area")}

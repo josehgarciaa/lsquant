@@ -139,7 +139,7 @@ Allowed keys in `model.params`:
 |---|---|---|---|---|
 | `velocity_mode` | string | `"bare"`, `"berry_connection"`, `"covariant"` | `"berry_connection"` (clean and projected runs); `"covariant"` (disordered and real-space runs) | How velocity operators are built from H, S and the dipoles. See [Non-orthogonal bases](../explanation/nonorthogonal-bases.md). |
 | `fermi_energy` | number | finite or null | the printed Fermi level | Energy origin (eV), removed as `H − x S`; null (or omitted) keeps the file's reference. |
-| `oracle` | boolean | — | `false` | Clean runs: also compute the exact per-k spin Hall oracle (`exact_shc.json`, `spin_chern.json`). Disordered runs refuse `true`. |
+| `oracle` | boolean | — | `false` | Clean runs: also compute the exact per-k Hall oracle: `exact_shc.json` and `spin_chern.json` for the spin Hall word, `exact_ahc.json` for the anomalous Hall word. Disordered runs refuse `true`. |
 | `oracle_degeneracy_tolerance` | number | positive, finite | `1e-6` | Degeneracy tolerance of the oracle, in eV. |
 | `bloch_memory_mb` | number | positive, finite | `256.0` | Workspace limit of the Bloch sums, in MiB (clean runs). It sets how many k points are summed at once; a model too large for one k point within the limit is summed one k point at a time. |
 | `quadrature_order` | integer | ≥ 2 | `24` | Initial Gauss–Legendre order of the dipole quadrature. |
@@ -675,16 +675,21 @@ quoted message.
 | `metric.route` | any (`anticommutator` allowed) | `lowdin`, `generalised` | `lowdin`, `generalised` |
 | `metric.applier` | `exact` | `exact` (`bloch`); `exact`, `chebyshev` (`real`) | `exact`; also `chebyshev` for `real` |
 | `basis.disorder.W` | must be 0 | any | must be 0 |
-| Words | `Tr[delta(E-H)]` or `Tr[JXSZ delta(E-H) VY dG-(E)/dE]` | same | `Tr[delta(E-H)]`, `Tr[A delta(E-H)]`, or `Tr[JXSZ delta(E-H) VY dG-(E)/dE]`; no `time` section |
-| `reconstruction.formulas` | subset of `shc`, `dos`, `dos_curve` | same | same |
+| Words | `Tr[delta(E-H)]`, `Tr[JXSZ delta(E-H) VY dG-(E)/dE]` or `Tr[VX delta(E-H) VY dG-(E)/dE]` | `Tr[delta(E-H)]` or `Tr[JXSZ delta(E-H) VY dG-(E)/dE]` | `Tr[delta(E-H)]`, `Tr[A delta(E-H)]`, or `Tr[JXSZ delta(E-H) VY dG-(E)/dE]`; no `time` section |
+| `reconstruction.formulas` | subset of `shc`, `ahc`, `sea`, `surf`, `dos`, `dos_curve` | subset of `shc`, `dos`, `dos_curve` | same as disordered |
 | `reconstruction.targets` | must be empty | must be empty | must be empty |
 | `reconstruction.broadening_meV` | required | required, positive, finite | required, positive, finite |
 | `expansion.window` | `eigen` or `[lo, hi]` enclosing the generalised spectrum | `eigen` or `[lo, hi]` enclosing the clean spectrum plus √cond(S) × max\|w\| | `eigen` or `[lo, hi]` enclosing the projected spectrum |
 | `model.params.oracle` | allowed | refused | not used |
 | Other | — | — | `projection.kind = "orthogonal"` refused for `basis.name = "real"` |
 
-The clean executor reconstructs every rank-2 word with `shc` and every rank-1
-word with `dos`, whatever `formulas` lists.
+The clean executor reconstructs every rank-2 word with the Hall normalisation
+$2\pi\,\mathrm{KuboBastin}/(N_k A)$ in e²/h and writes it to `shc.dat` for the
+`JXSZ` word (Pauli σ_z) or to `ahc.dat` for the `VX` word (anomalous Hall), and
+every rank-1 word with `dos`. `sea` and `surf` in `formulas` add the Fermi-sea
+and Fermi-surface parts with the same normalisation (`ahc_sea.dat`,
+`ahc_surf.dat`, or `shc_sea.dat`, `shc_surf.dat`). With `model.params.oracle`,
+the `VX` word writes the exact occupied-band sum to `exact_ahc.json`.
 
 ## Keys for golden and legacy byte compatibility
 

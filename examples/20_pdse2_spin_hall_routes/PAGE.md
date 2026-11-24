@@ -1,15 +1,34 @@
 # One quantum spin Hall plateau, four routes from DFT
 
-A pentagonal PdSe₂ monolayer is a semiconductor with a quantum spin Hall gap
-about 2 eV above its valence-band maximum, in the conduction bands; electron
-doping or gating would bring the Fermi level there. We compute the spin Hall
-conductivity in that gap from three DFT codes and four routes: SIESTA, OpenMX,
-and Quantum ESPRESSO through Wannier90 and through PAOFLOW. The plateaus agree
-within 4 %.
+The quantum spin Hall effect tests a spin transport calculation as a whole.
+Its plateau comes from the Fermi sea, so the occupied bands must carry the
+right topology, as for the anomalous Hall plateau of
+[example 22](../22_yn2_anomalous_hall/PAGE.md). It is also the response of a
+spin current, so the velocity, the spin operator and the spin current built
+from them, $J = \{v_x, \sigma_z\}/2$, must be right in the basis of each code. A
+connector that passes this test reads the Hamiltonian, the overlap, the
+positions and the spin of its code correctly.
+
+A pentagonal PdSe₂ monolayer is a semiconductor whose lowest conduction bands
+are topologically nontrivial [1]: a quantum spin Hall gap opens about 2 eV
+above the valence-band maximum (VBM); electron doping or gating would bring
+the Fermi level there. We compute the spin Hall conductivity in that gap from
+three DFT codes and four routes: SIESTA, OpenMX, and Quantum ESPRESSO through
+Wannier90 and through PAOFLOW. All four find the plateau, and the plateaus
+agree within 4 %.
+
+![Bands of PdSe2 from Quantum ESPRESSO and OpenMX](fig_bands.png)
+
+**FIG. 1.** Bands of pentagonal PdSe₂ from the VBM of each code, PBE with
+spin–orbit coupling. Green circles: Quantum ESPRESSO (plane waves) at the
+points of its 12 × 12 mesh that lie on the path; green dashed line: its
+12-orbital Wannier90 model. Blue solid line: OpenMX (numerical atomic
+orbitals). Grey bands: the quantum spin Hall gap of each code,
+Quantum ESPRESSO 2.01–2.06 eV and OpenMX 1.92–1.98 eV.
 
 ![Spin Hall conductivity of PdSe2 from SIESTA, OpenMX, Wannier90 and PAOFLOW](fig_routes.png)
 
-**FIG. 1.** σᶻ_xy of pentagonal PdSe₂ against the energy from the
+**FIG. 2.** σᶻ_xy of pentagonal PdSe₂ against the energy from the
 valence-band maximum, in e²/h with the Pauli σ_z. (a) Black solid line:
 SIESTA, states within ±3 eV of E_F. Green dashed line: Quantum ESPRESSO with a
 Wannier90 model. Pink dotted line: Quantum ESPRESSO with a PAOFLOW model.
@@ -39,5 +58,9 @@ from the exact calculation.
 
 OpenMX places the gap 0.07 eV lower than SIESTA and Quantum ESPRESSO; its
 plateau, 1.97 e²/h, agrees with theirs.
+
+[1] S. Bravo, M. Pacheco, J. D. Correa and L. Chico, Topological bands in
+the PdSe₂ pentagonal monolayer, *Phys. Chem. Chem. Phys.* (2022),
+[doi:10.1039/D2CP01822E](https://doi.org/10.1039/D2CP01822E).
 
 **Set it up and run it:** [Example 20 README](README.md).

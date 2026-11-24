@@ -1,0 +1,62 @@
+SystemName YN2 monolayer, soc
+SystemLabel yn2
+NumberOfAtoms 3
+NumberOfSpecies 2
+%block ChemicalSpeciesLabel
+ 1 39 Y
+ 2 7 N
+%endblock ChemicalSpeciesLabel
+LatticeConstant 1.0 Ang
+%block LatticeVectors
+  3.776000 0.0 0.0
+  -1.888000 3.270112 0.0
+  0.0 0.0 24.000000
+%endblock LatticeVectors
+AtomicCoordinatesFormat Ang
+%block AtomicCoordinatesAndAtomicSpecies
+  0.00000000 0.00000000 12.00000000 1
+  0.00000000 2.18007462 12.87736803 2
+  1.88800000 1.09003731 11.12263197 2
+%endblock AtomicCoordinatesAndAtomicSpecies
+PAO.EnergyShift 20 meV
+PAO.SoftDefault T
+%block PAO.Basis
+Y 4
+ n=4 0 1
+  0.0
+ n=5 0 2 P 1
+  0.0 0.0
+ n=4 1 1
+  0.0
+ n=4 2 2
+  0.0 0.0
+N 2
+ n=2 0 2
+  0.0 0.0
+ n=2 1 2 P 1
+  0.0 0.0
+%endblock PAO.Basis
+XC.functional GGA
+XC.authors PBE
+Spin spin-orbit
+%block DM.InitSpin
+ 2 1.5 0.0 0.0
+ 3 1.5 0.0 0.0
+%endblock DM.InitSpin
+MeshCutoff 400. Ry
+OccupationFunction FD
+ElectronicTemperature 10 meV
+SolutionMethod diagon
+%block kgrid.MonkhorstPack
+ 36 0 0 0.0
+ 0 36 0 0.0
+ 0 0 1 0.0
+%endblock kgrid.MonkhorstPack
+SCF.DM.Tolerance 1.0E-6
+SCF.H.Tolerance 1.0E-5 eV
+MaxSCFIterations 500
+DM.MixingWeight 0.05
+DM.NumberPulay 6
+SaveHS true
+TS.HS.Save true
+WriteMullikenPop 1
