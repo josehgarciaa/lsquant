@@ -636,16 +636,18 @@ def _openmx_file(tmp_path, rng):
     cells = [(0, 0, 0), (1, 0, 0), (-1, 0, 0)]
 
     def herm_pair(build):
-        a = np.complex128(build())
-        return {(0, 0, 0): 0.5 * (a + a.conj()), (1, 0, 0): 0.3 * a,
-                (-1, 0, 0): 0.3 * a.conj()}
+        """A 2x2 atom-pair block with M(-R) = M(R)^+ (one orbital per atom)."""
+        a = build()
+        return {(0, 0, 0): 0.5 * (a + a.conj().T), (1, 0, 0): 0.3 * a,
+                (-1, 0, 0): (0.3 * a).conj().T}
 
-    uu = herm_pair(lambda: rng.normal() + 1j * rng.normal())
-    dd = herm_pair(lambda: rng.normal() + 1j * rng.normal())
-    b = np.complex128(rng.normal() + 1j * rng.normal())
-    ud = {(0, 0, 0): 0.2 * b, (1, 0, 0): 0.1 * b, (-1, 0, 0): 0.15 * np.conj(b)}
-    s1 = rng.normal(scale=0.05)
-    s = {(0, 0, 0): 1.0, (1, 0, 0): s1, (-1, 0, 0): s1}
+    build = lambda: rng.normal(size=(2, 2)) + 1j * rng.normal(size=(2, 2))
+    uu, dd = herm_pair(build), herm_pair(build)
+    b = build()
+    ud = {(0, 0, 0): 0.2 * b, (1, 0, 0): 0.1 * b.T, (-1, 0, 0): 0.15 * b}
+    s0 = np.array([[1.0, 0.1], [0.1, 1.0]])
+    s1 = rng.normal(scale=0.05, size=(2, 2))
+    s = {(0, 0, 0): s0, (1, 0, 0): s1, (-1, 0, 0): s1.T}
     mu_hartree = -0.12
     natom, ncell = 2, 2
     tv = np.diag([7.0, 30.0, 30.0])
@@ -671,7 +673,7 @@ def _openmx_file(tmp_path, rng):
         w(np.c_[np.zeros(2), gxyz], "<f8")
 
         def element(m, a, j, c):
-            return m[cells[c]]
+            return m[cells[c]][a, j]
 
         def write_all(fn):
             for a in range(natom):
