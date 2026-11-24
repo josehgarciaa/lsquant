@@ -22,9 +22,24 @@ from .bloch import bloch_sum, k_mesh, reciprocal_lattice
 from .nonorthogonal import adjoint, checked_hermitian
 
 
-def spinor_scalar(matrix):
-    """Lift ``S_orb`` to interleaved spinors as ``S_orb tensor I_2``."""
-    return np.kron(matrix, np.eye(2, dtype=complex))
+def spinor_lift(matrix):
+    """Lift a spinless matrix or stack ``(..., n, n)`` to interleaved spinors.
+
+    ``lift(X)[..., 2i+s, 2j+t] = delta_st X[..., i, j]``: an identity on the
+    spinor label, so the Pauli matrices act on the spin of every orbital. A
+    single ``(n, n)`` matrix gives ``(2n, 2n)``; leading axes are kept, so an
+    ``(N_R, n, n)`` stack gives ``(N_R, 2n, 2n)``. The dtype follows the
+    input; the model constructors convert to complex on build, so a real lift
+    carries the same values. Pitfall: the historical ``spinor_scalar`` forced
+    complex through the identity's dtype, which the model conversion already
+    guarantees; the alias no longer forces it.
+    """
+    return np.kron(np.asarray(matrix), np.eye(2))
+
+
+#: Alias kept importable for the readers and fixtures that use the historical
+#: name (it is the same function, see :func:`spinor_lift`).
+spinor_scalar = spinor_lift
 
 
 def midpoint_connection(position, overlap, centres, r_cart):
@@ -431,12 +446,11 @@ def load_siesta_model(directory, label=None, *, dipoles=False, quadrature_order=
                                               max_order=quadrature_max_order)
             # Opposite-image pairs are integrated independently. Fold only after
             # the quadrature error has been certified; record the pre-fold residual.
-            lookup = {tuple(r): i for i, r in enumerate(r_int)}
-            paired = np.stack([adjoint(A[:, lookup[tuple(-r)]] ) for r in r_int], axis=1)
-            certificate["pair_hermiticity_error"] = float(np.max(np.abs(A-paired)))
-            if certificate["pair_hermiticity_error"] > 2*certificate["certification_target"]:
+            from .lcao import fold_opposite, opposite_pairs
+            A, pair_error = fold_opposite(A, opposite_pairs(r_int), residual="absolute")
+            certificate["pair_hermiticity_error"] = pair_error
+            if pair_error > 2*certificate["certification_target"]:
                 raise ValueError("dipole quadrature violates opposite-image Hermiticity")
-            A = 0.5*(A+paired)
             certificate["orbital_metadata"] = metadata["orbital_metadata"]
             _write_dipole_cache(cache_path, cache_key, A, certificate)
             model.dipoles = spinor_scalar(A)

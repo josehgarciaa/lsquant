@@ -111,10 +111,10 @@ LSQuant message, and the session continues.
 
 The `run` tool returns at once. The calculation runs in its own process and
 writes its log to `run_<id>.log` in the output directory, and `status` reports
-the outcome. The `reconstruct` tool, given a directory, applies one formula to
-every moment file in it. Its default formula is `dos` for rank-1 files and
-`bastin` for rank-2 files. A run with both a DOS word and a Kubo–Greenwood word
-therefore needs the moment file and the formula given explicitly, as in this
+the outcome. The `reconstruct` tool, given a directory and an explicit formula,
+skips incompatible files and reports them in `skipped_files`. Its default
+formula is `dos` for rank-1 files and `bastin` for rank-2 files. To choose a
+particular curve, pass the moment file and formula explicitly, as in this
 session.
 
 The reconstructed curve is the graphene DOS of example 10, now at 300 meV.

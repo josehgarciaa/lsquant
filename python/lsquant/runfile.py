@@ -7,6 +7,7 @@ import glob
 import hashlib
 import json
 import os
+import re
 import shutil
 from typing import Any, Mapping, Sequence
 
@@ -35,7 +36,7 @@ from .reconstruct import (
     time_correlation_curve,
 )
 from .words import compile as compile_word, parse as parse_word
-from .words.catalogue import SHAPE_ALLOWED_FORMULAS
+from .words.catalogue import SHAPE_ALLOWED_FORMULAS, match_catalogue
 
 
 ALLOWED_TOP_KEYS: frozenset[str] = frozenset(
@@ -86,7 +87,6 @@ GENERATOR_CATALOGUE: dict[str, str] = {
     "make_square": "examples/05_charge_transport_square/make_square.py",
     "make_ey": "examples/06_spin_relaxation_square/make_ey.py",
     "make_rashba": "examples/06_spin_relaxation_square/make_rashba.py",
-    "gen_models": "python/lsquant/models/wannier.py",
 }
 
 _GENERATOR_TO_TUTORIAL: dict[str, int] = {
@@ -157,7 +157,6 @@ ALLOWED_GENERATOR_PARAMS: dict[str, frozenset[str]] = {
             "disorder_seed",
         }
     ),
-    "gen_models": frozenset(),
 }
 
 
@@ -279,7 +278,7 @@ def default_window_for_basis(basis_name: str) -> str:
 DEFAULT_RUNFILE_DEFAULTS: dict[str, Any] = {
     "model": {
         "kind": "csr",
-        "operators": [],
+        "operators": None,
         "csr_dir": None,
         "name": None,
         "tutorial": None,
@@ -306,10 +305,10 @@ DEFAULT_RUNFILE_DEFAULTS: dict[str, Any] = {
         "trace": "exact",
         "states": None,
         "seed": 12345,
-        "batch": None,
+        "batch": 64,
         "state_label": None,
         "state_block": 1,
-        "left_window": None,
+        "left_window": 32,
     },
     "time": None,
     "reconstruction": {
@@ -635,6 +634,15 @@ def validate_runfile_dict(raw: Mapping[str, Any]) -> None:
                     "Each entry in reconstruction.targets must be a JSON object"
                 )
             _check_keys("reconstruction.targets", tgt, ALLOWED_RECON_TARGET_KEYS)
+
+        requested = list(rec.get("formulas") or ())
+        for tgt in rec.get("targets") or ():
+            requested.extend(tgt.get("formulas") or ())
+        if (kind in ("csr", "wannier")
+                and any(str(f).lower() == "shc" for f in requested)
+                and not metric_kind):
+            if rec.get("num_cells") is None or rec.get("cell_area") is None:
+                raise ValueError("shc requires reconstruction.num_cells and reconstruction.cell_area")
 
     if "output" in raw and raw["output"] is not None:
         out = raw["output"]
@@ -1261,6 +1269,76 @@ def _discover_csr_operators(model_dir: str, label: str) -> list[str]:
     return ops
 
 
+def _moment_allowed_formulas(mu: _core.ChebyshevMoments) -> frozenset[str]:
+    """Find admissible formulas without requiring a model or recompiling a plan.
+
+    Pitfall: legacy files have no word, and static engine words erase the
+    distinction between Greenwood and Bastin. For those files use the union
+    of catalogue formulas for their rank and time axis. A full observable
+    word retains its shape restrictions. Reading the tensor dominates cost.
+    """
+    if mu.rank == 1:
+        shapes = ("dos_identity", "dos_operator")
+    elif mu.rank == 2 and mu.number_of_time_steps > 0:
+        shapes = ("msd", "projected_evolution", "time_correlation")
+    elif mu.rank == 2:
+        shapes = ("kubo_greenwood", "kubo_bastin")
+    else:
+        return frozenset()
+    allowed = frozenset().union(*(SHAPE_ALLOWED_FORMULAS[s] for s in shapes))
+    if mu.word.strip().startswith(("Tr[", "sea[")):
+        try:
+            match = match_catalogue(parse_word(mu.word))
+        except ValueError:
+            return frozenset()
+        allowed = allowed & SHAPE_ALLOWED_FORMULAS[match.entry.shape_id]
+    elif "U(t)" in mu.word:
+        # Unified files currently omit time-axis metadata, but retain the word.
+        allowed = allowed & frozenset().union(*(
+            SHAPE_ALLOWED_FORMULAS[s]
+            for s in ("msd", "projected_evolution", "time_correlation")
+        ))
+    return allowed
+
+
+def _shc_curve_header(mu: _core.ChebyshevMoments) -> str:
+    """Label the normalised Bastin tensor using its stored operators.
+
+    A spin-current name J?S? determines the Pauli component and current
+    direction; a velocity on the right supplies the second tensor index.
+    Pitfall: the normalisation also accepts charge tensors, and legacy files
+    have no word. Neither case justifies a Pauli spin Hall label. This only
+    changes descriptive text, never units conversion or numerical values.
+    """
+    tokens = mu.word.split()
+    left, right = "unknown", "unknown"
+    if mu.word.strip().startswith(("Tr[", "sea[")):
+        match = match_catalogue(parse_word(mu.word))
+        if len(match.operators) == 2:
+            left, right = (op.operator_key for op in match.operators)
+    elif len(tokens) == 4 and tokens[1] == tokens[3] == "delta":
+        left, right = tokens[0], tokens[2]
+    spin = re.fullmatch(r"J([XYZ])S([XYZ])", left)
+    if spin:
+        axis, component = (s.lower() for s in spin.groups())
+        indices = (
+            axis + right[1].lower()
+            if re.fullmatch(r"V[XYZ]", right) else f"[{left},{right}]"
+        )
+        return f"energy_eV sigma_{component}_{indices} [e^2/h, sigma_{component} Pauli]"
+    return f"energy_eV normalised_bastin[{left},{right}] [2*pi/(num_cells*cell_area)]"
+
+
+def _write_reconstructed_curve(path, x, y, formula, mu):
+    """Keep legacy curve bytes, adding operator-aware labels only for shc."""
+    if formula.lower() == "shc":
+        np.savetxt(path, np.column_stack((x, y)), fmt="%.17g", header=_shc_curve_header(mu))
+    elif formula.lower() == "ahc":
+        np.savetxt(path, np.column_stack((x, y)), fmt="%.17g", header="energy_eV sigma_xy [e^2/h]")
+    else:
+        _core.WriteCurveText(path, x, y)
+
+
 def _reconstruct_single_formula(
     formula: str,
     mu: _core.ChebyshevMoments,
@@ -1535,6 +1613,48 @@ ML_MODEL_KINDS: dict[str, tuple[str, frozenset[str]]] = {
     connector.kind: (connector.path_keys[0], connector.allowed_params - ML_BASE_PARAMS)
     for connector in CONNECTORS.values() if connector.ml_style
 }
+
+
+def _checkpoint_file_identity(path: str) -> dict[str, Any]:
+    """Hash model bytes with bounded memory, without trusting modification times.
+
+    Checkpoint identity must change even for an in-place matrix edit of the same
+    size. Streaming costs one extra sequential read per input per execution and
+    bounded temporary storage using 1 MiB chunks. Pitfall: inputs must remain unchanged
+    throughout loading and execution, just as for a run without checkpoints.
+    """
+    digest = hashlib.sha256()
+    size = 0
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            size += len(chunk)
+            digest.update(chunk)
+    return {"size": size, "sha256": digest.hexdigest()}
+
+
+def _checkpoint_path(out_dir: str, identity: Mapping[str, Any]) -> str:
+    """Select only checkpoints from the same calculation, including model bytes.
+
+    The versioned, full SHA-256 filename leaves the binary checkpoint format
+    unchanged. Legacy word-only names cannot match. Other checkpoints are kept
+    for their original runs and explicitly reported, including when a matching
+    checkpoint also exists. Output and reconstruction settings are deliberately
+    absent: they do not determine the accumulated moments.
+    """
+    import warnings
+
+    payload = json.dumps(identity, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    tag = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    path = os.path.join(out_dir, f"checkpoint_v2_{tag}.lsqckpt")
+    for other in sorted(glob.glob(os.path.join(out_dir, "checkpoint_*.lsqckpt"))):
+        if other != path:
+            warnings.warn(
+                f"Ignoring checkpoint {os.path.basename(other)}: different calculation "
+                "fingerprint or legacy checkpoint without calculation identity",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+    return path
 
 
 def execute_runfile(
@@ -1817,12 +1937,14 @@ def execute_runfile(
                         broad,
                         fermi_energies=compiled.reconstruction.fermi_energies,
                         num_points=compiled.reconstruction.num_points,
+                        num_cells=rf.reconstruction.get("num_cells"),
+                        cell_area=rf.reconstruction.get("cell_area"),
                     ):
                         if rf.output["legacy_names"]:
                             c_path = os.path.join(
                                 out_dir, f"{c_pref}{stem}{c_suf}"
                             )
-                            _core.WriteCurveText(c_path, x_arr, y_arr)
+                            _write_reconstructed_curve(c_path, x_arr, y_arr, form, mu)
                             curve_files.append(c_path)
                             written_files.append(c_path)
                         else:
@@ -2151,6 +2273,26 @@ def execute_runfile(
         batch_size = int(rf.expansion["batch"] or num_moments)
         captured_idx = 0
 
+        checkpoint_inputs: dict[str, Any] = {}
+        if rf.expansion.get("checkpoint"):
+            input_paths = {"HAM": str(hr_file) if hr_file is not None else ham_path}
+            if s_mat is not None:
+                input_paths["S"] = s_path
+            if hr_file is None:
+                for op_n in (op_block_arrays if use_atom_block else raw_csr_mats):
+                    input_paths[f"operator:{op_n}"] = os.path.join(
+                        model_dir, f"{label}.{op_n}.CSR"
+                    )
+            if use_atom_block:
+                for key in ("positions", "atom_map"):
+                    source = rf.model.get(key)
+                    if isinstance(source, str):
+                        input_paths[key] = source
+            checkpoint_inputs = {
+                key: _checkpoint_file_identity(path)
+                for key, path in input_paths.items()
+            }
+
         for w_str, w_formulas in words_to_run:
             parsed_w = parse_word(w_str)
             # For MSD, the velocity operator passed to the engine is RescaledOperator(V, window)
@@ -2246,8 +2388,25 @@ def execute_runfile(
             # to an uninterrupted run.
             ckpt_path = ""
             if rf.expansion.get("checkpoint"):
-                ckpt_tag = hashlib.sha256(compiled.plan.word.encode()).hexdigest()[:12]
-                ckpt_path = os.path.join(out_dir, f"checkpoint_{ckpt_tag}.lsqckpt")
+                ckpt_path = _checkpoint_path(out_dir, {
+                    "version": 2,
+                    "word": compiled.plan.word,
+                    "plan_sizes": [instruction.num_moments for instruction in compiled.plan.code
+                                   if isinstance(instruction, _core.Expand)],
+                    "dimension": dim,
+                    "window": [float(window.lower), float(window.upper)],
+                    "expansion": dict(rf.expansion, window=None, states=num_states,
+                                      state_block=state_block),
+                    "basis": rf.basis,
+                    "metric": rf.metric,
+                    "numerics": rf.numerics,
+                    "domain_atoms": da if use_atom_block else None,
+                    "build_profile": _core.build_profile,
+                    "time": rf.time,
+                    "dt": compiled.dt,
+                    "model": rf.model,
+                    "inputs": checkpoint_inputs,
+                })
             mu = engine.run(compiled.plan, checkpoint_path=ckpt_path)
             if ckpt_path and os.path.isfile(ckpt_path):
                 os.remove(ckpt_path)
@@ -2343,12 +2502,14 @@ def execute_runfile(
                         broad,
                         fermi_energies=compiled.reconstruction.fermi_energies,
                         num_points=compiled.reconstruction.num_points,
+                        num_cells=rf.reconstruction.get("num_cells"),
+                        cell_area=rf.reconstruction.get("cell_area"),
                     ):
                         if rf.output["legacy_names"]:
                             c_path = os.path.join(
                                 out_dir, f"{c_pref}{stem}{c_suf}"
                             )
-                            _core.WriteCurveText(c_path, x_arr, y_arr)
+                            _write_reconstructed_curve(c_path, x_arr, y_arr, form, mu_for_recon)
                             curve_files.append(c_path)
                             written_files.append(c_path)
                             if rf.output["capture_tutorial"]:
@@ -2421,10 +2582,12 @@ def execute_runfile(
                         mu_tgt,
                         t_broad,
                         fermi_energies=t_fermi,
+                        num_cells=rf.reconstruction.get("num_cells"),
+                        cell_area=rf.reconstruction.get("cell_area"),
                     ):
                         fname = f"{c_pref}{stem}{c_suf}"
                         c_path = os.path.join(dest_d, fname)
-                        _core.WriteCurveText(c_path, x_arr, y_arr)
+                        _write_reconstructed_curve(c_path, x_arr, y_arr, form, mu_tgt)
                         curve_files.append(c_path)
                         written_files.append(c_path)
                         if also_top and dest_d != out_dir:
@@ -2496,8 +2659,23 @@ def reconstruct_target(
             if fermi_energies is not None
             else list(rf_rec.get("fermi_energies") or [0.0])
         )
-        written: list[str] = []
+        skipped: list[dict[str, str]] = []
+        compatible: list[str] = []
         for mp in mom_candidates:
+            if formula is not None:
+                mu = _core.ReadChebmom(mp)
+                if formula.lower() not in _moment_allowed_formulas(mu):
+                    skipped.append({
+                        "moment_file": mp,
+                        "reason": (f"formula '{formula}' is incompatible with "
+                                   f"rank {mu.rank} and word '{mu.word}'"),
+                    })
+                    continue
+            compatible.append(mp)
+        if not compatible:
+            raise ValueError(f"No moment files in '{abs_target}' admit formula '{formula}'")
+        written: list[str] = []
+        for mp in compatible:
             res = reconstruct_target(
                 mp,
                 formula=formula,
@@ -2506,7 +2684,7 @@ def reconstruct_target(
                 out_dir=dest_dir,
             )
             written.extend(res["curve_files"])
-        return {"output_dir": dest_dir, "curve_files": written}
+        return {"output_dir": dest_dir, "curve_files": written, "skipped_files": skipped}
 
     if not os.path.isfile(abs_target):
         raise FileNotFoundError(f"Moment file not found: '{abs_target}'")
@@ -2535,6 +2713,7 @@ def reconstruct_target(
         else:
             formula = "dos"
 
+    formula = formula.lower()
     shc_metadata = {}
     resolved_path = os.path.join(os.path.dirname(abs_target), "run.resolved.json")
     if formula in ("shc", "ahc") and os.path.isfile(resolved_path):
@@ -2546,14 +2725,7 @@ def reconstruct_target(
         formula, mu, eff_broad, fermi_energies=eff_fermi, **shc_metadata
     ):
         c_path = os.path.join(dest_dir, f"{c_pref}{stem}{c_suf}")
-        if formula == "shc":
-            np.savetxt(c_path, np.column_stack((x_arr, y_arr)), fmt="%.17g",
-                       header="energy_eV sigma_z_xy [e^2/h, sigma_z Pauli]")
-        elif formula == "ahc":
-            np.savetxt(c_path, np.column_stack((x_arr, y_arr)), fmt="%.17g",
-                       header="energy_eV sigma_xy [e^2/h]")
-        else:
-            _core.WriteCurveText(c_path, x_arr, y_arr)
+        _write_reconstructed_curve(c_path, x_arr, y_arr, formula, mu)
         written_curves.append(c_path)
 
     return {

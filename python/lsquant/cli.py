@@ -161,6 +161,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             else:
                 for path in res["curve_files"]:
                     print(path)
+                for skipped in res.get("skipped_files", ()):
+                    print(f"Skipped {skipped['moment_file']}: {skipped['reason']}", file=sys.stderr)
             return 0
 
         if cmd == "inspect":
