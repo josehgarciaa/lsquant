@@ -159,15 +159,21 @@ def _skip_unless_field_is_available(field):
 
 
 def _mcp_path_run(field, value):
+    """Run file whose model is of a kind that uses ``field``, with no key of another kind."""
     raw = load("g1.json")
     raw["model"]["dir"] = "."
-    if field.startswith("model.params."):
-        kind = ("gpaw" if field.endswith("dipole_cache") else
-                "deeph" if field.endswith("hamiltonian_file") else "abacus")
-        raw["model"] = {"kind": kind, "dir": ".", "file": "input",
-                        "params": {"velocity_mode": "bare"}}
-        if kind == "abacus":
-            raw["model"]["params"].update(overlap_file="input", stru_file="input")
+    if field == "model.csr_dir":
+        raw["model"] = {"kind": "wannier", "dir": ".", "seed": "w"}
+    elif field == "model.file":
+        raw["model"] = {"kind": "openmx", "file": "input"}
+    elif field.endswith("hamiltonian_file"):
+        raw["model"] = {"kind": "deeph", "dir": ".", "params": {"velocity_mode": "bare"}}
+    elif field.endswith("dipole_cache"):
+        raw["model"] = {"kind": "gpaw", "file": "input", "params": {"velocity_mode": "bare"}}
+    elif field.startswith("model.params."):
+        raw["model"] = {"kind": "abacus", "file": "input",
+                        "params": {"velocity_mode": "bare", "overlap_file": "input",
+                                   "stru_file": "input"}}
     if field == "model.hr_file":
         raw["numerics"] = {"operator": "atom_block"}
     target = raw
