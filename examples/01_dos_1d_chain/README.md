@@ -74,6 +74,8 @@ The identity operator has label `1`, and the density of states is its spectral
 function. We run the Chebyshev recursion on the smallest chain, asking for $512$
 moments so the revival at $m = 256$ and its echoes are in range:
 
+Here `lsquant` is the compiled program in `build/<preset>/`, not `python -m lsquant`.
+
 ```bash
 cat > run_dos.json <<'JSON'
 { "mode": "spectral", "label": "chain1d_N256", "operator": "1",
@@ -121,6 +123,8 @@ $$ \rho(E) = \sum_m g_m\,\mu_m\,T_m(E), $$
 over a fine energy grid, where $g_m$ are the Jackson kernel coefficients that
 suppress the ringing of a truncated series. Run it once at a $120\ \mathrm{meV}$
 broadening:
+
+Here `lsquant` is the compiled program in `build/<preset>/`, not `python -m lsquant`.
 
 ```bash
 lsquant reconstruct SpectralOp1chain1d_N256KPM_M512_state*.chebmom1D dos 120

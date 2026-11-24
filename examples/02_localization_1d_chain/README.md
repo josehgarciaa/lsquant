@@ -66,6 +66,8 @@ sample that produced it. The next step reads them.
 Run the time-dependent recursion to get the spreading moments, then reconstruct
 $\mathrm{MSD}(E,t)$ at a Fermi energy:
 
+Here `lsquant` is the compiled program in `build/<preset>/`, not `python -m lsquant`.
+
 ```bash
 cat > run_msd.json <<'JSON'
 { "mode": "msd", "label": "chain1d_dis_N512_W1", "operator": "VX",

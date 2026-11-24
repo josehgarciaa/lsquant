@@ -73,6 +73,8 @@ step reads these.
 Run the KPM mean-square displacement and reconstruct $\Delta X^2$ at the working
 energy:
 
+Here `lsquant` is the compiled program in `build/<preset>/`, not `python -m lsquant`.
+
 ```bash
 cat > run_msd.json <<'JSON'
 { "mode": "msd", "label": "square_L200_W1", "operator": "VX",
@@ -96,6 +98,8 @@ $D_{\max}(E)$.
 
 The density of states at the same energy comes from Tutorial 1's recipe (the
 identity operator's spectral function):
+
+Here `lsquant` is the compiled program in `build/<preset>/`, not `python -m lsquant`.
 
 ```bash
 lsquant compute --config dos.json          # mode spectral, operator "1"
