@@ -27,7 +27,7 @@ A key set to `null` is treated as absent: the default applies.
 
 ### Path resolution
 
-`model.dir`, `model.csr_dir`, `model.hr_file`, and `model.positions` and
+`model.dir`, `model.csr_dir`, `model.file`, `model.hr_file`, and `model.positions` and
 `model.atom_map` when they are strings, are resolved in this order:
 
 1. An absolute path (after `~` expansion) is used as is.
@@ -39,6 +39,18 @@ A key set to `null` is treated as absent: the default applies.
 
 `output.dir` follows its own rule: it is relative to the current working
 directory.
+
+For MCP runs, the configured server root replaces the repository root and is
+also the subprocess working directory. After resolution, the server checks all
+explicit model paths, generator scripts and `output.dir` with symbolic links
+resolved. ABACUS's `model.params.overlap_file`, `stru_file`, `orbital_dir` and
+`position_file` follow the input resolution above. GPAW's `dipole_cache` is
+relative to the server root and is checked for reads and writes; DeepH's
+`hamiltonian_file` is checked relative to `model.dir`. Any escape is refused
+before dispatch; the error names the field and its supplied value without
+disclosing the resolved outside path. The default `output.dir: "."` remains
+allowed and writes into the root itself. These restrictions apply only to MCP;
+the command line can still read paths outside the repository.
 
 ## Top-level keys
 
