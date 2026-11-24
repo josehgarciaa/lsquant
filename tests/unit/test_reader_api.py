@@ -60,14 +60,15 @@ def _wannier_dir(tmp_path, rng):
                 for j in range(3):
                     fh.write(f"{R[0]} {R[1]} {R[2]} {i + 1} {j + 1} "
                              f"{mats[R][i, j].real:.16e} {mats[R][i, j].imag:.16e}\n")
-    pos = 0.1 * rng.normal(size=(len(CELLS), n, n))
+    pos = 0.1 * rng.normal(size=(3, len(CELLS), n, n))
     with open(tmp_path / "w_r.dat", "w", encoding="utf-8") as fh:
         fh.write("test position matrix\n3\n3\n")   # comment, then width and R count
-        for R, m in zip(CELLS, pos):
+        for R, m in zip(CELLS, pos.transpose(1, 2, 3, 0)):
             for i in range(n):
                 for j in range(n):
-                    fh.write(f"{R[0]} {R[1]} {R[2]} {i + 1} {j + 1} "
-                             f"{m[i, j].real:.16e} {m[i, j].imag:.16e}\n")
+                    vals = " ".join(f"{m[i, j, a].real:.16e} {m[i, j, a].imag:.16e}"
+                                    for a in range(3))
+                    fh.write(f"{R[0]} {R[1]} {R[2]} {i + 1} {j + 1} {vals}\n")
     return lambda **kw: load_wannier_metric_model(str(tmp_path), "w", **kw)
 
 
