@@ -246,6 +246,9 @@ spin–orbit coupling has no spin operator: the words with `SX`, `SY`, `SZ` or
 
 ### Generator models
 
+Only the executable tutorial generators listed below are accepted. The former
+`gen_models` catalogue entry has been removed because it had no executor.
+
 `model.kind = "generator"` runs a tutorial driver that builds its own models.
 The validator accepts only `basis.name = "real"` and
 `metric.policy = "orthogonal"`. It also requires `basis.disorder` to be absent
@@ -261,12 +264,16 @@ The drivers decide which files are written, and they ignore most `output` and
 | `make_chain_mag` | 4 | none | `model.dir` (operator directory) |
 | `make_square` | 5 | `L` (`200`), `W` (`[0.5, 1.0, 2.0, 4.0]`), `disorder_seed` (`1`), `dos_moments` (`1024`) | `expansion.seed`, `moments`, `states` (default 1), `window`; `time`; `words`; `reconstruction.broadening_meV` (default 80), `fermi_energies` (default `[2.0]`), `legacy_text_round_trip` |
 | `make_ey`, `make_rashba` | 6 | `ey_l` (`20`), `ey_ds` (`[0.05, 0.07, 0.10]`), `dp_l` (`20`), `dp_lambda` (`0.2`), `dp_ws` (`[0.0, 6.0]`), `dp_moments` (`160`), `dp_steps` (`120`), `dp_tmax` (`45.0`), `ratelaw_l` (`50`), `ratelaw_ds` (`[0.04, 0.06, 0.08, 0.10, 0.14]`), `ratelaw_nr` (`20`), `crosscheck_l` (`8`), `crosscheck_d` (`0.10`), `crosscheck_nr` (`20`), `crosscheck_moments` (`96`), `crosscheck_steps` (`60`), `crosscheck_tmax` (`220.0`), `disorder_seed` (`1`) | `expansion`, `time`, `words`, `reconstruction.kernel` (only `"jackson"`), `broadening_meV` (default 140), `fermi_energies` (default `[2.0]`), `formulas`, `legacy_text_round_trip`, `output.capture_tutorial` |
-| `gen_models` | none | none | Accepted by the validator, but has no tutorial number, so execution fails with `Unsupported generator`. |
 
 `RunFile` resolves `time.bessel`, `legacy_text_round_trip` and
 `capture_tutorial` to `"scipy"`, `false` and `false` before the driver starts.
 The driver defaults (`"legacy"`, `true` and `true`) therefore never apply. Set
 these keys explicitly, as the example run files do.
+
+The defaults printed by `inspect` match a minimal resolved run: in particular,
+`model.operators` is `null`, `expansion.left_window` is `32`, and for the
+64-moment example `expansion.batch` is `64`. When omitted, `batch` follows the
+requested moment count.
 
 ## `numerics`
 

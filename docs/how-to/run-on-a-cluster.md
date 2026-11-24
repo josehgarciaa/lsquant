@@ -117,7 +117,8 @@ disorder seeds, submit one job per seed, or a job array with one run file per
 seed, rather than one job with many threads.
 
 The `native-cuda` preset builds the GPU code for compute capability 9.0 by
-default; set `LSQUANT_CUDA_ARCHITECTURES` for other GPUs (see
+default; on a fresh configure set `CMAKE_CUDA_ARCHITECTURES` for other GPUs,
+or override it with `LSQUANT_CUDA_ARCHITECTURES` (see
 [CUDA architecture](../reference/build-presets.md#presets)). A run uses the GPU
 only with a real-space `csr` model and `numerics.operator = "atom_block"`,
 `numerics.execution = "cuda"` (see

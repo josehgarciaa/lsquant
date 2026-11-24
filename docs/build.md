@@ -6,6 +6,11 @@ The new core builds with two numerical **profiles**:
 
 `CMakePresets.json` (CMake ≥ 3.21) names both. A manual configure works with CMake ≥ 3.16 and the same cache variables.
 
+For CUDA builds, an explicit or cached `LSQUANT_CUDA_ARCHITECTURES` wins.
+Otherwise, a supplied `CMAKE_CUDA_ARCHITECTURES` initializes the project value;
+with neither set, the fallback is `90`. See the
+[CUDA architecture reference](reference/build-presets.md#presets).
+
 ## Presets
 
 ```bash
