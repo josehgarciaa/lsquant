@@ -208,10 +208,11 @@ Keep one build on `PYTHONPATH` at a time, because Python loads the first
    <!-- source: python/lsquant/words/catalogue.py:45-123 (7 entries); compiler.py:764-766; cli.py:171-174 -->
 
 On import, `lsquant` sets `OMP_NUM_THREADS` (the number of physical cores the
-process may use) and, for the `lsquant` command only, `OMP_PROC_BIND=spread`
+process may use) and, for the `lsquant` command with its own cores only
+(a CPU set from the batch system, or `LSQUANT_BIND_THREADS=1`), `OMP_PROC_BIND=spread`
 and `OMP_PLACES=cores`; each only if it is unset. Set `OMP_NUM_THREADS` yourself on a shared node; see
 [Run on a cluster](run-on-a-cluster.md).
-<!-- source: python/lsquant/runtime.py configure_threads (binding only for the command) -->
+<!-- source: python/lsquant/runtime.py configure_threads, binding_requested -->
 
 If the import fails:
 
