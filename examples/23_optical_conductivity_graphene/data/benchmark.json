@@ -1,0 +1,181 @@
+{
+ "graphene": {
+  "moments": 1024,
+  "window": [
+   -19.0,
+   19.0
+  ],
+  "resolution_eV": 0.05829126993965436,
+  "transition_width_eV": 0.08243630451661031,
+  "van_hove_target": 5.4,
+  "van_hove_x": 5.39189140736245,
+  "van_hove_y": 5.3924374899668015,
+  "van_hove_exact": 5.3919971798624635,
+  "anisotropy_max_relative": 0.007841091064934863,
+  "plateau": 1.5978892218376115,
+  "plateau_exact": 1.5979608156599812,
+  "universal": 1.5707963267948966,
+  "optical_at_1em4_eV": 2.130804184454587,
+  "static_kubo_bastin": 2.1318943185397,
+  "pauli_onsets": {
+   "0.5": {
+    "moments": 0.9999689833224662,
+    "exact": 0.9929301217993342
+   },
+   "1.0": {
+    "moments": 1.9999969303041218,
+    "exact": 1.9961399506598616
+   },
+   "1.5": {
+    "moments": 2.999997275187593,
+    "exact": 2.996556049309098
+   }
+  }
+ },
+ "hbn": {
+  "moments": 1024,
+  "window": [
+   -19.0,
+   19.0
+  ],
+  "resolution_eV": 0.05829126993965436,
+  "transition_width_eV": 0.08243630451661031,
+  "van_hove_target": 8.618474342944928,
+  "van_hove_x": 8.607979086187518,
+  "van_hove_y": 8.60852558509007,
+  "van_hove_exact": 8.607567078429001,
+  "anisotropy_max_relative": 0.00347203123447757,
+  "gap": 7.25,
+  "onset_moments": 7.25088408368702,
+  "onset_exact": 7.250404383122635,
+  "alpha_2d_static_moments": 0.19748772257848743,
+  "alpha_2d_static_exact": 0.19726467352143118,
+  "eps_static_d_3_33": 1.745256430542649
+ },
+ "checks": [
+  {
+   "test": "graphene: van Hove peak, field along x",
+   "value": 5.39189140736245,
+   "target": 5.4,
+   "tolerance": 0.02,
+   "unit": "eV",
+   "passed": true
+  },
+  {
+   "test": "graphene: van Hove peak, field along y",
+   "value": 5.3924374899668015,
+   "target": 5.4,
+   "tolerance": 0.02,
+   "unit": "eV",
+   "passed": true
+  },
+  {
+   "test": "graphene: |Re sigma_xx - Re sigma_yy| / max Re sigma, 0.3 to 9.5 eV",
+   "value": 0.007841091064934863,
+   "target": 0.0,
+   "tolerance": 0.03,
+   "unit": "",
+   "passed": true
+  },
+  {
+   "test": "graphene: mean Re sigma(0, omega), 0.5 to 1.5 eV, against the exact model",
+   "value": 1.5978892218376115,
+   "target": 1.5979608156599812,
+   "tolerance": 0.031959216313199625,
+   "unit": "e^2/h",
+   "passed": true
+  },
+  {
+   "test": "graphene: Re sigma(0, 1e-4 eV) against the static Kubo-Bastin value of the same moments",
+   "value": 2.130804184454587,
+   "target": 2.1318943185397,
+   "tolerance": 0.021318943185397,
+   "unit": "e^2/h",
+   "passed": true
+  },
+  {
+   "test": "graphene: half-absorption point at mu = 0.5 eV",
+   "value": 0.9999689833224662,
+   "target": 1.0,
+   "tolerance": 0.05829126993965436,
+   "unit": "eV",
+   "passed": true
+  },
+  {
+   "test": "graphene: half-absorption point at mu = 1.0 eV",
+   "value": 1.9999969303041218,
+   "target": 2.0,
+   "tolerance": 0.05829126993965436,
+   "unit": "eV",
+   "passed": true
+  },
+  {
+   "test": "graphene: half-absorption point at mu = 1.5 eV",
+   "value": 2.999997275187593,
+   "target": 3.0,
+   "tolerance": 0.05829126993965436,
+   "unit": "eV",
+   "passed": true
+  },
+  {
+   "test": "hbn: van Hove peak, field along x",
+   "value": 8.607979086187518,
+   "target": 8.618474342944928,
+   "tolerance": 0.02,
+   "unit": "eV",
+   "passed": true
+  },
+  {
+   "test": "hbn: van Hove peak, field along y",
+   "value": 8.60852558509007,
+   "target": 8.618474342944928,
+   "tolerance": 0.02,
+   "unit": "eV",
+   "passed": true
+  },
+  {
+   "test": "hbn: |Re sigma_xx - Re sigma_yy| / max Re sigma, 0.3 to 9.5 eV",
+   "value": 0.00347203123447757,
+   "target": 0.0,
+   "tolerance": 0.03,
+   "unit": "",
+   "passed": true
+  },
+  {
+   "test": "hbn: half-height point of the absorption step against the exact step",
+   "value": 7.25088408368702,
+   "target": 7.250404383122635,
+   "tolerance": 0.01457281748491359,
+   "unit": "eV",
+   "passed": true
+  },
+  {
+   "test": "hbn: alpha_2D at 0.0001 eV against the clean k-space sum",
+   "value": 0.19748772257848743,
+   "target": 0.19726467352143118,
+   "tolerance": 0.003945293470428624,
+   "unit": "Angstrom",
+   "passed": true
+  },
+  {
+   "test": "hbn: alpha_2D at 2 eV against the clean k-space sum",
+   "value": 0.20922796120256756,
+   "target": 0.20897526528419724,
+   "tolerance": 0.004179505305683945,
+   "unit": "Angstrom",
+   "passed": true
+  },
+  {
+   "test": "hbn: alpha_2D at 4 eV against the clean k-space sum",
+   "value": 0.25535734408042415,
+   "target": 0.25498523628955344,
+   "tolerance": 0.005099704725791069,
+   "unit": "Angstrom",
+   "passed": true
+  },
+  {
+   "test": "hbn: Im sigma < 0 below the gap (exp(-i omega t))",
+   "passed": true
+  }
+ ]
+}

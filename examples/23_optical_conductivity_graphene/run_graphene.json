@@ -1,0 +1,44 @@
+{
+  "model": {
+    "kind": "csr",
+    "dir": "examples/23_optical_conductivity_graphene/operators",
+    "label": "graphene",
+    "operators": [
+      "VX",
+      "VY"
+    ]
+  },
+  "basis": {
+    "name": "real"
+  },
+  "metric": {
+    "policy": "orthogonal"
+  },
+  "word": "Tr[VX delta(E-H) VX dG-(E)/dE]",
+  "words": [
+    "Tr[VX delta(E-H) VX dG-(E)/dE]",
+    "Tr[VY delta(E-H) VY dG-(E)/dE]"
+  ],
+  "expansion": {
+    "moments": 1024,
+    "window": [
+      -19.0,
+      19.0
+    ],
+    "trace": "random",
+    "states": 8,
+    "seed": 2026
+  },
+  "reconstruction": {
+    "kernel": "jackson",
+    "broadening_meV": 60.0,
+    "formulas": [
+      "bastin"
+    ]
+  },
+  "output": {
+    "dir": "out/optical_graphene",
+    "legacy_layout": false,
+    "write_chebmom": true
+  }
+}

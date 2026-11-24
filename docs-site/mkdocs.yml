@@ -80,7 +80,7 @@ nav:
           - Quantum anomalous Hall plateau, two codes: examples/22_yn2_anomalous_hall/PAGE.md
           - One spin Hall plateau, four codes: examples/20_pdse2_spin_hall_routes/PAGE.md
           - Downfolding, 220 orbitals or 12: examples/21_pdse2_downfolding/PAGE.md
-          - Optical conductivity of graphene: examples/23_optical_conductivity_graphene/README.md
+          - Optical conductivity of graphene and hBN: examples/23_optical_conductivity_graphene/PAGE.md
           - Scalar and magnetic disorder: examples/disorder_kinds/README.md
   - How-to:
       - Run a calculation: docs/how-to/run-lsquant.md

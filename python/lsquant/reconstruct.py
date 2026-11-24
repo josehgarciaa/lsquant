@@ -812,26 +812,50 @@ def optical_conductivity(
     """Optical conductivity sigma(mu, omega) from velocity-velocity moments.
 
     Solves the problem of the frequency-dependent longitudinal or Hall
-    conductivity of a non-interacting system in the Kubo-Bastin form
-    (A. Bastin et al., J. Phys. Chem. Solids 32, 1811 (1971)), from the same
-    rank-2 moment tensor ``mu[m, n] = Tr[A T_m(H) B T_n(H)] / N`` that the
-    static Kubo-Bastin curve uses (word ``Tr[A delta(E-H) B dG-(E)/dE]``). The
-    method and its conventions follow a post-processing script by T. Galvani
-    (private communication, 2026), which this function reproduces on the same
-    moments.
+    conductivity of a non-interacting system at zero temperature, from the
+    finite-frequency Kubo-Bastin formula (A. Bastin et al., J. Phys. Chem.
+    Solids 32, 1811 (1971)), with hbar = 1:
+
+        sigma_ab(mu, omega) = i / (Omega omega) [S_ab(mu, omega) - S_ab(mu, 0)],
+        S_ab(mu, omega) = int_{-inf}^{mu} dE Tr[v_a delta(E-H) v_b G+(E+omega)
+                                              + v_a G-(E-omega) v_b delta(E-H)].
+
+    It uses the same rank-2 moments as the static Kubo-Bastin curve (word
+    ``Tr[A delta(E-H) B dG-(E)/dE]``); LSQuant writes them as
+    ``mu_mn = 4 h_m h_n Tr[A T_m(H) B T_n(H)] / N`` (h_0 = 1/2, h_n = 1,
+    N = ``moments.system_size``). The method and its conventions follow a
+    post-processing script by T. Galvani (private communication, 2026). With
+    x = E/D, w = omega/D (D the half-width of the window, symmetric window),
+    the script evaluates
+
+        Gamma_mn(x, w) = T_m(x)/sqrt(1-x^2) exp(+i n arccos(x+w))/sqrt(1-(x+w)^2)
+                       - exp(-i m arccos(x-w))/sqrt(1-(x-w)^2) T_n(x)/sqrt(1-x^2),
+        G(mu, w) = int_{x_min}^{mu/D} dx sum_mn (N/4) mu_mn g_m g_n Gamma_mn(x, w),
+        sigma(mu, omega) = g_s (4/pi) / (A D^2) conj[(G(mu, w) - G(mu, 0)) / w]   (e^2/hbar),
+
+    g_m the Jackson kernel and A the area of the supercell.
+    ``examples/23_optical_conductivity_graphene/derivation.py`` derives this
+    from the formula above with SymPy. This function returns the same values
+    in e^2/h (times 2 pi) for one velocity (real moments). For two different
+    velocities the conj of the script returns sigma_ba, because
+    conj(mu^ab) = mu^ba; this function conjugates the moments first and
+    returns sigma_ab, so that sigma_xy(mu, omega -> 0) is the static
+    Kubo-Bastin value of :func:`kubo_bastin`.
 
     Approach:
 
-    1. Keep the first ``num_moments`` moments of each axis and damp them with
-       the two-dimensional Jackson kernel.
+    1. Keep the first ``num_moments`` moments of each axis, damp them with
+       the two-dimensional Jackson kernel and take their complex conjugate.
     2. On a uniform grid of ``num_energies`` energies E in ``energy_window``,
-       evaluate the integrand ``g(E, omega)`` with
-       :func:`lsquant._core.ContractRank2Optical`, for ``omega = 0`` and for
-       every photon energy.
+       evaluate the integrand ``g(E, omega) = sum_mn conj(mu_mn) Gamma_mn``
+       with :func:`lsquant._core.ContractRank2Optical`, for ``omega = 0`` and
+       for every photon energy.
     3. Integrate in E from the lower edge of ``energy_window`` (cumulative
        trapezoid): ``S(mu, omega)``, for every chemical potential mu of the
        grid at once.
-    4. ``sigma(mu, omega) = prefactor * conj((S(mu, omega) - S(mu, 0)) / omega)``.
+    4. ``sigma(mu, omega) = prefactor * conj((S(mu, omega) - S(mu, 0)) / omega)``,
+       prefactor ``2 g_s N scale^2 / (num_cells cell_area)`` in e^2/h, with
+       ``scale = 1/D`` and a shifted window handled by ``moments.window``.
 
     Parameters
     ----------
@@ -868,6 +892,8 @@ def optical_conductivity(
         Complex conductivity in units of e^2/h, shape
         ``(len(photon_energies), num_energies)``: ``sigma[w, i]`` at photon
         energy ``photon_energies[w]`` and chemical potential ``energies[i]``.
+        Time dependence exp(-i omega t): Re sigma_xx >= 0 is absorption, and
+        an insulator below its gap has Im sigma_xx < 0 (sigma = -i omega alpha).
 
     Notes
     -----
@@ -914,8 +940,9 @@ def optical_conductivity(
             f"spectral window of the moments ([{moments.window.lower:g}, {moments.window.upper:g}] eV); "
             "compute the moments with a wider expansion.window")
 
+    # conj(mu^ab) = mu^ba: conjugating the moments makes the final conj return sigma_ab, not sigma_ba.
     damped = np.ascontiguousarray(
-        np.asarray(moments.data)[:kept, :kept] * jackson_damping_2d(kept, kept), dtype=np.complex128)
+        np.conj(np.asarray(moments.data)[:kept, :kept] * jackson_damping_2d(kept, kept)), dtype=np.complex128)
     integrand = _core.ContractRank2Optical(damped, x, np.concatenate(([0.0], w)))
     steps = np.diff(x)
     area = np.zeros_like(integrand)
