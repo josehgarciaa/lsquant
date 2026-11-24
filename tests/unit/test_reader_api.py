@@ -170,10 +170,11 @@ Bi
             for a in range(3):
                 rows, cols = np.nonzero(q[a, r])
                 out.append(str(len(rows)))
-                out.append(" ".join(repr(float(v)) for v in q[a, r][rows, cols]))
-                out.append(" ".join(map(str, cols)))
-                out.append(" ".join(map(str, np.concatenate(
-                    [[0], np.cumsum(np.bincount(rows, minlength=n))]))))
+                if len(rows):
+                    out.append(" ".join(repr(float(v)) for v in q[a, r][rows, cols]))
+                    out.append(" ".join(map(str, cols)))
+                    out.append(" ".join(map(str, np.concatenate(
+                        [[0], np.cumsum(np.bincount(rows, minlength=n))]))))
         (tmp_path / "rr.csr").write_text("\n".join(out) + "\n")
 
     def load(**kw):
