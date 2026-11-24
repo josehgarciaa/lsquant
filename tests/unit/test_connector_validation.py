@@ -187,16 +187,18 @@ def test_velocity_mode_one_wording(connector):
             "(ABACUS's data-rR-sparse.csr)")
     else:
         assert str(exc.value).endswith("; no position matrix, so no 'covariant'")
-    if "covariant" in effective_velocity_modes(connector, _accepted_params(connector)):
-        _validated(connector, params=dict(_accepted_params(connector),
-                                          velocity_mode="covariant",
-                                          position_file="p"))
+    accepted = _accepted_params(connector)
+    if "covariant" in effective_velocity_modes(connector, accepted):
+        params = dict(accepted, velocity_mode="covariant")
+        if connector.covariant_rule == "param":
+            params[connector.covariant_param] = "p"
+        _validated(connector, params=params)
 
 
 @pytest.mark.parametrize("connector", CONNECTOR_LIST, ids=KINDS)
 def test_missing_path_error_text(connector):
     with pytest.raises(ValueError) as exc:
-        _validated(connector)
+        RunFile.from_dict(dict(BASE, model={"kind": connector.kind}))
     assert str(exc.value) == connector.missing_path_error
     assert str(exc.value).startswith(f"model.kind='{connector.kind}' requires ")
 
@@ -330,7 +332,7 @@ def _wannier_files(tmp_path, rng):
 
 def test_fermi_policy_wannier(tmp_path):
     load = _wannier_files(tmp_path, np.random.default_rng(21))
-    _assert_fermi_policy(load, x_file=None, has_file_reference=False)
+    _assert_fermi_policy(load, x_file=None)
 
 
 def _paoflow_file(tmp_path, rng):
