@@ -79,7 +79,7 @@ def test_spinor_lift_matrix_and_stack():
 
 
 def test_opposite_pairs():
-    r_int = np.array([[0, 0, 0], [1, 0, 0], [-1, 0, 0], [0, 2, -3]])
+    r_int = np.array([[0, 0, 0], [1, 0, 0], [-1, 0, 0], [0, 2, -3], [0, -2, 3]])
     partner = opposite_pairs(r_int)
     for n, p in enumerate(partner):
         np.testing.assert_array_equal(-r_int[n], r_int[p])
@@ -109,7 +109,7 @@ def test_hermitian_pairs_adds_missing_opposite():
     # The fold is the mean with the mirrored stack, and the residual is the
     # pre-fold mismatch over (2 max|M|), rebuilt here from the same inputs.
     extended = np.concatenate([mats, [mats[1].conj().T]])
-    mirrored = extended[[0, 2, 1]]
+    mirrored = extended[[0, 2, 1]].conj().swapaxes(1, 2)
     np.testing.assert_array_equal(folded, 0.5 * (extended + mirrored))
     scale = max(float(np.abs(extended).max()), 1e-300)
     assert residual == pytest.approx(float(np.abs(extended - mirrored).max()) / (2 * scale))
