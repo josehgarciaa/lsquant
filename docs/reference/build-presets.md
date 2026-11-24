@@ -42,7 +42,7 @@ last digits, so check a `native` build against the golden files with
 |---|---|---|---|
 | C++ compiler | C++17 | all | `CMAKE_CXX_COMPILER` |
 | CMake | ≥ 3.21 | all | — |
-| Eigen | ≥ 3.3 | all | CMake package `Eigen3`, otherwise the header directory in `$CONDA_PREFIX/include/eigen3`, `/usr/include/eigen3` or `/usr/local/include/eigen3`. Override with `-DEIGEN3_INCLUDE_DIR=…`. |
+| Eigen | ≥ 3.4 (3.4.0 wrote the goldens) | all | CMake package `Eigen3`, otherwise the header directory in `$CONDA_PREFIX/include/eigen3`, `/usr/include/eigen3` or `/usr/local/include/eigen3`. Override with `-DEIGEN3_INCLUDE_DIR=…`. |
 | Boost headers | — | legacy drivers (`kpm_lib`) | `find_package(Boost)`; override with `-DBoost_ROOT=…`. No compiled Boost library is needed. |
 | OpenMP | — | all | compiler support |
 | FFTW3, double precision | — | all | `pkg-config fftw3` (so `pkg-config` itself is required) |

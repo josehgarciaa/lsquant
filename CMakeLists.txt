@@ -80,7 +80,10 @@ if(NOT Boost_FOUND)
 endif()
 
 # Eigen3: prefer a real config-package (Eigen3::Eigen); fall back to a header dir.
-find_package(Eigen3 3.3 QUIET NO_MODULE)
+# The legacy tree uses Eigen::Vector<T, N>, an alias that exists from Eigen 3.4 on, so an
+# older Eigen fails in the middle of the build ("'Vector' is not a member of 'Eigen'").
+# Eigen 3.4.0 wrote the stage-0 goldens.
+find_package(Eigen3 3.4 QUIET NO_MODULE)
 if(NOT TARGET Eigen3::Eigen)
     find_path(EIGEN3_INCLUDE_DIR
         NAMES signature_of_eigen3_matrix_library
@@ -90,10 +93,31 @@ if(NOT TARGET Eigen3::Eigen)
         message(FATAL_ERROR
             "Eigen3 not found. Install libeigen3-dev or pass -DEIGEN3_INCLUDE_DIR=/path/to/eigen3")
     endif()
+    # A header directory carries no package version: read it from the headers
+    # (Eigen/src/Core/util/Macros.h up to 3.4, Eigen/Version in later releases).
+    set(_lsquant_eigen_version "")
+    foreach(_lsquant_eigen_header Eigen/Version Eigen/src/Core/util/Macros.h)
+        if(NOT _lsquant_eigen_version AND EXISTS "${EIGEN3_INCLUDE_DIR}/${_lsquant_eigen_header}")
+            file(STRINGS "${EIGEN3_INCLUDE_DIR}/${_lsquant_eigen_header}" _lsquant_eigen_lines
+                REGEX "#define[ \t]+EIGEN_(WORLD|MAJOR)_VERSION[ \t]+[0-9]+")
+            string(REGEX MATCH "EIGEN_WORLD_VERSION[ \t]+([0-9]+)" _ "${_lsquant_eigen_lines}")
+            set(_lsquant_eigen_world "${CMAKE_MATCH_1}")
+            string(REGEX MATCH "EIGEN_MAJOR_VERSION[ \t]+([0-9]+)" _ "${_lsquant_eigen_lines}")
+            set(_lsquant_eigen_major "${CMAKE_MATCH_1}")
+            if(NOT "${_lsquant_eigen_world}" STREQUAL "" AND NOT "${_lsquant_eigen_major}" STREQUAL "")
+                set(_lsquant_eigen_version "${_lsquant_eigen_world}.${_lsquant_eigen_major}")
+            endif()
+        endif()
+    endforeach()
+    if(_lsquant_eigen_version AND _lsquant_eigen_version VERSION_LESS "3.4")
+        message(FATAL_ERROR
+            "Eigen ${_lsquant_eigen_version} found in ${EIGEN3_INCLUDE_DIR}, but LSQuant needs Eigen 3.4 "
+            "or later. Pass -DEIGEN3_INCLUDE_DIR=/path/to/eigen-3.4.0 (the directory that holds Eigen/).")
+    endif()
     add_library(Eigen3::Eigen INTERFACE IMPORTED)
     set_target_properties(Eigen3::Eigen PROPERTIES
         INTERFACE_INCLUDE_DIRECTORIES "${EIGEN3_INCLUDE_DIR}")
-    message(STATUS "Eigen3 headers: ${EIGEN3_INCLUDE_DIR}")
+    message(STATUS "Eigen3 headers: ${EIGEN3_INCLUDE_DIR} (version ${_lsquant_eigen_version})")
 endif()
 
 find_package(OpenMP REQUIRED)

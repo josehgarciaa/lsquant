@@ -27,7 +27,7 @@ You need:
 - A C++17 compiler with OpenMP, to build the engine. The reference build
   used the system compiler, GCC 9.4.
 - CMake 3.21 or later for both preset and manual builds.
-- Eigen 3.3 or later, Boost headers (for legacy Boost.Math Bessel functions),
+- Eigen 3.4 or later (the legacy drivers do not compile with 3.3), Boost headers (for legacy Boost.Math Bessel functions),
   FFTW3 (double precision) and `pkg-config`, for the engine.
 - GSL, Python 3.10 or later with its development headers, and pybind11, for
   the Python binding.
