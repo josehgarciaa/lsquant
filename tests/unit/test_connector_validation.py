@@ -686,7 +686,9 @@ def _openmx_file(tmp_path, rng):
         write_all(lambda a, j, c: element(dd, a, j, c).imag)
         write_all(lambda a, j, c: (1 - im_split) * element(ud, a, j, c).imag)
         write_all(lambda a, j, c: element(s, a, j, c))
-        for _ in range(3 + 4 + 2):                        # OLPpo, OLPmo, DM, iDM
+        for _ in range(3):                        # OLPpo (position matrix), unused here
+            write_all(lambda a, j, c: 0.0)
+        for _ in range(3 + 4 + 2):                # OLPmo, DM, iDM
             write_all(lambda a, j, c: 0.0)
         w([0], "<i4")                                    # eigenvalue method flag
         w([mu_hartree, 300.0, 0, 0, 0, 0, 0, 0, 2.0, 0.0], "<f8")
