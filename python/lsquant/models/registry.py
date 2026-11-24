@@ -493,9 +493,14 @@ def validate_connector_params(connector: ModelConnector,
 
 def validate_model_keys(kind: str, model_keys: frozenset[str],
                         model: Mapping[str, Any]) -> None:
-    """Refuse ``model`` keys the kind does not read (audit item B8)."""
+    """Refuse ``model`` keys the kind does not read (audit item B8).
+
+    A null value means "absent" in this schema, and ``run.resolved.json``
+    round trips carry every known key set to null, so only a non-null value
+    of another kind's key is refused.
+    """
     for key in model.keys():
-        if key not in model_keys:
+        if key not in model_keys and model[key] is not None:
             raise ValueError(
                 f"Unknown key '{key}' in run file (model.kind='{kind}'); "
                 f"allowed keys are {sorted(model_keys)}"
