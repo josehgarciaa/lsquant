@@ -129,7 +129,6 @@ loaded.
 | `make_square` | `examples/05_charge_transport_square/make_square.py` |
 | `make_ey` | `examples/06_spin_relaxation_square/make_ey.py` |
 | `make_rashba` | `examples/06_spin_relaxation_square/make_rashba.py` |
-| `gen_models` | `python/lsquant/models/wannier.py` |
 
 ---
 

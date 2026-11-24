@@ -48,7 +48,7 @@ formula on the same moments.
 
 | Argument | Meaning |
 |---|---|
-| `target` | A moment file (`*.chebmom1D`, `*.chebmom2D`, `*.chebmomTD`, `*.chebmom`) or a run output directory. For a directory, every moment file in it is reconstructed. |
+| `target` | A moment file (`*.chebmom1D`, `*.chebmom2D`, `*.chebmomTD`, `*.chebmom`) or a run output directory. For a directory with an explicit formula, incompatible ranks or word shapes are skipped. |
 | `FORMULA` (positional, optional) | Same as `--formula`. |
 | `BROADENING_MEV` (positional, optional) | Same as `--broadening-meV`. |
 | `--formula NAME`, `-f NAME` | Reconstruction formula; see the table below. |
@@ -56,6 +56,13 @@ formula on the same moments.
 | `--fermi-energies E ...`, `--fermi-energy`, `-e` | Fermi energies in eV, used by `time_correlation`. |
 | `--out DIR`, `-o DIR` | Directory for the curve files. Default: the directory of the moments. |
 | `--json` | Print the summary as JSON instead of one curve path per line. |
+
+For an explicit formula on a directory, the summary includes `skipped_files`,
+with `moment_file` and `reason` for each incompatible file. The text CLI prints
+these skips to stderr. If no file admits the formula, it reports an error
+before writing curves. Without a formula, each file uses its own default.
+Legacy files without words and ambiguous static engine words are filtered by
+rank and time axis; full observable words also restrict the catalogue shape.
 
 Defaults when an option is omitted:
 

@@ -177,13 +177,10 @@ preset name.
 Keep one build on `PYTHONPATH` at a time, because Python loads the first
 `_core` it finds.
 
-> **Known limitation: `pip install -e python/` fails.** The package metadata
-> points to the top-level `README.md`, a file outside the package directory,
-> and recent versions of setuptools refuse it. With setuptools 84.0 the install
-> stops with `Cannot access '…/python/../README.md' (or anything outside
-> '…/python')`. Use `PYTHONPATH` as shown above, and run the command-line
-> interface as `python -m lsquant`.
-<!-- source: python/pyproject.toml:9 (readme = "../README.md") -->
+The Python package can also be installed with `pip install -e python/` from
+the repository root. Its metadata uses the package-local `python/README.md`,
+which is also included in source distributions. This installs the Python
+interface and CLI; build the compiled `_core` extension separately as above.
 
 ## Check the installation
 
@@ -275,7 +272,8 @@ cmake --build --preset native-cuda
 After the import, `_core.cuda_available` is `True`.
 
 The GPU code is compiled for compute capability 9.0 (H100 class) by default.
-Only 90 is tested. For another GPU, set `LSQUANT_CUDA_ARCHITECTURES`; see
+Only 90 is tested. For another GPU, set `CMAKE_CUDA_ARCHITECTURES` on a fresh
+configure, or override it with `LSQUANT_CUDA_ARCHITECTURES`; see
 [CUDA architecture](../reference/build-presets.md#presets).
 
 The GPU is used by two run-file settings, both for real-space `csr` models.

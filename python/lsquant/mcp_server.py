@@ -44,7 +44,10 @@ def get_configured_root() -> str:
     return _CONFIGURED_ROOT
 
 
-def _resolve_within_root(path_str: str, root: str | None = None) -> str:
+def _resolve_within_root(
+    path_str: str, root: str | None = None, *, key: str = "path",
+    supplied: str | None = None,
+) -> str:
     """Resolve ``path_str`` and refuse access if it lies outside ``root``."""
     base_root = os.path.realpath(root if root is not None else _CONFIGURED_ROOT)
     candidate = (
@@ -55,15 +58,73 @@ def _resolve_within_root(path_str: str, root: str | None = None) -> str:
     resolved = os.path.realpath(os.path.abspath(candidate))
     try:
         common = os.path.commonpath([base_root, resolved])
-    except ValueError as exc:
-        raise ValueError(
-            f"Access denied: path '{path_str}' is outside configured root '{base_root}'"
-        ) from exc
+    except ValueError:
+        common = None
     if common != base_root:
         raise ValueError(
-            f"Access denied: path '{path_str}' resolves to '{resolved}' outside configured root '{base_root}'"
+            f"Access denied: {key} '{path_str if supplied is None else supplied}' "
+            "is outside the server root"
         )
     return resolved
+
+
+# All explicit run-file paths belong here, including connector parameters even
+# when supplied on another model kind. The mode records the executor's base.
+_RUN_PATH_FIELDS = (
+    ("model.dir", "resolved"),
+    ("model.csr_dir", "resolved"),
+    ("model.file", "resolved"),
+    ("model.hr_file", "resolved"),
+    ("model.positions", "resolved"),
+    ("model.atom_map", "resolved"),
+    ("model.name", "generator"),
+    ("model.params.overlap_file", "resolved"),
+    ("model.params.stru_file", "resolved"),
+    ("model.params.orbital_dir", "resolved"),
+    ("model.params.position_file", "resolved"),
+    ("model.params.dipole_cache", "cwd"),
+    ("model.params.hamiltonian_file", "model_dir"),
+    ("output.dir", "cwd"),
+)
+
+
+def _guard_runfile_paths(rf: RunFile, raw: dict[str, Any], root: str) -> str:
+    """Check explicit inputs and outputs before creating files or dispatching.
+
+    RunFile resolves ordinary inputs against the root, then the source file's
+    directory. Connector exceptions follow the subprocess working directory or
+    model.dir instead. One field list keeps these checks independent of connector
+    dispatch; string positions/atom maps are paths, while inline arrays are not.
+
+    Pitfall: report only the caller's spelling, never a symlink's private target.
+    The root itself is allowed, preserving the default output.dir of ".".
+    Warning: this is a path check, not protection against concurrent filesystem
+    changes between validation and execution.
+    """
+    output_dir = root
+    for key, mode in _RUN_PATH_FIELDS:
+        parts = key.split(".")
+        value: Any = getattr(rf, parts[0])
+        original: Any = raw.get(parts[0], {})
+        for part in parts[1:]:
+            value = value.get(part) if isinstance(value, dict) else None
+            original = original.get(part) if isinstance(original, dict) else None
+        if not isinstance(value, str):
+            continue
+        candidate = value
+        if mode == "generator":
+            candidate = resolve_generator_path(value, root)
+        elif mode == "model_dir":
+            candidate = os.path.join(rf.model.get("dir") or root, value)
+        resolved = _resolve_within_root(
+            candidate, root, key=key, supplied=str(original) if original is not None else value,
+        )
+        if key == "model.params.dipole_cache" and not value.endswith(".npz"):
+            # numpy.savez appends this suffix when writing a cache miss.
+            _resolve_within_root(candidate + ".npz", root, key=key, supplied=value)
+        if key == "output.dir":
+            output_dir = resolved
+    return output_dir
 
 
 @dataclass
@@ -93,7 +154,7 @@ def tool_run(runfile_json: str | dict[str, Any]) -> str:
             raw = json.loads(stripped)
             source_path = None
         else:
-            resolved_rf_path = _resolve_within_root(stripped, root)
+            resolved_rf_path = _resolve_within_root(stripped, root, key="runfile_json")
             with open(resolved_rf_path, encoding="utf-8") as fh:
                 raw = json.load(fh)
             source_path = resolved_rf_path
@@ -105,17 +166,7 @@ def tool_run(runfile_json: str | dict[str, Any]) -> str:
 
     rf = RunFile.from_dict(raw, source_path=source_path, repo_root=root)
 
-    # Verify all model and output paths lie inside the configured root
-    for key in ("dir", "csr_dir"):
-        val = rf.model.get(key)
-        if val is not None:
-            _resolve_within_root(str(val), root)
-    if rf.model.get("name") is not None:
-        _resolve_within_root(
-            resolve_generator_path(str(rf.model["name"]), root), root
-        )
-
-    out_dir = _resolve_within_root(str(rf.output["dir"]), root)
+    out_dir = _guard_runfile_paths(rf, raw, root)
     os.makedirs(out_dir, exist_ok=True)
 
     run_id = uuid.uuid4().hex[:12]
@@ -195,7 +246,7 @@ def tool_reconstruct(
     fermi_energies: list[float] | None = None,
 ) -> str:
     """Reconstruct curve(s) from an output directory or moment file within the configured root."""
-    resolved_target = _resolve_within_root(output_dir)
+    resolved_target = _resolve_within_root(output_dir, key="output_dir")
     res = reconstruct_target(
         resolved_target,
         formula=formula,
@@ -207,7 +258,7 @@ def tool_reconstruct(
 
 def tool_inspect(path: str) -> str:
     """Inspect a moment file, run file, or directory within the configured root, returning JSON identical to ``lsquant inspect``."""
-    resolved_path = _resolve_within_root(path)
+    resolved_path = _resolve_within_root(path, key="path")
     info = inspect_target(resolved_path)
     return json.dumps(info, indent=2)
 
