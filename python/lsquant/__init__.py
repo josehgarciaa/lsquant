@@ -42,7 +42,9 @@ from .moments import (
     window_from_gershgorin,
 )
 from .reconstruct import (
+    dielectric_function,
     dos_curve,
+    optical_conductivity,
     shc,
     kubo_bastin,
     kubo_bastin_sea,
@@ -103,6 +105,8 @@ __all__ = [
     "dos_curve",
     "kubo_greenwood",
     "kubo_bastin",
+    "optical_conductivity",
+    "dielectric_function",
     "kubo_bastin_sea",
     "kubo_bastin_surf",
     "kubo_fft_grid",

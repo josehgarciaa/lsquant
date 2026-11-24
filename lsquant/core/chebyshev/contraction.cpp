@@ -4,7 +4,12 @@
  */
 #include "core/chebyshev/contraction.hpp"
 
+#include <algorithm>
+#include <cmath>
+#include <complex>
 #include <stdexcept>
+#include <string>
+#include <vector>
 #ifdef LSQUANT_NATIVE_BUILD
 #include <Eigen/Core>
 #include <algorithm>
@@ -195,6 +200,68 @@ std::vector<double> ContractRank2Imag(const ChebyshevMoments& moments,
   ContractRank2Imag(moments.Data().data(), m0, m1, tableA.data(), tableB.data(), numPoints,
                     values.data());
   return values;
+}
+
+void ContractRank2Optical(const Scalar* moments, Index numMoments0, Index numMoments1,
+                          const double* energies, Index numEnergies, const double* omegas,
+                          Index numOmegas, Scalar* values) {
+  if (numMoments0 < 0 || numMoments1 < 0 || numEnergies < 0 || numOmegas < 0) {
+    throw std::invalid_argument("ContractRank2Optical: extents must be non-negative");
+  }
+  if (numEnergies == 0 || numOmegas == 0) return;
+  if (energies == nullptr || omegas == nullptr || values == nullptr) {
+    throw std::invalid_argument("ContractRank2Optical: null pointer for a non-empty array");
+  }
+  if (numMoments0 > 0 && numMoments1 > 0 && moments == nullptr) {
+    throw std::invalid_argument("ContractRank2Optical: moments pointer is null");
+  }
+  // The domain is checked before the parallel region: an exception must not cross it.
+  for (Index i = 0; i < numEnergies; ++i) {
+    for (Index w = 0; w < numOmegas; ++w) {
+      const double x = energies[i], xp = x + omegas[w], xm = x - omegas[w];
+      if (!(std::abs(x) < 1.0) || !(std::abs(xp) < 1.0) || !(std::abs(xm) < 1.0)) {
+        throw std::invalid_argument(
+            "ContractRank2Optical: energy +/- photon energy must lie strictly inside the "
+            "spectral window of the moments");
+      }
+    }
+  }
+
+#pragma omp parallel
+  {
+    std::vector<double> a(static_cast<std::size_t>(std::max(numMoments0, numMoments1)));
+    std::vector<Scalar> p(static_cast<std::size_t>(numMoments1));
+    std::vector<Scalar> q(static_cast<std::size_t>(numMoments0));
+#pragma omp for schedule(static)
+    for (Index i = 0; i < numEnergies; ++i) {
+      const double x = energies[i];
+      const double theta = std::acos(x);
+      const double norm = 1.0 / std::sqrt(1.0 - x * x);
+      for (std::size_t m = 0; m < a.size(); ++m) a[m] = std::cos(static_cast<double>(m) * theta) * norm;
+      // P_n = sum_m a_m mu[m, n]  and  Q_m = sum_n mu[m, n] a_n, sequential in the summed index.
+      for (Index n = 0; n < numMoments1; ++n) p[n] = Scalar(0.0, 0.0);
+      for (Index m = 0; m < numMoments0; ++m) {
+        const Scalar* row = moments + m * numMoments1;
+        Scalar rowSum(0.0, 0.0);
+        for (Index n = 0; n < numMoments1; ++n) {
+          p[n] += a[m] * row[n];
+          rowSum += row[n] * a[n];
+        }
+        q[m] = rowSum;
+      }
+      for (Index w = 0; w < numOmegas; ++w) {
+        const double xp = x + omegas[w], xm = x - omegas[w];
+        // sum_n P_n z^n with z = exp(+i arccos(x + omega)); sum_m Q_m z^m with z = exp(-i arccos(x - omega)).
+        const Scalar zp = std::polar(1.0, std::acos(xp));
+        const Scalar zm = std::polar(1.0, -std::acos(xm));
+        Scalar sp(0.0, 0.0), sm(0.0, 0.0);
+        for (Index n = numMoments1 - 1; n >= 0; --n) sp = sp * zp + p[n];
+        for (Index m = numMoments0 - 1; m >= 0; --m) sm = sm * zm + q[m];
+        values[w * numEnergies + i] =
+            sp / std::sqrt(1.0 - xp * xp) - sm / std::sqrt(1.0 - xm * xm);
+      }
+    }
+  }
 }
 
 void ContractRank2Real(const Scalar* moments, Index numMoments0, Index numMoments1,

@@ -4,7 +4,9 @@ Reconstructs the density of states (:func:`dos_curve`) and the four rank-2
 conductivity curves (:func:`kubo_greenwood`, :func:`kubo_bastin`,
 :func:`kubo_bastin_sea`, :func:`kubo_bastin_surf`) plus the Chebyshev FFT-node
 grid variants (:func:`kubo_fft_grid`) in the exact floating-point operation
-order of the legacy C++ reconstruction routines.
+order of the legacy C++ reconstruction routines. The frequency-dependent
+conductivity (:func:`optical_conductivity`, :func:`dielectric_function`) has
+no legacy counterpart to match.
 """
 
 from __future__ import annotations
@@ -794,3 +796,150 @@ def shc(moments, broadening_meV, num_cells, cell_area, *, backend="tables"):
         raise ValueError("shc requires positive num_cells and cell_area")
     energies, values = kubo_bastin(moments, broadening_meV, backend=backend)
     return energies, values * (2*np.pi/(num_cells*cell_area))
+
+
+def optical_conductivity(
+    moments: _core.ChebyshevMoments,
+    photon_energies,
+    *,
+    energy_window,
+    num_cells: int,
+    cell_area: float,
+    num_moments: int | None = None,
+    num_energies: int | None = None,
+    spin_degeneracy: int = 1,
+):
+    """Optical conductivity sigma(mu, omega) from velocity-velocity moments.
+
+    Solves the problem of the frequency-dependent longitudinal or Hall
+    conductivity of a non-interacting system in the Kubo-Bastin form
+    (A. Bastin et al., J. Phys. Chem. Solids 32, 1811 (1971)), from the same
+    rank-2 moment tensor ``mu[m, n] = Tr[A T_m(H) B T_n(H)] / N`` that the
+    static Kubo-Bastin curve uses (word ``Tr[A delta(E-H) B dG-(E)/dE]``). The
+    method and its conventions follow a post-processing script by T. Galvani
+    (private communication, 2026), which this function reproduces on the same
+    moments.
+
+    Approach:
+
+    1. Keep the first ``num_moments`` moments of each axis and damp them with
+       the two-dimensional Jackson kernel.
+    2. On a uniform grid of ``num_energies`` energies E in ``energy_window``,
+       evaluate the integrand ``g(E, omega)`` with
+       :func:`lsquant._core.ContractRank2Optical`, for ``omega = 0`` and for
+       every photon energy.
+    3. Integrate in E from the lower edge of ``energy_window`` (cumulative
+       trapezoid): ``S(mu, omega)``, for every chemical potential mu of the
+       grid at once.
+    4. ``sigma(mu, omega) = prefactor * conj((S(mu, omega) - S(mu, 0)) / omega)``.
+
+    Parameters
+    ----------
+    moments : lsquant._core.ChebyshevMoments
+        Rank-2 moment tensor of two velocity operators (eV Angstrom).
+    photon_energies : array_like
+        Photon energies hbar*omega in eV, all positive. A value much smaller
+        than the resolution gives a finite-difference estimate of the static
+        conductivity.
+    energy_window : (float, float)
+        Energies (eV) that contain the whole spectrum of H. They are the
+        integration limits and the range of the chemical potential. Every
+        ``E + hbar*omega`` and ``E - hbar*omega`` must lie inside the spectral
+        window of the moments (``moments.window``): run the moments with a
+        window wider than the spectrum by the largest photon energy on each
+        side.
+    num_cells : int
+        Number of unit cells in the simulated supercell.
+    cell_area : float
+        Area of one unit cell in Angstrom^2.
+    num_moments : int, optional
+        Moments kept per axis; default, all of them. The energy resolution is
+        about ``pi * (window width / 2) / num_moments``.
+    num_energies : int, optional
+        Points of the energy grid; default ``2 * num_moments``.
+    spin_degeneracy : int, optional
+        2 for a spinless model that stands for both spins; default 1.
+
+    Returns
+    -------
+    energies : numpy.ndarray
+        Chemical potentials in eV, shape ``(num_energies,)``.
+    sigma : numpy.ndarray
+        Complex conductivity in units of e^2/h, shape
+        ``(len(photon_energies), num_energies)``: ``sigma[w, i]`` at photon
+        energy ``photon_energies[w]`` and chemical potential ``energies[i]``.
+
+    Notes
+    -----
+    Complexity: ``O(num_energies * M^2 + num_energies * num_omegas * M)``.
+    Zero temperature. The diamagnetic (gauge) term is represented by the
+    subtraction of ``S(mu, 0)``, as in Bastin's formula.
+
+    Pitfall: this is a two-dimensional (sheet) conductivity. For a dielectric
+    function see :func:`dielectric_function`, which needs a thickness.
+
+    Warning: the real part at a photon energy below the resolution is the
+    broadened static value, not the clean-limit Drude weight.
+
+    To-do: finite temperature; a run-file formula for this reconstruction.
+    """
+    if moments.rank != 2:
+        raise ValueError("optical_conductivity requires rank-2 moments")
+    if num_cells <= 0 or cell_area <= 0:
+        raise ValueError("optical_conductivity requires positive num_cells and cell_area")
+    omegas = np.atleast_1d(np.asarray(photon_energies, dtype=np.float64))
+    if omegas.ndim != 1 or omegas.size == 0 or not np.all(np.isfinite(omegas)) or np.any(omegas <= 0):
+        raise ValueError("photon_energies must be a non-empty list of positive, finite energies (eV)")
+    limit = min(int(moments.dims[0]), int(moments.dims[1]))
+    kept = limit if num_moments is None else int(num_moments)
+    if not 0 < kept <= limit:
+        raise ValueError(f"num_moments must be between 1 and {limit}")
+    points = 2 * kept if num_energies is None else int(num_energies)
+    if points < 2:
+        raise ValueError("num_energies must be at least 2")
+    e_min, e_max = (float(v) for v in energy_window)
+    if not e_min < e_max:
+        raise ValueError("energy_window must be (lower, upper) with lower < upper")
+
+    scale = moments.window.scale
+    shift = moments.window.shift
+    energies = np.linspace(e_min, e_max, points)
+    x = energies * scale + shift
+    w = omegas * scale
+    reach = max(abs(x[0]), abs(x[-1])) + w.max()
+    if not reach < 1.0:
+        raise ValueError(
+            "energy_window widened by the largest photon energy "
+            f"([{e_min - omegas.max():g}, {e_max + omegas.max():g}] eV) must lie strictly inside the "
+            f"spectral window of the moments ([{moments.window.lower:g}, {moments.window.upper:g}] eV); "
+            "compute the moments with a wider expansion.window")
+
+    damped = np.ascontiguousarray(
+        np.asarray(moments.data)[:kept, :kept] * jackson_damping_2d(kept, kept), dtype=np.complex128)
+    integrand = _core.ContractRank2Optical(damped, x, np.concatenate(([0.0], w)))
+    steps = np.diff(x)
+    area = np.zeros_like(integrand)
+    np.cumsum(0.5 * (integrand[:, 1:] + integrand[:, :-1]) * steps, axis=1, out=area[:, 1:])
+    response = (area[1:] - area[0]) / w[:, None]
+    prefactor = 2.0 * spin_degeneracy * float(moments.system_size) * scale * scale / (num_cells * cell_area)
+    return energies, prefactor * np.conj(response)
+
+
+def dielectric_function(sigma, photon_energies, thickness):
+    """Dielectric function of a sheet of given thickness from its conductivity.
+
+    ``epsilon = 1 + 4 pi i sigma_3D / omega`` with ``sigma_3D = sigma / thickness``.
+    With ``sigma`` in e^2/h (as :func:`optical_conductivity` returns it),
+    photon energies in eV and the thickness in Angstrom this is
+    ``epsilon = 1 + 2 i (e^2 / 4 pi epsilon_0) sigma / (hbar omega thickness)``,
+    with ``e^2 / 4 pi epsilon_0 = 14.399645 eV Angstrom``.
+
+    Pitfall: the thickness of a two-dimensional material is a convention (an
+    effective thickness), not the height of the simulation cell.
+    """
+    if thickness <= 0:
+        raise ValueError("thickness must be positive (Angstrom)")
+    omegas = np.atleast_1d(np.asarray(photon_energies, dtype=np.float64))
+    sigma = np.asarray(sigma)
+    shape = (-1,) + (1,) * (sigma.ndim - 1)
+    return 1.0 + 2.0j * 14.399645 * sigma / (omegas.reshape(shape) * thickness)

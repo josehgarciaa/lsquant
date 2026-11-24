@@ -1068,6 +1068,28 @@ PYBIND11_MODULE(_core, m) {
       py::arg("moments"), py::arg("table_a"), py::arg("table_b"));
 
   m.def(
+      "ContractRank2Optical",
+      [](const py::array_t<Scalar, py::array::c_style | py::array::forcecast>& moments,
+         const py::array_t<double, py::array::c_style | py::array::forcecast>& energies,
+         const py::array_t<double, py::array::c_style | py::array::forcecast>& omegas) {
+        if (moments.ndim() != 2 || energies.ndim() != 1 || omegas.ndim() != 1) {
+          throw std::invalid_argument(
+              "ContractRank2Optical: moments must be 2D, energies and omegas 1D");
+        }
+        const Index numEnergies = static_cast<Index>(energies.shape(0));
+        const Index numOmegas = static_cast<Index>(omegas.shape(0));
+        py::array_t<Scalar> result({static_cast<py::ssize_t>(numOmegas),
+                                    static_cast<py::ssize_t>(numEnergies)});
+        ContractRank2Optical(moments.data(), static_cast<Index>(moments.shape(0)),
+                             static_cast<Index>(moments.shape(1)), energies.data(), numEnergies,
+                             omegas.data(), numOmegas, result.mutable_data());
+        return result;
+      },
+      py::arg("moments"), py::arg("energies"), py::arg("omegas"),
+      "Finite-frequency Kubo-Bastin integrand, shape (len(omegas), len(energies)); "
+      "rescaled energies, damped moments. See lsquant.reconstruct.optical_conductivity.");
+
+  m.def(
       "WriteCurveText",
       [](const std::string& path, const py::array_t<double>& x, const py::array_t<double>& y) {
         if (x.ndim() != 1 || y.ndim() != 1) {

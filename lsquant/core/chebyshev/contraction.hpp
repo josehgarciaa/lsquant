@@ -226,9 +226,61 @@ std::vector<double> ContractRank2RealReal(const ChebyshevMoments& moments,
                                           const std::vector<double>& tableA,
                                           const std::vector<double>& tableB);
 
+/**
+ * @brief Finite-frequency Kubo-Bastin integrand from a rank-2 moment tensor.
+ *
+ * Solves the problem of the optical (frequency-dependent) conductivity in the Kubo-Bastin
+ * form of A. Bastin et al., J. Phys. Chem. Solids 32, 1811 (1971): the current-current
+ * function `S(mu, omega)` is the integral over the energy `x` up to `mu` of
+ *
+ *   `values[w, i] = sum_{m, n} [ a_m(x_i) b+_n(x_i, omega_w) + b-_m(x_i, omega_w) a_n(x_i) ] mu[m, n]`
+ *
+ * with `a_m(x) = T_m(x) / sqrt(1 - x^2)` (the Chebyshev series of `delta(x - H)` without its
+ * `2 / pi`) and `b(s)_n(x, omega) = s exp(s i n arccos(x + s omega)) / sqrt(1 - (x + s omega)^2)`
+ * (the series of the retarded, `s = +1`, and advanced, `s = -1`, Green functions at the shifted
+ * energy). This function returns the integrand only; the energy integral, the subtraction of
+ * `S(mu, 0)`, the division by `omega` and every physical prefactor belong to the caller.
+ *
+ * Approach: for each energy the two half-contractions `P_n = sum_m a_m mu[m, n]` and
+ * `Q_m = sum_n mu[m, n] a_n` are formed once, and each frequency then costs two polynomial
+ * evaluations on the unit circle (Horner). Complexity is
+ * `O(numEnergies * M0 * M1 + numEnergies * numOmegas * (M0 + M1))` time and `O(M0 + M1)` memory
+ * per thread, against `O(numEnergies * numOmegas * M0 * M1)` for the direct double sum.
+ * All quantities are dimensionless, in the rescaled Chebyshev domain. The loop over energies
+ * is parallel with static scheduling; every sum is sequential, so the result does not depend
+ * on the number of threads.
+ *
+ * @param moments     Row-major complex moment tensor of shape `(numMoments0, numMoments1)`,
+ *                    already truncated and damped, with the first moment already halved
+ *                    (the convention of the moment files).
+ * @param numMoments0 Extent `M0 >= 0` along the left axis.
+ * @param numMoments1 Extent `M1 >= 0` along the right axis.
+ * @param energies    Rescaled energies `x_i`, length `numEnergies`.
+ * @param numEnergies Number of energies `>= 0`.
+ * @param omegas      Rescaled photon energies `omega_w`, length `numOmegas`.
+ * @param numOmegas   Number of photon energies `>= 0`.
+ * @param values      Output, row-major `(numOmegas, numEnergies)`.
+ *
+ * @warning Throws `std::invalid_argument` if an extent is negative, a required pointer is null,
+ *          or any of `x`, `x + omega`, `x - omega` is not strictly inside `(-1, 1)`: the Green
+ *          functions are expanded at the shifted energies, so the spectral window of the
+ *          moments must contain the energies of interest plus and minus the largest photon
+ *          energy.
+ * @par Pitfall
+ *      Horner evaluation on the unit circle has a rounding error that grows linearly with the
+ *      number of moments (about `M * 1e-16` relative), not the constant error of a term-by-term
+ *      sum. The result is deterministic but is not bit-identical to the direct sum.
+ * @par To-do
+ *      A native-profile GEMM path for the two half-contractions, as in `ContractRank2Imag`.
+ */
+void ContractRank2Optical(const Scalar* moments, Index numMoments0, Index numMoments1,
+                          const double* energies, Index numEnergies, const double* omegas,
+                          Index numOmegas, Scalar* values);
+
 namespace chebyshev {
 using lsquant::ContractRank1;
 using lsquant::ContractRank2Imag;
+using lsquant::ContractRank2Optical;
 using lsquant::ContractRank2Real;
 using lsquant::ContractRank2RealReal;
 }  // namespace chebyshev

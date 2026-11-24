@@ -530,6 +530,12 @@ def ContractRank2RealReal(
     table_b: npt.NDArray[np.float64],
 ) -> npt.NDArray[np.float64]: ...
 
+def ContractRank2Optical(
+    moments: npt.NDArray[np.complex128],
+    energies: npt.NDArray[np.float64],
+    omegas: npt.NDArray[np.float64],
+) -> npt.NDArray[np.complex128]: ...
+
 def WriteCurveText(
     path: str, x: npt.NDArray[np.float64], y: npt.NDArray[np.float64]
 ) -> None: ...
