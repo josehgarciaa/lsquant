@@ -13,7 +13,7 @@ import pytest
 
 from lsquant import _core
 from lsquant.kernels import jackson_damping_2d
-from lsquant.reconstruct import dielectric_function, optical_conductivity
+from lsquant.reconstruct import dielectric_function, optical_conductivity, shc
 
 
 def gamma_matrix(energy, omega, m0, m1):
@@ -55,28 +55,103 @@ def make_moments(size=12, half_width=10.0):
     return mu
 
 
-def test_conductivity_matches_the_reference_script_formulas():
-    mu = make_moments()
-    size, half_width, orbitals = 12, 10.0, 50
-    num_cells, cell_area, points = 25, 5.24, 64
-    photon = np.array([1e-4, 0.5, 2.0, 4.0])
-    energies, sigma = optical_conductivity(
-        mu, photon, energy_window=(-5.0, 5.0), num_cells=num_cells, cell_area=cell_area,
-        num_energies=points, spin_degeneracy=2)
-
-    # The script: moments * N / 4, reduced energies, omega grid that starts at zero.
-    scaled = np.asarray(mu.data) * orbitals / 4 * jackson_damping_2d(size, size)
+def script_sigma(data, size, half_width, orbitals, num_cells, cell_area, points, photon):
+    """The reference script, transcribed: moments * N / 4, reduced energies, omega grid from zero."""
+    scaled = data * orbitals / 4 * jackson_damping_2d(size, size)
     grid = np.linspace(-5.0 / half_width, 5.0 / half_width, points)
     omegas = np.concatenate(([0.0], photon / half_width))
     small = np.array([[np.sum(gamma_matrix(e, w, size, size) * scaled) for e in grid] for w in omegas])
     big = np.zeros_like(small)
     big[:, 1:] = np.cumsum(0.5 * (small[:, 1:] + small[:, :-1]) * np.diff(grid), axis=1)
     prefactor = 2 * (4 / np.pi) / (num_cells * cell_area) / half_width**2
-    script = np.conj((big[1:] - big[0]) / omegas[1:, None] * prefactor)   # in e^2/hbar
+    return grid, np.conj((big[1:] - big[0]) / omegas[1:, None] * prefactor)   # in e^2/hbar
 
-    assert np.allclose(energies, grid * half_width)
-    assert sigma.shape == (4, points)
-    assert np.allclose(sigma, 2 * np.pi * script, rtol=1e-10, atol=1e-10)   # e^2/h = 2 pi e^2/hbar
+
+def test_conductivity_matches_the_reference_script_formulas():
+    """Real moments (one velocity): the script, value for value. Complex moments: the script applied
+    to conj(mu), because the script's final conj returns sigma_ba for the moments of (v_a, v_b)."""
+    size, half_width, orbitals = 12, 10.0, 50
+    num_cells, cell_area, points = 25, 5.24, 64
+    photon = np.array([1e-4, 0.5, 2.0, 4.0])
+    for real in (True, False):
+        mu = make_moments()
+        if real:
+            sym = np.asarray(mu.data).real
+            mu.data[:] = sym + sym.T
+        energies, sigma = optical_conductivity(
+            mu, photon, energy_window=(-5.0, 5.0), num_cells=num_cells, cell_area=cell_area,
+            num_energies=points, spin_degeneracy=2)
+        data = np.asarray(mu.data) if real else np.conj(np.asarray(mu.data))
+        grid, script = script_sigma(data, size, half_width, orbitals, num_cells, cell_area, points, photon)
+        assert np.allclose(energies, grid * half_width)
+        assert sigma.shape == (4, points)
+        assert np.allclose(sigma, 2 * np.pi * script, rtol=1e-10, atol=1e-10)   # e^2/h = 2 pi e^2/hbar
+
+
+def exact_trace_moments(h, va, vb, size, half_width):
+    """mu_mn = 4 h_m h_n Tr[v_a T_m(H) v_b T_n(H)] / N, the normalisation LSQuant writes."""
+    dim = h.shape[0]
+    hs = h / half_width
+    cheb = [np.eye(dim), hs]
+    for _ in range(size - 2):
+        cheb.append(2 * hs @ cheb[-1] - cheb[-2])
+    half = np.where(np.arange(size) == 0, 0.5, 1.0)
+    tr = np.array([[np.trace(va @ cheb[i] @ vb @ cheb[j]) for j in range(size)] for i in range(size)])
+    mu = _core.ChebyshevMoments([size, size])
+    mu.system_size = dim
+    mu.window = _core.SpectralWindow(-half_width, half_width)
+    mu.data[:] = 4 * np.outer(half, half) * tr / dim
+    return mu
+
+
+def bastin_from_eigenpairs(h, va, vb, size, half_width, grid, photon, num_cells, cell_area):
+    """sigma_ab = i/(Omega omega)[S(omega) - S(0)] with the Jackson-damped expansions of delta and G+-
+    evaluated on the eigenpairs: G+ with exp(-i n arccos x), no conjugation anywhere (e^2/h)."""
+    eps, vec = np.linalg.eigh(h)
+    a = vec.conj().T @ va @ vec
+    b = vec.conj().T @ vb @ vec
+    pair = a.T * b                                      # Tr[v_a P_i v_b P_j] = v^a_ji v^b_ij
+    n = np.arange(size)
+    jackson = ((size - n + 1) * np.cos(np.pi * n / (size + 1))
+               + np.sin(np.pi * n / (size + 1)) / np.tan(np.pi / (size + 1))) / (size + 1)
+    coef = (jackson * np.where(n == 0, 1.0, 2.0))[:, None] * np.cos(n[:, None] * np.arccos(eps / half_width))
+    x = grid / half_width
+
+    def delta(u):
+        return coef.T @ np.cos(n[:, None] * np.arccos(u)) / (np.pi * np.sqrt(1 - u**2))
+
+    def green(u, s):
+        return -1j * s * coef.T @ np.exp(-1j * s * n[:, None] * np.arccos(u)) / np.sqrt(1 - u**2)
+
+    def area(w):
+        s = (np.einsum("ix,ij,jx->x", delta(x), pair, green(x + w, 1))
+             + np.einsum("ix,ij,jx->x", green(x - w, -1), pair, delta(x)))
+        out = np.zeros_like(s)
+        out[1:] = np.cumsum(0.5 * (s[1:] + s[:-1]) * np.diff(x))
+        return out
+
+    base = area(0.0)
+    return np.array([2 * np.pi * 1j * (area(w / half_width) - base)
+                     / (num_cells * cell_area * half_width * w) for w in photon])
+
+
+def test_exact_trace_moments_give_the_kubo_bastin_formula_for_every_pair():
+    """The moments of an exact trace through optical_conductivity equal the Kubo-Bastin formula
+    evaluated independently on the eigenpairs, for sigma_xx and for the Hall pair sigma_xy."""
+    rng = np.random.default_rng(11)
+    dim, size, half_width = 14, 24, 4.0
+    herm = lambda m: (m + m.conj().T) / 2
+    h = herm(rng.normal(size=(dim, dim)) + 1j * rng.normal(size=(dim, dim)))
+    h *= 1.8 / np.max(np.abs(np.linalg.eigvalsh(h)))      # spectrum inside the energy window
+    vx = herm(rng.normal(size=(dim, dim)) + 1j * rng.normal(size=(dim, dim)))
+    vy = herm(rng.normal(size=(dim, dim)) + 1j * rng.normal(size=(dim, dim)))
+    photon = np.array([1e-3, 0.3, 1.0, 1.7])
+    for va, vb in ((vx, vx), (vx, vy), (vy, vx)):
+        mu = exact_trace_moments(h, va, vb, size, half_width)
+        energies, sigma = optical_conductivity(mu, photon, energy_window=(-2.2, 2.2), num_cells=3,
+                                               cell_area=2.0, num_energies=96)
+        want = bastin_from_eigenpairs(h, va, vb, size, half_width, energies, photon, 3, 2.0)
+        assert np.allclose(sigma, want, rtol=1e-9, atol=1e-9 * np.abs(want).max())
 
 
 def test_fewer_moments_and_default_grid():
@@ -115,3 +190,22 @@ def test_dielectric_function_of_a_sheet():
     assert np.allclose(eps[1], 1 + 2j * 14.399645 * sigma[1] / (2.0 * 3.35))
     with pytest.raises(ValueError):
         dielectric_function(sigma, [1.0, 2.0], thickness=0.0)
+
+
+def test_hall_limit_is_the_static_kubo_bastin_value():
+    """sigma_xy(mu, omega -> 0) from optical_conductivity has the sign and size of the static curve."""
+    rng = np.random.default_rng(4)
+    dim, size, half_width = 16, 32, 4.0
+    herm = lambda m: (m + m.conj().T) / 2
+    h = herm(rng.normal(size=(dim, dim)) + 1j * rng.normal(size=(dim, dim)))
+    h *= 1.8 / np.max(np.abs(np.linalg.eigvalsh(h)))      # spectrum inside the energy window
+    vx = herm(rng.normal(size=(dim, dim)) + 1j * rng.normal(size=(dim, dim)))
+    vy = herm(rng.normal(size=(dim, dim)) + 1j * rng.normal(size=(dim, dim)))
+    mu = exact_trace_moments(h, vx, vy, size, half_width)
+    energies, sigma = optical_conductivity(mu, [1e-4], energy_window=(-2.2, 2.2), num_cells=1,
+                                           cell_area=1.0, num_energies=512)
+    grid, static = shc(mu, 1e-3, 1, 1.0)            # 2 pi KuboBastin/(N_k A), e^2/h, full moments
+    for e in (-0.8, -0.2, 0.4, 1.0):
+        want = np.interp(e, grid, static)
+        got = np.interp(e, energies, sigma[0].real)
+        assert abs(got - want) < 0.03 * np.abs(static).max(), (e, got, want)

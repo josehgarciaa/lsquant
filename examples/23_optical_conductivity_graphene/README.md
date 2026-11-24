@@ -1,146 +1,183 @@
-# Example 23: the optical conductivity of graphene
+# Example 23: set up and run the optical tests of graphene and hBN
 
-## The physical question
+Compute the optical conductivity σ(μ, ω) of nearest-neighbour graphene and
+hBN from Chebyshev moments, and check it against exact results. The
+[example page](PAGE.md) shows the result and states the formula.
 
-A static conductivity says how a material answers a constant field. The
-optical conductivity $\sigma(\omega)$ says how it absorbs light of photon
-energy $\hbar\omega$, and it depends on the chemical potential $\mu$ because a
-transition needs an occupied initial state and an empty final state. Undoped
-graphene absorbs the same fraction of light at every photon energy well below
-the hopping, with the universal value $\sigma_0 = e^2/4\hbar = (\pi/2)\,e^2/h$
-[1, 2]. Doping removes the absorption below $\hbar\omega = 2|\mu|$ (Pauli
-blocking) and moves that weight to a Drude peak at low energy.
+The figure is made from the files in [`data/`](data/), so you can plot it
+without running anything (step 5). Steps 1 to 4 regenerate those files. Run
+the commands from the repository root unless a step says otherwise.
 
-LSQuant obtains $\sigma(\mu, \omega)$ from the same Chebyshev moments as the
-static Kubo–Bastin conductivity, with the finite-frequency form of the formula
-of Bastin et al. [3]:
+## Requirements
 
-$$ \sigma_{\alpha\beta}(\mu,\omega) \;\propto\;
-\frac{S_{\alpha\beta}(\mu,\omega) - S_{\alpha\beta}(\mu,0)}{\omega},
-\qquad
-S_{\alpha\beta}(\mu,\omega) = \int_{-\infty}^{\mu}\! dE\;
-\mathrm{Tr}\big[v_\alpha\,\delta(E-H)\,v_\beta\,G^+(E+\hbar\omega)
-+ v_\alpha\,G^-(E-\hbar\omega)\,v_\beta\,\delta(E-H)\big] . $$
+- LSQuant built and importable; see [Install LSQuant](../../docs/how-to/install.md).
+- SymPy, for step 1.
+- For step 3: about 21 GB of memory per run, and about 4.5 min per velocity
+  operator on 30 cores; see [Runtime](#runtime).
 
-One rank-2 tensor $\mu_{mn}$ of the word `Tr[VX delta(E-H) VX dG-(E)/dE]`
-gives $\sigma$ for every chemical potential and every photon energy; only the
-reconstruction changes. We compute it for graphene, compare it with the exact
-result of the same tight-binding model, and show Pauli blocking.
-
-## The model
-
-Graphene with one $p_z$ orbital per atom and nearest-neighbour hopping
-$t = -2.7$ eV, lattice constant 2.46 Å, in a supercell of 200 × 200 cells
-(80 000 orbitals) with periodic boundaries.
-[`make_graphene.py`](make_graphene.py) writes the Hamiltonian and the velocity
-$v_x = i[H, x]$ as sparse text files:
+## Step 1: the derivation
 
 ```bash
-python examples/23_optical_conductivity_graphene/make_graphene.py
+python examples/23_optical_conductivity_graphene/derivation.py
 ```
 
-## The run
+The script starts from the finite-frequency Kubo–Bastin formula and derives,
+with SymPy, each element of the formula on the page:
 
-[`run_optical.json`](run_optical.json) computes 512 × 512 moments with 16
-random-phase states:
+1. The Chebyshev expansion of δ(E − H).
+2. The expansion of G^±(E), and which sign of the exponent belongs to G^+.
+3. That the Bastin form equals the Kubo–Greenwood conductivity with time
+   dependence e^{−iωt}, and its limits: Re σ ≥ 0, Im σ < 0 for an insulator,
+   and the static value as ω → 0.
+4. The Γ matrix, the complex conjugate and the prefactor 4 g_s/(π A D²).
+5. The moment normalisation and the order of the velocities.
+6. The units and the dielectric function.
+
+It prints `PASS` in a few seconds.
+
+## Step 2: the exact-trace check
 
 ```bash
-python -m lsquant run examples/23_optical_conductivity_graphene/run_optical.json
+python examples/23_optical_conductivity_graphene/exactness.py out/optical_exactness
 ```
 
-The spectral window needs care. The Green functions are expanded at
-$E \pm \hbar\omega$, so the window of the moments must contain the spectrum
-widened by the largest photon energy on each side. The spectrum of this model
-is $|E| \le 3|t| = 8.1$ eV; the window $[-12.5, 12.5]$ eV leaves room for
-photon energies up to 3.9 eV. A window that is too narrow is refused with a
-message that states the required range.
+[`exactness.py`](exactness.py) builds graphene, hBN and the Haldane model on
+6 × 6 cells (72 orbitals). It computes their moments with an exact trace
+(128 moments) and compares σ_xx and σ_xy from `optical_conductivity` with the
+Kubo–Bastin formula evaluated on the eigenpairs of the same supercell. It also
+checks the following:
 
-## The reconstruction
+- **The moment file:** μ_mn = 4 h_m h_n Tr[v_a T_m(H) v_b T_n(H)]/N, which is
+  where the N/4 of the formula comes from.
+- **The two polarisations:** the v_x v_x and v_y v_y moments are equal.
+- **The Hall limit:** σ_xy(ω → 0) of the Haldane model equals the static
+  Kubo–Bastin value.
 
-`lsquant.reconstruct.optical_conductivity` takes the moments, the photon
-energies, the energy range of the spectrum and the geometry, and returns the
-complex $\sigma(\mu, \omega)$ in $e^2/h$:
+Every comparison agrees to 10⁻¹¹ or better, and the script runs in seconds.
 
-```python
-from lsquant import _core
-from lsquant.reconstruct import optical_conductivity
+## Step 3: the moments of the large supercells
 
-moments = _core.ReadChebmom("out/optical_graphene/NonEqOpVX-VXgrapheneKPM_M512x512_statedefault.chebmom")
-energies, sigma = optical_conductivity(
-    moments, photon_energies, energy_window=(-8.5, 8.5),
-    num_cells=200 * 200, cell_area=5.240839, spin_degeneracy=2)
-# sigma[w, i]: photon energy photon_energies[w], chemical potential energies[i]
-```
-
-[`optical.py`](optical.py) does this, evaluates the exact interband
-conductivity of the model on a 1200 × 1200 k mesh, and compares the two:
+[`make_honeycomb.py`](make_honeycomb.py) writes H, v_x and v_y of the
+honeycomb model as CSR files. The on-site energy is +Δ on one sublattice (B)
+and −Δ on the other (N), the hopping is t, and the supercell has n × n cells
+with periodic boundaries.
 
 ```bash
 cd examples/23_optical_conductivity_graphene
-python optical.py ../../out/optical_graphene
-python plot.py ../../out/optical_graphene
+python make_honeycomb.py graphene 400 operators
+python make_honeycomb.py hbn 400 operators --delta 3.625 --t -2.33 --a 2.50
+cd ../..
+python -m lsquant run examples/23_optical_conductivity_graphene/run_graphene.json
+python -m lsquant run examples/23_optical_conductivity_graphene/run_hbn.json
 ```
 
+[`run_graphene.json`](run_graphene.json) and [`run_hbn.json`](run_hbn.json)
+compute the moments of `Tr[VX delta(E-H) VX dG-(E)/dE]` and
+`Tr[VY delta(E-H) VY dG-(E)/dE]`: 1400 × 1400 moments, 8 random-phase
+states, and the window [−26, 26] eV (resolution 58 meV).
+
+The window needs care. The Green functions are expanded at E ± ħω, so the
+window must contain the spectrum widened by the largest photon energy on each
+side. The spectra are |E| ≤ 8.10 eV (graphene) and 7.87 eV (hBN). The
+reconstruction integrates over [−8.6, 8.6] eV, so photon energies up to
+17 eV fit. The Kramers–Kronig test needs Re σ up to the end of the
+absorption, above 2√(Δ² + t²) ≈ 8.6 eV, and the hBN polarisability is
+plotted up to the gap; both need the wide window. `optical_conductivity` refuses a window that is too narrow and
+names the range it needs.
+
+## Step 4: the tests
+
+```bash
+cd examples/23_optical_conductivity_graphene
+python benchmark.py ../../out/optical_graphene ../../out/optical_hbn
 ```
-moments 512 x 512, resolution 77 meV
-Re sigma(1 eV) = 1.6239 e^2/h   (universal value pi/2 = 1.5708)
-largest deviation from the exact interband curve, 1.0 to 3.5 eV: 2.3 %
-CHECK PASS
+
+[`benchmark.py`](benchmark.py) reconstructs σ(μ, ω) for both velocities and
+both materials and runs the tests the [page](PAGE.md) lists. The exact
+references come from [`exact_honeycomb.py`](exact_honeycomb.py), which uses
+the same model on a 1200 × 1200 k mesh. The script prints one line per test
+and the count of passing tests (18 of 18), writes every number to
+`benchmark.json`, and writes the curves to `bench_*.npz` in the current
+directory.
+
+The tolerances are as follows:
+
+- 20 meV for the van Hove peaks.
+- One resolution (58 meV) for the Pauli edge at 2μ.
+- A quarter of a resolution for the hBN step, against the broadened exact
+  step.
+- 2 % for the graphene plateau and the polarisability.
+- 1 % for the static limit.
+- 3 % for the difference between the two polarisations.
+- 3 % of max |σ| for the difference between Im σ and the Kramers–Kronig
+  transform of Re σ, from 0.5 to 16 eV.
+
+## Step 5: plot
+
+Copy `bench_graphene.npz`, `bench_hbn.npz`, `bench_map.npz` and
+`benchmark.json` to `data/`, or keep the committed ones, then run:
+
+```bash
+python examples/23_optical_conductivity_graphene/plot_benchmark.py
 ```
 
-## The result
+This writes `fig_benchmark.png`.
 
-![Undoped graphene absorbs close to the universal value at every photon energy and follows the exact curve; doping suppresses the absorption below twice the chemical potential](fig_optical.png)
+## The reconstruction in your own script
 
-FIG. 1. Real part of the optical conductivity of graphene, in $e^2/h$, against
-the photon energy. (a) Undoped, $\mu = 0$: from the Chebyshev moments (black
-solid line) and exact for the same tight-binding model (blue squares); the
-dotted line is the universal value $\pi/2$. (b) From the moments at $\mu = 0$
-(black solid), 0.5 eV (blue dashed) and 1.0 eV (orange dash-dotted). Supercell
-of 200 × 200 cells, $t = -2.7$ eV, 512 × 512 moments on the window
-$[-12.5, 12.5]$ eV (resolution 77 meV), Jackson kernel, 16 random-phase
-states, spin degeneracy 2.
+```python
+from lsquant import _core
+from lsquant.reconstruct import optical_conductivity, dielectric_function
 
-In panel (a) the curve from the moments follows the exact one within 2.3 %
-between 1.0 and 3.5 eV. The slow rise above the universal value is a property
-of the model: the bands are not linear away from the Dirac point. The ripples
-of about 2 % are the noise of the stochastic trace; they decrease with more
-random states or a larger supercell. Below about 0.3 eV the curve rises: this
-is not absorption of ideal undoped graphene but the finite resolution of 77 meV,
-which gives states at the Dirac point and with them a broadened
-intraband response.
+moments = _core.ReadChebmom("out/optical_hbn/NonEqOpVX-VXhbnKPM_M1400x1400_statedefault.chebmom")
+energies, sigma = optical_conductivity(
+    moments, photon_energies, energy_window=(-8.6, 8.6),
+    num_cells=400 * 400, cell_area=5.412659, spin_degeneracy=2)
+# sigma[w, i]: complex, in e^2/h, at photon energy photon_energies[w] and chemical potential energies[i]
+eps = dielectric_function(sigma, photon_energies, thickness=3.33)   # thickness in Angstrom
+```
 
-Panel (b) shows Pauli blocking. At $\mu = 0.5$ eV the absorption is zero up to
-about 1 eV and at $\mu = 1.0$ eV up to about 2 eV, the threshold
-$\hbar\omega = 2\mu$, broadened by the resolution. Above the threshold the three
-curves coincide. The weight removed appears as the Drude peak at low photon
-energy, whose width here is the resolution and not a physical scattering rate.
+There are three conventions to keep in mind:
+
+- **Time dependence:** e^{−iωt}. Re σ ≥ 0 is absorption, and an insulator
+  has σ = −iωα with α > 0 below its gap.
+- **Sheet conductivity:** σ is a 2D quantity. A dielectric function needs a
+  thickness, which is a convention for a monolayer and not the height of the
+  cell. The 2D polarisability α_2D = −e² Im σ/(ħω), shown in the figure,
+  needs none.
+- **Two velocities:** with moments of (v_a, v_b), the function returns σ_ab.
+  The reference script returns σ_ba for these moments (see
+  [Agreement with the reference script](#agreement-with-the-reference-script)).
 
 ## Agreement with the reference script
 
-This reconstruction was ported from a post-processing script by T. Galvani
-(private communication, 2026). On the same moments (256 × 256, a 64 × 64
-graphene supercell, 1024 chemical potentials and 501 photon energies) the two
-agree to a relative $3 \times 10^{-11}$. The script evaluates the double sum
-over the moments for every energy and every photon energy and took 92 s; the
-LSQuant kernel forms the two half-contractions once per energy and took 0.07 s
-on the same machine. The dielectric function of a sheet of thickness $d$
-follows with `lsquant.reconstruct.dielectric_function(sigma, photon_energies, d)`.
+This reconstruction was ported from the post-processing script of T. Galvani
+(private communication, 2026). The script takes `conj` of the final sum. For
+one velocity the moments are real, and LSQuant and the script agree term by
+term: on his 100 × 100-cell polycrystalline-graphene moments (256 × 256,
+1024 energies, 500 photon energies) the largest difference is 2.4 × 10⁻¹⁰
+e²/h, on values up to 21 e²/h. For two velocities, conj(μ^ab) = μ^ba, so the
+script's `conj` returns σ_ba. LSQuant conjugates the moments first and
+returns σ_ab, consistent with the static Hall conductivity
+(`derivation.py`, step 5; `exactness.py`, Haldane model).
 
-## What to remember
+The script evaluates the double sum for every energy and photon energy. The
+LSQuant kernel forms two half-sums once per energy:
+O(N_E M² + N_E N_ω M) operations instead of O(N_E N_ω M²), which took 0.07 s
+against 92 s on the same moments. LSQuant also accepts a window that is not
+centred on zero; the script assumes a symmetric one.
 
-- The moments are those of the static Kubo–Bastin word; the photon energy
-  enters only in the reconstruction.
-- Choose `expansion.window` as the spectrum plus the largest photon energy on
-  each side.
-- The resolution is $\pi\,(\text{window width}/2)/M$. Features narrower than
-  it, the Drude peak among them, appear with that width.
-- `optical_conductivity` is a Python reconstruction; there is no run-file
-  formula for it yet.
+## Runtime
 
-## References
+Each run of step 3 keeps 320 000 orbitals and 1400 moments per axis. The
+graphene and hBN runs ran side by side on 30 cores each of a shared node, in
+about 16 min per velocity operator. Steps 1, 2, 4 and 5 take seconds
+to a minute; most of step 4 is the 1200 × 1200 k mesh of the exact
+references.
 
-[1] R. R. Nair *et al.*, Science **320**, 1308 (2008).
-[2] T. Stauber, N. M. R. Peres and A. K. Geim, Phys. Rev. B **78**, 085432 (2008).
-[3] A. Bastin, C. Lewiner, O. Betbeder-Matibet and P. Nozières, J. Phys. Chem. Solids **32**, 1811 (1971).
-[4] J. H. García, L. Covaci and T. G. Rappoport, Phys. Rev. Lett. **114**, 116602 (2015).
+## What is not covered
+
+- Finite temperature.
+- A run-file formula for this reconstruction: it is a Python function.
+- Excitons: hBN has strong excitonic effects, so the single-particle
+  absorption tested here is not its measured spectrum.
