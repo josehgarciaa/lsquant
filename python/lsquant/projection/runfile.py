@@ -12,7 +12,7 @@ import numpy as np
 from .. import _core
 from ..apps.stage6b_siesta import (PhaseReceipt, _write_json, oracle_energies, SHC_WORD)
 from ..bases import BlochMetricBasis
-from ..models.orthogonal import load_runfile_model
+from ..models.registry import load_runfile_model
 from ..oracle.spin_hall import spin_berry_curvature, sigma_xy, UNITS
 from ..reconstruct import dos_curve, shc
 from ..words import parse as parse_word

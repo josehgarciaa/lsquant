@@ -17,8 +17,8 @@ have left it unset:
 | Variable | Value set by `import lsquant` |
 |---|---|
 | `OMP_NUM_THREADS` | The number of physical cores in the CPU affinity of the process (cpusets included). |
-| `OMP_PROC_BIND` | `spread`, only for the `lsquant` command |
-| `OMP_PLACES` | `cores`, only for the `lsquant` command |
+| `OMP_PROC_BIND` | `spread`, only for the `lsquant` command with its own cores (see below) |
+| `OMP_PLACES` | `cores`, under the same condition |
 
 The default suits a node that you have to yourself. On a node with a CPU
 allocation (cgroups or cpusets, as most batch systems use), the affinity
@@ -79,10 +79,15 @@ build, with the same command run minutes apart:
 For these small problems, 4 threads were 10 to 30 times slower than one.
 `OMP_WAIT_POLICY=passive` was not measured on that node.
 
-The default binding of the `lsquant` command, `OMP_PROC_BIND=spread`, also
-pins threads to cores that other jobs may be using. Set `OMP_PROC_BIND=false`
-if you share cores with other jobs. Python scripts that import `lsquant` are
-not bound; set `OMP_PROC_BIND` yourself if you want binding there.
+The `lsquant` command binds its threads to cores (`OMP_PROC_BIND=spread`,
+`OMP_PLACES=cores`) only when the batch system gave the job its own cores: a
+CPU set smaller than the machine. On a node without one, every process would
+bind to the same cores, counted from the first, and two runs side by side
+would share them while the other cores idle. There the command does not bind.
+Set `LSQUANT_BIND_THREADS=1` to bind anyway, on a node you have to yourself,
+or `LSQUANT_BIND_THREADS=0` never to bind. Python scripts that import
+`lsquant` are not bound; set `OMP_PROC_BIND` yourself if you want binding
+there.
 
 ### Choose a build for small matrices
 
