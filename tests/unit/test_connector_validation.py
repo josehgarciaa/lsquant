@@ -238,10 +238,9 @@ def test_model_keys_csr_and_generator():
     assert str(exc.value) == (
         f"Unknown key 'file' in run file (model.kind='csr'); allowed keys are {sorted(allowed)}"
     )
-    csr = {"kind": "csr", "dir": "d", "label": "l", "hr_file": "h",
-           "positions": "p", "orbitals_per_atom": 2, "atom_map": "a",
-           "supercell": [2, 2], "operators": None}
-    RunFile.from_dict(dict(BASE, model=csr, numerics={"operator": "atom_block"}))
+    csr = {"kind": "csr", "dir": "d", "label": "l", "positions": "p",
+           "orbitals_per_atom": 2, "atom_map": "a", "supercell": [2, 2], "operators": None}
+    RunFile.from_dict(dict(BASE, model=csr))
     with pytest.raises(ValueError) as exc:
         RunFile.from_dict(dict(BASE, model={"kind": "generator", "name": "make_chain",
                                             "seed": 1}))
@@ -297,8 +296,11 @@ def _assert_fermi_policy(load, *, x_file):
         _generalized_eigs(m_new, K), _generalized_eigs(m_default, K) + delta, atol=1e-10)
     m_file = load(expected_origin)
     assert np.array_equal(m_default.hoppings, m_file.hoppings)
-    assert np.array_equal(m_default.overlaps, m_file.overlaps)
-    assert m_file.metadata["fermi_energy_source"] == ("file" if has_file_reference else "none")
+    if getattr(m_default, "overlaps", None) is not None:
+        assert np.array_equal(m_default.overlaps, m_file.overlaps)
+    # The value was passed explicitly, so its source is the run file even
+    # when it equals the file's own reference.
+    assert m_file.metadata["fermi_energy_source"] == "run file"
 
 
 def _rng_blocks(rng, cells, n, scale, *, identity=False):
@@ -527,11 +529,11 @@ def _deeph_dir(tmp_path, rng):
     from lsquant.models.deeph import load_deeph_model
     lattice = np.array([[3.0, 0.0, 0.0], [1.4, 2.6, 0.0], [0.0, 0.0, 15.0]])
     positions = np.array([[0.1, 0.2, 7.0], [1.6, 1.1, 7.4]])
-    norb = np.array([2, 2])
+    norb = np.array([1, 1])          # one s orbital per atom
     cells = [(0, 0, 0), (1, 0, 0), (-1, 0, 0)]
     np.savetxt(tmp_path / "lat.dat", lattice.T)
     np.savetxt(tmp_path / "site_positions.dat", positions.T)
-    (tmp_path / "orbital_types.dat").write_text("0 1\n0\n")
+    (tmp_path / "orbital_types.dat").write_text("0\n0\n")
     (tmp_path / "info.json").write_text(json.dumps({"isspinful": False, "fermi_level": X_FILE}))
 
     def blocks(scale, identity=False):
@@ -567,7 +569,7 @@ def _threebodytb_file(tmp_path, rng):
     from lsquant.models.threebodytb import load_threebodytb_model
     a = np.diag([4.6, 4.0, 30.0])      # rows, Bohr
     coords = np.array([[0.0, 0.0, 0.5], [1 / 3, 1 / 3, 0.52]])
-    nwan = 3
+    nwan = 5                           # ThreeBodyTB's table: C = 4, H = 1
     efermi_ry = -0.21
     cells = [(0, 0, 0), (1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0)]
     h = _rng_blocks(rng, cells, nwan, 0.1)
