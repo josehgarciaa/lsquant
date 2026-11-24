@@ -1609,6 +1609,48 @@ ML_MODEL_KINDS: dict[str, tuple[str, frozenset[str]]] = {
 }
 
 
+def _checkpoint_file_identity(path: str) -> dict[str, Any]:
+    """Hash model bytes with bounded memory, without trusting modification times.
+
+    Checkpoint identity must change even for an in-place matrix edit of the same
+    size. Streaming costs one extra sequential read per input per execution and
+    bounded temporary storage using 1 MiB chunks. Pitfall: inputs must remain unchanged
+    throughout loading and execution, just as for a run without checkpoints.
+    """
+    digest = hashlib.sha256()
+    size = 0
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            size += len(chunk)
+            digest.update(chunk)
+    return {"size": size, "sha256": digest.hexdigest()}
+
+
+def _checkpoint_path(out_dir: str, identity: Mapping[str, Any]) -> str:
+    """Select only checkpoints from the same calculation, including model bytes.
+
+    The versioned, full SHA-256 filename leaves the binary checkpoint format
+    unchanged. Legacy word-only names cannot match. Other checkpoints are kept
+    for their original runs and explicitly reported, including when a matching
+    checkpoint also exists. Output and reconstruction settings are deliberately
+    absent: they do not determine the accumulated moments.
+    """
+    import warnings
+
+    payload = json.dumps(identity, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    tag = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    path = os.path.join(out_dir, f"checkpoint_v2_{tag}.lsqckpt")
+    for other in sorted(glob.glob(os.path.join(out_dir, "checkpoint_*.lsqckpt"))):
+        if other != path:
+            warnings.warn(
+                f"Ignoring checkpoint {os.path.basename(other)}: different calculation "
+                "fingerprint or legacy checkpoint without calculation identity",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+    return path
+
+
 def execute_runfile(
     runfile: RunFile | Mapping[str, Any] | str,
     *,
@@ -2225,6 +2267,26 @@ def execute_runfile(
         batch_size = int(rf.expansion["batch"] or num_moments)
         captured_idx = 0
 
+        checkpoint_inputs: dict[str, Any] = {}
+        if rf.expansion.get("checkpoint"):
+            input_paths = {"HAM": str(hr_file) if hr_file is not None else ham_path}
+            if s_mat is not None:
+                input_paths["S"] = s_path
+            if hr_file is None:
+                for op_n in (op_block_arrays if use_atom_block else raw_csr_mats):
+                    input_paths[f"operator:{op_n}"] = os.path.join(
+                        model_dir, f"{label}.{op_n}.CSR"
+                    )
+            if use_atom_block:
+                for key in ("positions", "atom_map"):
+                    source = rf.model.get(key)
+                    if isinstance(source, str):
+                        input_paths[key] = source
+            checkpoint_inputs = {
+                key: _checkpoint_file_identity(path)
+                for key, path in input_paths.items()
+            }
+
         for w_str, w_formulas in words_to_run:
             parsed_w = parse_word(w_str)
             # For MSD, the velocity operator passed to the engine is RescaledOperator(V, window)
@@ -2320,8 +2382,25 @@ def execute_runfile(
             # to an uninterrupted run.
             ckpt_path = ""
             if rf.expansion.get("checkpoint"):
-                ckpt_tag = hashlib.sha256(compiled.plan.word.encode()).hexdigest()[:12]
-                ckpt_path = os.path.join(out_dir, f"checkpoint_{ckpt_tag}.lsqckpt")
+                ckpt_path = _checkpoint_path(out_dir, {
+                    "version": 2,
+                    "word": compiled.plan.word,
+                    "plan_sizes": [instruction.num_moments for instruction in compiled.plan.code
+                                   if isinstance(instruction, _core.Expand)],
+                    "dimension": dim,
+                    "window": [float(window.lower), float(window.upper)],
+                    "expansion": dict(rf.expansion, window=None, states=num_states,
+                                      state_block=state_block),
+                    "basis": rf.basis,
+                    "metric": rf.metric,
+                    "numerics": rf.numerics,
+                    "domain_atoms": da if use_atom_block else None,
+                    "build_profile": _core.build_profile,
+                    "time": rf.time,
+                    "dt": compiled.dt,
+                    "model": rf.model,
+                    "inputs": checkpoint_inputs,
+                })
             mu = engine.run(compiled.plan, checkpoint_path=ckpt_path)
             if ckpt_path and os.path.isfile(ckpt_path):
                 os.remove(ckpt_path)
