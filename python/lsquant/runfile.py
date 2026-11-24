@@ -25,7 +25,10 @@ from .bases import (
 from .models.registry import CONNECTORS, ML_BASE_PARAMS, validate_connector_params
 from .models.wannier import load_wannier_model
 from .moments import run_plan, window_from_gershgorin
+from .trace_coverage import trace_coverage
 from .reconstruct import (
+    resolution_metadata,
+    record_resolution,
     dos_curve,
     shc,
     kubo_bastin,
@@ -209,6 +212,7 @@ ALLOWED_EXPANSION_KEYS: frozenset[str] = frozenset(
         "left_window",
         "right_window",
         "state_block_rule",
+        "trace_coverage",
         "checkpoint",
     }
 )
@@ -1346,11 +1350,14 @@ def _reconstruct_single_formula(
     num_points: int | None = None,
     num_cells: int | None = None,
     cell_area: float | None = None,
+    receipt_path: str | None = None,
 ) -> list[tuple[str, str, np.ndarray, np.ndarray]]:
     """Run one named reconstruction formula on ``mu``.
 
     Returns a list of ``(legacy_prefix, legacy_suffix, x_grid, values)`` tuples.
     """
+    if receipt_path:
+        record_resolution(receipt_path, mu, broadening_meV)
     f = formula.lower()
     if f == "shc":
         if num_cells is None or cell_area is None:
@@ -1838,6 +1845,8 @@ def execute_runfile(
             seed=rng_seed,
         )
         num_states = int(state_gen.number_of_states)
+        if trace_mode == "exact" and isinstance(state_gen, _core.LocalStates):
+            trace_coverage(num_states, int(basis_obj.dimension), receipt_path=resolved_path, warn=False)
         num_moments = int(rf.expansion["moments"])
         batch_size = int(rf.expansion["batch"] or num_moments)
         left_window = int(rf.expansion.get("left_window") or 16)
@@ -1929,6 +1938,7 @@ def execute_runfile(
                         broad,
                         fermi_energies=compiled.reconstruction.fermi_energies,
                         num_points=compiled.reconstruction.num_points,
+                        receipt_path=resolved_path,
                         num_cells=rf.reconstruction.get("num_cells"),
                         cell_area=rf.reconstruction.get("cell_area"),
                     ):
@@ -1941,6 +1951,7 @@ def execute_runfile(
                             written_files.append(c_path)
                         else:
                             curves_json_payload[f"{stem}:{form}"] = {
+                                **resolution_metadata(mu, broad),
                                 "grid": [float(v) for v in x_arr],
                                 "values": [float(v) for v in y_arr],
                             }
@@ -2040,6 +2051,7 @@ def execute_runfile(
                 raise ValueError(
                     f"expansion.states ({num_states}) exceeds Hamiltonian dimension ({dim})"
                 )
+            trace_coverage(num_states, dim, receipt_path=resolved_path)
             state_gen: _core.StateGenerator = _core.LocalStates(
                 dim, list(range(num_states))
             )
@@ -2494,6 +2506,7 @@ def execute_runfile(
                         broad,
                         fermi_energies=compiled.reconstruction.fermi_energies,
                         num_points=compiled.reconstruction.num_points,
+                        receipt_path=resolved_path,
                         num_cells=rf.reconstruction.get("num_cells"),
                         cell_area=rf.reconstruction.get("cell_area"),
                     ):
@@ -2516,6 +2529,7 @@ def execute_runfile(
                                 captured_idx += 1
                         else:
                             curves_json_payload[f"{stem}:{form}"] = {
+                                **resolution_metadata(mu_for_recon, broad),
                                 "grid": [float(v) for v in x_arr],
                                 "values": [float(v) for v in y_arr],
                             }
@@ -2574,6 +2588,7 @@ def execute_runfile(
                         mu_tgt,
                         t_broad,
                         fermi_energies=t_fermi,
+                        receipt_path=resolved_path,
                         num_cells=rf.reconstruction.get("num_cells"),
                         cell_area=rf.reconstruction.get("cell_area"),
                     ):
@@ -2714,7 +2729,7 @@ def reconstruct_target(
         shc_metadata = {key: reconstruction.get(key) for key in ("num_cells", "cell_area")}
     written_curves: list[str] = []
     for c_pref, c_suf, x_arr, y_arr in _reconstruct_single_formula(
-        formula, mu, eff_broad, fermi_energies=eff_fermi, **shc_metadata
+        formula, mu, eff_broad, fermi_energies=eff_fermi, receipt_path=resolved_path, **shc_metadata
     ):
         c_path = os.path.join(dest_dir, f"{c_pref}{stem}{c_suf}")
         _write_reconstructed_curve(c_path, x_arr, y_arr, formula, mu)

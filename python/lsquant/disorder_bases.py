@@ -315,6 +315,14 @@ class RealSpaceMetricBasis:
         if not np.isfinite(tol) or tol <= 0:
             raise ValueError("metric probe tolerance must be positive and finite")
         if max(self.metric_residuals["inverse_probe"], self.metric_residuals["inverse_sqrt_probe"]) > tol:
+            if applier == "exact":
+                condition = self.overlap_bounds[1] / self.overlap_bounds[0]
+                raise ValueError(
+                    f"metric probes exceed {tol:g}: {self.metric_residuals}; "
+                    f"residual is at the rounding floor of an ill-conditioned overlap "
+                    f"(estimated cond(S)={condition:g}, cond(S)*eps={condition*np.finfo(float).eps:g}); "
+                    "raise metric.tol"
+                )
             raise ValueError(f"metric probes exceed {tol:g}; increase Chebyshev order or reduce coeff_tol: "
                              f"{self.metric_residuals}")
 

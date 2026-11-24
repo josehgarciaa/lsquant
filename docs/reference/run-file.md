@@ -433,6 +433,7 @@ a missing listed file raises `FileNotFoundError` naming that file.
 | `right_window` | integer or string | positive integer, `"all"` | `16` | Ket-side storage window of the native rank-2 path; `"all"` stores all M vectors (resolves to `null`). |
 | `checkpoint` | boolean | — | `false` | `csr` only: checkpoint after every trace state to `checkpoint_v2_<hash>.lsqckpt` in the output directory and resume from it on restart only when the calculation fingerprint matches. The file is deleted when the word finishes. |
 | `state_block_rule` | string | — | — | Output only. Ignored on input. The CSR and ordinary Wannier executors record the effective numeric block size and its selection reason in `run.resolved.json`. |
+| `trace_coverage` | object | — | — | Output only. Ignored on input. Written to `run.resolved.json` when an exact trace uses fewer states than the dimension: `{"states": n, "dimension": N}`, an average over the first n of N basis functions. |
 
 | Condition | Error |
 |---|---|
@@ -440,6 +441,16 @@ a missing listed file raises `FileNotFoundError` naming that file.
 | `basis.name` `"bloch"` or `"eigen"` with `csr` and no `window` | Same message, raised by the executor (the default resolves to `"eigen"`). |
 | `window = "gershgorin"` with `model.kind = "siesta"` | Raised by the SIESTA executors. |
 | `window = "gershgorin"` with `model.hr_file` | `model.hr_file requires an explicit expansion.window` |
+
+With an exact trace, a truncated local seed set still uses the legacy file
+label `exact` and normalises by `states`. It emits a `RuntimeWarning`:
+the result is an average over the first n of N basis functions, not the
+trace. `expansion.trace_coverage = {"states": n, "dimension": N}` in
+`run.resolved.json` records this case. Full block-local Bloch/eigen traces
+use all orbitals at every k point and are not truncated local traces.
+The coverage field is output only and ignored on input. Generator suites
+with several dimensions also retain each distinct coverage in
+`receipt.trace_coverages`.
 
 Checkpoint filenames use a versioned, full SHA-256 calculation fingerprint.
 It covers the engine word and expansion sizes, resolved numerical window,
@@ -573,6 +584,22 @@ ignores them and the SIESTA executors refuse a non-empty list.
 
 Target curves are always written as `.dat` files, whatever
 `output.legacy_names` says.
+
+Finite-M Jackson reconstruction estimates the effective broadening as
+`max(broadening_meV, 1000*pi*(upper-lower)/(2*M))`, in meV.
+A request below this floor emits a `RuntimeWarning` with requested and
+effective values; moment truncation and curve numbers are unchanged.
+`receipt.curve_resolution` records the requested value and a list of
+`effective_broadening_meV` values, one per spectral axis (time is excluded).
+When `curves.json` is written, each curve also carries these fields.
+For rectangular tensors the two spectral axes may have different floors.
+The estimate describes KPM curves, not the separate Gaussian eigen oracle.
+
+For the real-space nonorthogonal metric probe, the acceptance rule and default
+`metric.tol` are unchanged. Exact-applier failures report measured residuals,
+the rounding floor of an ill-conditioned overlap, an estimate of cond(S) from
+existing overlap bounds, and advice to raise `metric.tol`. Chebyshev failures
+continue to suggest increasing order or reducing `coeff_tol`.
 
 ## `output`
 

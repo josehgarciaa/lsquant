@@ -10,6 +10,7 @@ reconstructs the density of states at ``20, 80, 24, 10`` meV under
 
 from __future__ import annotations
 
+
 import argparse
 import importlib.util
 import os
@@ -20,7 +21,7 @@ from types import ModuleType
 
 from .. import _core
 from ..moments import run_plan, window_from_gershgorin
-from ..reconstruct import dos_curve
+from ..reconstruct import dos_curve, record_resolution
 from ..words import compile as compile_word
 
 
@@ -169,6 +170,7 @@ def run_tutorial01(
 
     primary_size = 256 if 256 in moments_by_size else sizes_tup[0]
     # README step 3: reconstruct primary_size (256) at 120 meV at the top level of out_dir
+    record_resolution(os.path.join(out_dir, "run.resolved.json"), moments_by_size[primary_size], 120.0)
     e_120, v_120 = dos_curve(moments_by_size[primary_size], 120.0)
     top_120_path = os.path.join(
         out_dir,
@@ -197,6 +199,7 @@ def run_tutorial01(
     # Panel (a): fixed broadening (default 20 meV) across sizes (captures 0012..0017)
     for n_sites in sizes_tup:
         eta = broadening_meV
+        record_resolution(os.path.join(out_dir, "run.resolved.json"), moments_by_size[n_sites], eta)
         energies, values = dos_curve(moments_by_size[n_sites], eta)
         eta_dir = os.path.join(out_dir, f"eta{int(eta)}")
         os.makedirs(eta_dir, exist_ok=True)
@@ -225,6 +228,7 @@ def run_tutorial01(
     )
     cap_idx += 1
     for eta in (80.0, 24.0, 10.0):
+        record_resolution(os.path.join(out_dir, "run.resolved.json"), moments_by_size[primary_size], eta)
         energies, values = dos_curve(moments_by_size[primary_size], eta)
         eta_dir = os.path.join(out_dir, f"eta{int(eta)}")
         os.makedirs(eta_dir, exist_ok=True)

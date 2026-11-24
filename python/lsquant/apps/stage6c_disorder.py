@@ -16,7 +16,7 @@ import numpy as np
 from .. import _core
 from ..disorder_bases import DisorderedBlochMetricBasis, RealSpaceMetricBasis
 from ..models.siesta import load_siesta_model
-from ..reconstruct import dos_curve, shc
+from ..reconstruct import dos_curve, shc, resolution_metadata
 from ..words import parse as parse_word
 from .stage6b_siesta import compute_moments, prepare_moments, DOS_WORD, SHC_WORD, _write_json
 
@@ -179,6 +179,8 @@ def execute_disorder_runfile(rf, out_dir):
             writer(str(path), mu)
             moment_files.append(str(path))
         reconstruction_mu = _core.ReadChebmom(str(path)) if rf.reconstruction["legacy_text_round_trip"] else mu
+        resolved["receipt"].setdefault("curve_resolution", []).append(
+            dict(word=word, **resolution_metadata(reconstruction_mu, broadening)))
         with timing.phase("reconstruction", word=word):
             if mu.rank == 2:
                 energies, values = shc(reconstruction_mu, broadening, basis.num_cells, area,

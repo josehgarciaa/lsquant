@@ -12,6 +12,8 @@ top-level ``.dat`` files, ``ey_ratelaw.dat``, and ``captured/0000..0254``.
 
 from __future__ import annotations
 
+from ..trace_coverage import trace_coverage
+
 import argparse
 from collections.abc import Sequence
 import importlib.util
@@ -26,7 +28,7 @@ import numpy.typing as npt
 
 from .. import _core
 from ..moments import run_plan
-from ..reconstruct import time_correlation_curve
+from ..reconstruct import time_correlation_curve, record_resolution
 from ..words import compile as compile_word
 
 
@@ -174,6 +176,7 @@ def _eval_and_reconstruct_pair(
         mom_path = os.path.join(stage_dir, f"{stem}.chebmomTD")
         _core.WriteLegacyChebmomTD(mom_path, mu)
         mu_disk = _core.ReadChebmom(mom_path) if legacy_text_round_trip else mu
+        record_resolution(os.path.join(out_dir, "run.resolved.json"), mu_disk, broadening_meV)
 
         first_loaded: tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]] | None = None
         for ef in ef_list:
@@ -341,6 +344,7 @@ def run_tutorial06(
     def _make_part_states(dim: int) -> tuple[_core.StateGenerator, str]:
         if trace_mode == "exact":
             n_st = dim if num_states is None else int(num_states)
+            trace_coverage(n_st, dim, receipt_path=os.path.join(out_dir, "run.resolved.json"))
             return _core.LocalStates(dim, list(range(n_st))), "exact"
         st = _core.RandomPhaseStates(dim, rp_vec_count, int(kpm_seed))
         return st, st.label
