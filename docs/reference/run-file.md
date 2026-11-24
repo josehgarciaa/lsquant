@@ -69,7 +69,7 @@ directory.
 | `label` | string | — | `null` | `csr`, `siesta` | File prefix: `<label>.HAM.CSR` (`csr`) or `<label>.fdf` (`siesta`). |
 | `seed` | string | — | `null` | `wannier` | Wannier90 seed: LSQuant reads `<seed>_hr.dat`, `<seed>.uc` and `<seed>.xyz`. |
 | `file` | path | — | `null` | `openmx`, `pyscf`, `paoflow`, `hamgnn`, `threebodytb`, `abacus`, `gpaw` | `openmx`: the `<System.Name>.scfout` file. `pyscf`: the model file written by `write_pyscf_model` (`.npz`). `paoflow`: the model file written by `write_paoflow_model` (`.npz`). `hamgnn`: the `.npz` of `write_hamgnn_model`. `threebodytb`: the XML of ThreeBodyTB's `write_tb_crys` (`.xml`, `.xml.gz`). `abacus`: H(R) in the ABACUS sparse format. `gpaw`: the `.npz` of `export_gpaw_lcao` (script `models/gpaw.py`). |
-| `operators` | list of strings | operator names | `null` | `csr` | Operators to load as `<label>.<OP>.CSR`. If absent, every `<label>.*.CSR` except `HAM` and `S` is loaded. A listed operator without a file is skipped, except with `numerics.operator = "atom_block"`. |
+| `operators` | list of strings | operator names | `null` | `csr` | Operators to load as `<label>.<OP>.CSR`. If absent, every `<label>.*.CSR` except `HAM` and `S` is loaded. A listed operator without a file raises `FileNotFoundError` naming the missing file, for every CSR backend. |
 | `csr_dir` | path | — | `null` | `wannier`, `basis.name = "real"` | Directory with a prebuilt supercell `<seed>.HAM.CSR` and its `wannier2sparse` receipt `<seed>.out`. LSQuant checks it against `seed` and `basis.supercell` before it loads anything. |
 | `name` | string | see [Generator models](#generator-models) | `null` | `generator` | Generator from the catalogue. |
 | `tutorial` | integer | `1`–`6` | from `name` | `generator` | Tutorial driver to run. Not validated; an unknown value fails at execution with `Unsupported generator`. |
@@ -261,6 +261,8 @@ spin–orbit coupling has no spin operator: the words with `SX`, `SY`, `SZ` or
 The validator accepts only `basis.name = "real"` and
 `metric.policy = "orthogonal"`. It also requires `basis.disorder` to be absent
 or `null`; otherwise it stops with `pass disorder parameters in model.params`.
+Generator receipts omit the inert default `basis.disorder`, so
+`run.resolved.json` can be passed to `run` again.
 The drivers decide which files are written, and they ignore most `output` and
 `reconstruction` keys.
 
@@ -323,7 +325,7 @@ i[H, X_a]).
 |---|---|---|---|---|
 | `name` | string | `"real"`, `"bloch"`, `"eigen"` | `"real"` | Representation of H. See [The representation](../how-to/run-lsquant.md#the-representation-supercell-or-k-mesh). |
 | `supercell` | list of 3 integers | positive | `[1, 1, 1]` | Supercell size (`real`) or k-point mesh (`bloch`, `eigen`) for `wannier` and `siesta`. Not used by `csr` or `generator`. |
-| `disorder.W` | number | ≥ 0 | `0.0` | Width of the uniform Anderson disorder, in eV. Used by `wannier` and `siesta`; not used by `csr`; refused for `generator`. |
+| `disorder.W` | number | ≥ 0 | `0.0` | Width of the uniform Anderson disorder, in eV. Used by `wannier` and `siesta`; nonzero W is refused for `csr`; refused for `generator`. |
 | `disorder.seed` | integer | — | `7` | Seed of the disorder draw. |
 | `disorder.kind` | string | `"scalar"`, `"magnetic"`, `"independent"` | `"scalar"` | How the draw acts on spin. `csr`, `wannier` and `generator` models take `"scalar"` only, one value per basis function. See below. |
 
@@ -403,16 +405,9 @@ them. Operators in a word must exist in `model.operators` (or the discovered
 CSR files) for `csr`. `run.resolved.json` stores the canonical form of every
 word.
 
-> **Known limitation: operator names.** Validation accepts any operator name
-> listed in `model.operators`, but `python -m lsquant run` accepts only the
-> names of the default operator list (`A`, `B`, `O`, `P`, `PX`, `SX`, `VX`, …).
-> The per-word compile in `execute_runfile` (`runfile.py:1546`) does not pass
-> the model's operators, so the compiler falls back to
-> `DEFAULT_KNOWN_OPERATORS` (`words/compiler.py:28`, `393–394`) and fails with
-> `Unknown operator` (`words/compiler.py:405`). Name your operator files with
-> the default names, as `examples/15_spatial_operators` does. A word that uses
-> `WINDOW` also needs `model.operators: ["WINDOW"]`
-> (`examples/16_projection_downfold`).
+Custom operator names listed in `model.operators` are accepted by validation and
+execution. For CSR models, provide each corresponding `<label>.<OP>.CSR` file;
+a missing listed file raises `FileNotFoundError` naming that file.
 
 ## `expansion`
 
@@ -425,11 +420,11 @@ word.
 | `seed` | integer | — | `12345` | Seed of the random-phase states. |
 | `batch` | integer | positive | `moments` | Number of Chebyshev vectors held per batch. |
 | `state_label` | string | — | `"exact"` (`exact`) or the generator label (`random`, `"default"`) | `csr` only: the label written into moment file names after `_state`. |
-| `state_block` | integer or string | positive integer, `"auto"` | `1` | Number of trace states propagated together. `"auto"` picks a value from available memory in the native build and resolves to 1 in the golden build. The clean and disordered SIESTA executors treat `"auto"` as 1; the projection executor accepts only an integer. |
+| `state_block` | integer or string | positive integer, `"auto"` | `1` | Number of trace states propagated together. `"auto"` picks a value from available memory in the native build and resolves to 1 in the golden build. The clean and disordered SIESTA executors treat `"auto"` as 1; the projection executor requires an integer and rejects `"auto"` during validation. |
 | `left_window` | integer | positive | `32` | Bra-side streaming window of the native rank-2 path. |
 | `right_window` | integer or string | positive integer, `"all"` | `16` | Ket-side storage window of the native rank-2 path; `"all"` stores all M vectors (resolves to `null`). |
 | `checkpoint` | boolean | — | `false` | `csr` only: checkpoint after every trace state to `checkpoint_<hash>.lsqckpt` in the output directory and resume from it on restart. The file is deleted when the word finishes. |
-| `state_block_rule` | string | — | — | Output only. Ignored on input. The `"auto"` resolution records its reason here in memory; current executors write `run.resolved.json` before this happens. |
+| `state_block_rule` | string | — | — | Output only. Ignored on input. The CSR and ordinary Wannier executors record the effective numeric block size and its selection reason in `run.resolved.json`. |
 
 | Condition | Error |
 |---|---|
@@ -463,7 +458,7 @@ The SIESTA projection executor refuses a `time` section.
 |---|---|---|---|---|
 | `broadening_meV` | number | positive | `null` | Target energy resolution of the Jackson kernel, in meV. With `null`, `csr` and `wannier` runs write moments but no curves; SIESTA runs fail. |
 | `formulas` | list of strings | see [Formulas by word shape](#formulas-by-word-shape) | default formula of each word | Reconstruction formulas. Matching is case-insensitive. |
-| `fermi_energies` | list of numbers | — | `[]` | Fermi energies in eV. `time_correlation` writes one curve per entry, so an empty list writes no time curve. SIESTA runs use the first entry (or 0.0) for the oracle and `spin_chern.json`, and every entry (or 0.0) for `fermi_values.json`. |
+| `fermi_energies` | list of numbers | — | `[]` | Fermi energies in eV. `time_correlation` and `time_correlation_curve` write one curve per entry and require a nonempty list when broadening requests a curve (including the default MSD and time-correlation formulas). `row_m0` and `row0` need no list; null broadening keeps moments only. Explicit time-correlation targets also require their own nonempty list. SIESTA runs use the first entry (or 0.0) for the oracle and `spin_chern.json`, and every entry (or 0.0) for `fermi_values.json`. |
 | `kernel` | string | any; only `"jackson"` is implemented | `"jackson"` | Kernel name. The value is lower-cased and recorded; every reconstruction uses the Jackson kernel. |
 | `targets` | list of objects | see [Reconstruction targets](#reconstruction-targets) | `[]` | Extra reconstructions of the same moments, `csr` only. |
 | `per_site_dos` | boolean | — | `false` | `csr` only: also write `DOS_reconstructed.dat`, the DOS divided by the dimension of H, from all M moments. |

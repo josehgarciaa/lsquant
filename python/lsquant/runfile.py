@@ -511,6 +511,8 @@ def validate_runfile_dict(raw: Mapping[str, Any]) -> None:
             _check_keys("basis.disorder", dis, ALLOWED_DISORDER_KEYS)
             if float(_get_or(dis, "W", 0.0)) < 0.0:
                 raise ValueError("basis.disorder.W must be non-negative")
+            if kind == "csr" and float(_get_or(dis, "W", 0.0)) != 0.0:
+                raise ValueError("Nonzero basis.disorder.W is not supported for model.kind='csr'")
             dkind = str(_get_or(dis, "kind", "scalar"))
             if dkind not in ("scalar", "magnetic", "independent"):
                 raise ValueError(
@@ -798,6 +800,8 @@ def validate_runfile_dict(raw: Mapping[str, Any]) -> None:
                 )
 
     # Validate word(s) syntax, catalogue membership, basis consistency, and time requirements
+    if projection["kind"] != "none" and exp.get("state_block") == "auto":
+        raise ValueError("Projected runs require an integer expansion.state_block; 'auto' is not supported")
     word_str = raw["word"]
     if not isinstance(word_str, str) or not word_str.strip():
         raise ValueError("Run file 'word' must be a non-empty string")
@@ -843,6 +847,28 @@ def validate_runfile_dict(raw: Mapping[str, Any]) -> None:
         w_allowed = SHAPE_ALLOWED_FORMULAS.get(
             comp_base.match.entry.shape_id, frozenset()
         )
+        effective_formulas = (
+            comp_base.match.default_formulas
+            if req_formulas_raw is None
+            else [str(f).lower() for f in req_formulas_raw if str(f).lower() in w_allowed]
+        )
+        if (
+            kind != "generator"
+            and raw_rec_obj is not None
+            and raw_rec_obj.get("broadening_meV") is not None
+            and {"time_correlation", "time_correlation_curve"}.intersection(effective_formulas)
+            and not raw_rec_obj.get("fermi_energies")
+        ):
+            raise ValueError("Time-correlation curve reconstruction requires nonempty reconstruction.fermi_energies")
+        for target in (raw_rec_obj or {}).get("targets") or ():
+            if (
+                kind != "generator"
+                and {"time_correlation", "time_correlation_curve"}.intersection(
+                    str(f).lower() for f in target.get("formulas") or ()
+                )
+                and not target.get("fermi_energies")
+            ):
+                raise ValueError("Time-correlation targets require nonempty reconstruction.targets.fermi_energies")
         union_allowed_formulas.update(w_allowed)
         if raw_rec_obj is not None:
             rec_for_w = dict(raw_rec_obj)
@@ -1183,6 +1209,8 @@ class RunFile:
         }
         if self.reference is not None:
             out["reference"] = self.reference
+        if self.model["kind"] == "generator":
+            out["basis"].pop("disorder", None)
         if len(self.words) > 1 or self.words != [self.word]:
             out["words"] = list(self.words)
         if self.projection["kind"] != "none":
@@ -1578,6 +1606,10 @@ def execute_runfile(
             raise FileNotFoundError(
                 f"Hamiltonian CSR file not found: {ham_path}"
             )
+        for op_name in rf.model.get("operators") or ():
+            op_path = os.path.join(model_dir, f"{label}.{op_name}.CSR")
+            if not os.path.isfile(op_path):
+                raise FileNotFoundError(f"Operator CSR file not found: {op_path}")
         if str(rf.metric["policy"]) != "orthogonal":
             s_path = os.path.join(model_dir, f"{label}.S.CSR")
             if not os.path.isfile(s_path):
@@ -1617,7 +1649,10 @@ def execute_runfile(
         parsed_w = parse_word(w_str)
         comp_preview = compile_word(
             parsed_w,
-            basis={"name": rf.basis["name"]},
+            basis={"name": rf.basis["name"], **(
+                {"operators": list(rf.model["operators"])}
+                if rf.model.get("operators") is not None else {}
+            )},
             params={
                 "expansion": rf.expansion,
                 "time": rf.time,
@@ -2103,8 +2138,9 @@ def execute_runfile(
         else:
             for op_n in discovered_ops:
                 op_p = os.path.join(model_dir, f"{label}.{op_n}.CSR")
-                if os.path.isfile(op_p):
-                    raw_csr_mats[op_n] = _core.ReadCsrText(op_p)
+                if not os.path.isfile(op_p):
+                    raise FileNotFoundError(f"Operator CSR file not found: {op_p}")
+                raw_csr_mats[op_n] = _core.ReadCsrText(op_p)
 
         if use_atom_block and spatial_receipt is not None:
             perm_path = os.path.join(out_dir, "permutation.npy")
@@ -2402,6 +2438,12 @@ def execute_runfile(
                             if not os.path.exists(top_p):
                                 shutil.copyfile(c_path, top_p)
                                 written_files.append(top_p)
+
+    if "state_block_rule" in rf.expansion:
+        resolved_dict["expansion"].update(rf.expansion)
+        with open(resolved_path, "w", encoding="utf-8") as fh:
+            json.dump(resolved_dict, fh, indent=2)
+            fh.write("\n")
 
     if not rf.output["legacy_names"] and curves_json_payload:
         cjson_path = os.path.join(out_dir, "curves.json")
