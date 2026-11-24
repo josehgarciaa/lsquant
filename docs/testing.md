@@ -32,6 +32,11 @@ pipeline: it reruns G1 and G2 at 16 threads, G5 at 16 threads, and G1 and G2 aga
 and 64 threads (the moments must remain identical across thread counts). Each run happens in a
 temporary directory, leaving `goldens/` unchanged.
 
+Every Python call in the gate uses `PYTHON`, defaulting to `python3` from
+`PATH`. Set `PYTHON` to an interpreter executable or path matching the compiled
+`_core` module, for example `PYTHON=python scripts/check_goldens.sh 0 build/golden`.
+It is a single executable, not a command with extra arguments.
+
 Example session, from a clean checkout:
 
 ```bash

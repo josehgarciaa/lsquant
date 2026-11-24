@@ -24,9 +24,11 @@ You need:
 
 - A build from a [preset](install.md), normally `golden`. The gate uses the
   build directory `build/golden/` by default.
-- `python3` on your `PATH` must be the interpreter you built for, with NumPy,
-  SciPy and SymPy. The gate runs `python3` and sets `PYTHONPATH` itself,
-  ignoring the value in your environment.
+- The interpreter selected by `PYTHON` (default `python3` on your `PATH`)
+  must be the interpreter you built for, with NumPy, SciPy and SymPy. Every
+  Python call in the gate uses it. Set a single executable name or path,
+  without extra arguments. The gate sets `PYTHONPATH` itself, ignoring the
+  value in your environment.
 - For stages 5, 6 and 7: the `wannier2sparse` binary. See
   [Get wannier2sparse](#get-wannier2sparse).
 - For stage 7: the `mcp` Python package, because the stage also tests the MCP
@@ -174,6 +176,7 @@ standard locations, set `EIGEN_DIR` before you run the fetch script.
 
 | Variable | Stage | Effect |
 |---|---|---|
+| `PYTHON` | all | Interpreter executable or path; default `python3`. Must match the compiled `_core` module. |
 | `GOLDEN_TOL=1` | all | Tolerance mode. |
 | `W2S_BIN` | 5, 7 | Path of the `wannier2sparse` binary. |
 | `S7_SET` | 7, `7runs` | `all` (default), `quick`, or `list` with the names in `S7_LIST`. |

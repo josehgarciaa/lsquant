@@ -303,6 +303,9 @@ requested moment count.
 `numerics` selects alternative engine paths. Every value other than the default
 needs the `native` [build preset](build-presets.md).
 
+The `backend` object accepts `name` (back end), `executor` (Ginkgo execution
+device) and `format` (Ginkgo matrix layout), described below.
+
 | Key | Type | Allowed values | Default | Meaning |
 |---|---|---|---|---|
 | `backend.name` | string | `"native"`, `"ginkgo"` | `"native"` | Sparse matrix–vector back end. |
@@ -337,6 +340,9 @@ With `hr_file`, only the operators `VX`, `VY` and `VZ` can be built (as
 i[H, X_a]).
 
 ## `basis`
+
+The `disorder` object accepts `W` (box width in eV), `seed` (draw seed) and
+`kind` (spin layout), described below.
 
 | Key | Type | Allowed values | Default | Meaning |
 |---|---|---|---|---|
@@ -511,8 +517,8 @@ The SIESTA projection executor refuses a `time` section.
 | `targets` | list of objects | see [Reconstruction targets](#reconstruction-targets) | `[]` | Extra reconstructions of the same moments, `csr` only. |
 | `per_site_dos` | boolean | — | `false` | `csr` only: also write `DOS_reconstructed.dat`, the DOS divided by the dimension of H, from all M moments. |
 | `legacy_text_round_trip` | boolean | — | `false` | Golden/legacy byte compatibility: write the legacy moment file and reconstruct from the copy read back (15 significant digits). `csr` and SIESTA runs only; the clean SIESTA and projection executors write the legacy file only when `output.legacy_layout` is `true`. |
-| `fft_grid` | boolean | — | `false` | Recorded only. It does not change the curves. To reconstruct on the Chebyshev-node grid, use the formulas `greenwood_fft` or `bastin_fft`. With `true`, `bastin_backend = "folded"` is refused. |
-| `num_points` | integer | — | `null` | Number of points of the default SIESTA oracle energy grid (1001 when `null`). Not used by KPM curves. |
+| `fft_grid` | boolean | — | `false` | Recorded and used by the folded-backend consistency check; it does not select a grid. The formulas `greenwood_fft` or `bastin_fft` select the Chebyshev-node grid. With `true`, `bastin_backend = "folded"` is refused. Validation warns when true without a requested `*_fft` formula (including targets). |
+| `num_points` | integer | — | `null` | Number of points of the default SIESTA oracle energy grid (1001 when `null`), also for models using the same metric executors. Explicit `energies` or `energy_grid` override it. Not used by KPM curves; validation warns when set for a model outside the metric executors. |
 | `energies` | list of numbers | non-empty, finite, strictly increasing | absent | SIESTA oracle energy grid, in eV. |
 | `energy_grid` | list of 3 numbers | `[E_min, E_max, n]`, `E_min < E_max`, integer `n ≥ 2` | absent | SIESTA oracle energy grid as a uniform grid. Give `energies` or `energy_grid`, not both. |
 | `num_cells` | integer | — | absent | Number of unit cells for the `shc` normalisation. SIESTA runs overwrite it with the k-mesh size. |
@@ -524,6 +530,12 @@ spans the gap around the first Fermi energy, extended by
 `max(0.25 × gap, 5 × broadening)`.
 If the Fermi energy lies outside the spectrum, the run fails with
 `Fermi level is outside the spectrum; supply reconstruction.energies or energy_grid`.
+
+The grid-control diagnostics are a single `RuntimeWarning` per validation,
+combining both no-effect keys if necessary. The keys remain accepted and
+resolved as before; warnings do not change numerical results. `num_points`
+is read only when a clean oracle or projection energy grid is constructed;
+it does not affect a disordered run or a clean run without the oracle.
 
 For ordinary `csr` and `wannier` runs, `formulas: ["shc"]` requires both
 `reconstruction.num_cells` and `reconstruction.cell_area`. Missing either is

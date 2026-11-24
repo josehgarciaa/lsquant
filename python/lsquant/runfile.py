@@ -9,6 +9,7 @@ import json
 import os
 import re
 import shutil
+import warnings
 from typing import Any, Mapping, Sequence
 
 import numpy as np
@@ -909,6 +910,28 @@ def validate_runfile_dict(raw: Mapping[str, Any]) -> None:
                     f"does not match any word in {words_list} "
                     f"(allowed formulas for given word(s): {sorted(union_allowed_formulas)})"
                 )
+
+    # Pitfall: these compatibility keys do not control KPM curve grids. Warn
+    # once per validation, without changing resolved input or numerical work.
+    if raw_rec_obj is not None:
+        requested = list(req_formulas_raw or ())
+        for target in raw_rec_obj.get("targets") or ():
+            requested.extend(target.get("formulas") or ())
+        inert_keys = []
+        if raw_rec_obj.get("fft_grid") and not any(
+            str(formula).lower().endswith("_fft") for formula in requested
+        ):
+            inert_keys.append(
+                "reconstruction.fft_grid has no effect without a *_fft formula; "
+                "use greenwood_fft or bastin_fft to select the FFT grid"
+            )
+        if raw_rec_obj.get("num_points") is not None and not metric_kind:
+            inert_keys.append(
+                "reconstruction.num_points has no effect for this model; "
+                "it only sets the default SIESTA oracle grid, not KPM curve grids"
+            )
+        if inert_keys:
+            warnings.warn("; ".join(inert_keys), RuntimeWarning, stacklevel=2)
 
 
 @dataclass
