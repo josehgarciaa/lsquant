@@ -28,7 +28,7 @@ from lsquant.runfile import execute_runfile  # noqa: E402
 def test_partial_checkpoint_resumes_byte_identically(tmp_path, finished):
     """Compare resumed and fresh moment bytes with the same seed and four states.
 
-    Read only the fixed checkpoint header, using the writer's native byte order
+    Read only the fixed checkpoint header, in the native byte order of the checkpoint file
     and explicit-width fields. A second interruption at k+1 proves forward
     progress; the final run must remove the completed checkpoint. No checkpoint
     bytes are fabricated or edited, and the calculation fingerprint stays fixed.
