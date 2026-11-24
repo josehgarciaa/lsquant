@@ -79,9 +79,12 @@ def _validated(connector, **kwargs):
 @pytest.mark.parametrize("connector", CONNECTOR_LIST, ids=KINDS)
 @pytest.mark.parametrize("bad", [[], "x", 5, True])
 def test_params_must_be_json_object(connector, bad):
-    _validated(connector)                      # absent
-    _validated(connector, params=None)         # null
-    _validated(connector, params={})           # empty
+    _validated(connector, params=_accepted_params(connector))
+    for missing in (None, {}):
+        try:
+            _validated(connector, params=missing)
+        except ValueError as error:   # e.g. ABACUS then asks for its required files
+            assert "must be a JSON object" not in str(error)
     with pytest.raises(ValueError) as exc:
         _validated(connector, params=bad)
     assert str(exc.value) == f"model.params ({connector.kind}) must be a JSON object"
@@ -169,7 +172,7 @@ def test_numeric_params_wrong_type_names_the_key(connector, key, bad, message):
 
 @pytest.mark.parametrize("connector", CONNECTOR_LIST, ids=KINDS)
 def test_velocity_mode_one_wording(connector):
-    _validated(connector)                                   # default
+    _validated(connector, params=_accepted_params(connector))   # default mode
     _validated(connector, params=dict(_accepted_params(connector),
                                       velocity_mode="bare"))
     params = dict(_accepted_params(connector), velocity_mode="bogus")
@@ -220,7 +223,7 @@ def test_model_keys_per_kind(connector):
     )
     # A null value means absent (run.resolved.json round trips carry nulls).
     _validated(connector, **{foreign: None})
-    _validated(connector, operators=["VX"])   # read by the word compiler for any kind
+    _validated(connector, params=_accepted_params(connector), operators=["VX"])
 
 
 def test_model_keys_csr_and_generator():
@@ -238,7 +241,7 @@ def test_model_keys_csr_and_generator():
     csr = {"kind": "csr", "dir": "d", "label": "l", "hr_file": "h",
            "positions": "p", "orbitals_per_atom": 2, "atom_map": "a",
            "supercell": [2, 2], "operators": None}
-    RunFile.from_dict(dict(BASE, model=csr))
+    RunFile.from_dict(dict(BASE, model=csr, numerics={"operator": "atom_block"}))
     with pytest.raises(ValueError) as exc:
         RunFile.from_dict(dict(BASE, model={"kind": "generator", "name": "make_chain",
                                             "seed": 1}))
