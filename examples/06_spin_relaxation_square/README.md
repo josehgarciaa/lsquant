@@ -132,3 +132,13 @@ earlier code, so the behaviour is not a regression.
   methodologies*, Phys. Rep. **893**, 1–123 (2021) ([arXiv:1811.07387](https://arxiv.org/abs/1811.07387)).
 - A. W. Cummings, J. H. García, J. Fabian, and S. Roche, *Giant spin lifetime
   anisotropy in graphene*, Phys. Rev. Lett. **119**, 206601 (2017).
+
+## Check
+
+Check the saved run output without generating figures. The script prints each
+expectation and tolerance, then CHECK PASS or CHECK FAIL, and exits with status
+0 or 1 respectively:
+
+```bash
+python3 examples/06_spin_relaxation_square/check.py /tmp/tut06
+```
