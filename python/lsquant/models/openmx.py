@@ -144,8 +144,16 @@ def load_openmx_model(path, *, dipoles=False, fermi_energy=None):
     H[:, 0::2, 0::2], H[:, 1::2, 1::2] = uu, dd
     H[:, 0::2, 1::2], H[:, 1::2, 0::2] = ud, du
     S_spin = spinor_lift(S)
-    origin = mu if fermi_energy is None else float(fermi_energy) / HARTREE
-    H = (H - origin * S_spin) * HARTREE
+    H = (H - mu * S_spin) * HARTREE
+    if fermi_energy is None:
+        origin_eV, source = mu * HARTREE, "file"
+    else:
+        # Shift relative to the already-subtracted chemical potential, so
+        # passing the file's own value (mu * HARTREE) changes nothing.
+        origin_eV, source = float(fermi_energy), "run file"
+        shift = origin_eV - mu * HARTREE
+        if shift != 0.0:
+            H = H - shift * S_spin
     # OpenMX integrates part of H and S on a real-space grid, so H(R) and
     # H(-R)^+ differ by round-off (about 1e-10 relative). Fold both Hermitian,
     # as the SIESTA reader does, and record the removed part.
@@ -170,8 +178,8 @@ def load_openmx_model(path, *, dipoles=False, fermi_energy=None):
     model = SiestaModel(uc, tau, r_int, H, S_spin, dipoles=A, seed_name=seed,
                         metadata=dict(source="openmx", file=os.path.abspath(path),
                                       printed_fermi_level_eV=mu * HARTREE,
-                                      fermi_energy_subtracted_eV=origin * HARTREE,
-                                      fermi_energy_source="file" if fermi_energy is None else "run file",
+                                      fermi_energy_subtracted_eV=origin_eV,
+                                      fermi_energy_source=source,
                                       valence_electrons=d["valence_electrons"],
                                       hermitian_fold_relative=folded))
     return model

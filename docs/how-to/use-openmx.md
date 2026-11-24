@@ -50,9 +50,11 @@ needed by `model.params.velocity_mode = "covariant"`.
 
 Give every energy in the run file relative to the chemical potential of
 OpenMX, E_F = 0; LSQuant measures the stored energies from it. The model takes
-no `model.params.fermi_energy` and no `model.params.spin`: either key stops
-the run with
-`an OpenMX model carries its spinors and stores energies from the chemical potential; remove model.params.spin and model.params.fermi_energy`.
+no `model.params.spin`: the key stops the run with
+`an OpenMX model carries its spinors; remove model.params.spin`.
+`model.params.fermi_energy` (eV) is accepted: by default the chemical
+potential of the file stays the origin (`H − mu S`); an explicit value `x`
+replaces it (`H − x S`).
 <!-- source: python/lsquant/models/openmx.py:9–11, 151 (H − mu S); runfile.py:1509–1511 -->
 
 OpenMX integrates part of H, S and the position matrix on its real-space grid,
