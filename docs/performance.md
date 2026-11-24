@@ -7,8 +7,12 @@ the checkpointing available in both profiles. None of them changes what a run fi
 
 ## Thread placement
 
-When the process is the `lsquant` command (`lsquant run` or `python -m lsquant run`), the
-package sets `OMP_PROC_BIND=spread` and `OMP_PLACES=cores` at import. A plain `import lsquant`
+When the process is the `lsquant` command (`lsquant run` or `python -m lsquant run`) and it
+has its own cores (a CPU set from the batch system, smaller than the machine), the package sets
+`OMP_PROC_BIND=spread` and `OMP_PLACES=cores` at import. Without a CPU set it does not bind:
+OpenMP numbers the places from the first core for every process, so two commands on one node
+would bind to the same cores. `LSQUANT_BIND_THREADS=1` binds anyway (a node you have to
+yourself) and `LSQUANT_BIND_THREADS=0` never binds. A plain `import lsquant`
 in a script or notebook does not set them: with binding, OpenMP pins the importing process to
 one core. If `OMP_NUM_THREADS` is unset, the package sets it to the number of physical cores in
 the process's CPU affinity (`lsquant.runtime`). Each variable is set only when it is unset, so a
