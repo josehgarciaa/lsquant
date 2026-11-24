@@ -204,8 +204,8 @@ def test_spin_fermi_refusals():
         assert str(exc.value) == connector.refusal
         assert "fermi_energy" not in connector.refusal
     for connector in CONNECTORS.values():
-        model = _model_with_paths(connector, {"fermi_energy": 0.1})
-        rf = RunFile.from_dict(dict(BASE, model=model))
+        params = dict(_validated_params(connector), fermi_energy=0.1)
+        rf = RunFile.from_dict(dict(BASE, model=_model_with_paths(connector, params)))
         assert rf.model["params"]["fermi_energy"] == 0.1
     # The wannier spin values are unchanged.
     wannier = _model_with_paths(CONNECTORS["wannier"],

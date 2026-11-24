@@ -344,8 +344,8 @@ CONNECTORS: dict[str, ModelConnector] = {
 #: and ``params`` (see :data:`_BASE_MODEL_KEYS` for ``operators``).
 NON_CONNECTOR_MODEL_KEYS: dict[str, frozenset[str]] = {
     "csr": frozenset({"dir", "label", "hr_file", "positions",
-                      "orbitals_per_atom", "atom_map", "supercell"}),
-    "generator": frozenset({"name", "tutorial"}),
+                      "orbitals_per_atom", "atom_map", "supercell", "operators"}),
+    "generator": frozenset({"name", "tutorial", "operators"}),
 }
 
 
