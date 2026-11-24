@@ -10,6 +10,8 @@ build_profile: str
 ginkgo_available: bool
 cuda_available: bool
 mpi_available: bool
+# CUDA and Ginkgo classes below require their respective optional builds.
+# MPI currently exposes only mpi_available here, with no MPI-only Python classes.
 def AtomBlocksFromCsr(
     rowptr: npt.NDArray[np.int64], columns: npt.NDArray[np.int64],
     values: npt.NDArray[np.complex128], atom_map: npt.NDArray[np.int64],
@@ -94,6 +96,7 @@ class AtomBlockOperator(LinearOperator):
     @property
     def dictionary_size(self) -> int: ...
 
+# Available only in builds with Ginkgo enabled.
 class GinkgoOperator(LinearOperator):
     def multiply_block_row_major(
         self, a: complex, x: npt.NDArray[np.complex128],
@@ -265,11 +268,21 @@ class StateGenerator:
 class RandomPhaseStates(StateGenerator):
     def __init__(self, dim: int, num_states: int, seed: int = 12345) -> None: ...
 
+class RangedRandomPhaseStates(StateGenerator):
+    def __init__(
+        self, dim: int, num_states: int, seed: int, row_begin: int, row_end: int
+    ) -> None: ...
+
 class LocalStates(StateGenerator):
     def __init__(self, dim: int, sites: Union[npt.NDArray[np.int64], Sequence[int]]) -> None: ...
 
 class BlockLocalStates(StateGenerator):
+    @overload
     def __init__(self, num_blocks: int, block_size: int) -> None: ...
+    @overload
+    def __init__(self, n1: int, n2: int, n3: int, block_size: int) -> None: ...
+    @staticmethod
+    def block_index(m1: int, m2: int, m3: int, n1: int, n2: int) -> int: ...
 
 class TransformedStates(StateGenerator):
     def __init__(self, transform: LinearOperator, inner: StateGenerator) -> None: ...
@@ -427,7 +440,8 @@ class Plan:
     def __init__(self, code: Sequence[Instruction] = ..., word: str = "") -> None: ...
 
 class ChebyshevMoments:
-    build_profile: str
+    @property
+    def build_profile(self) -> str: ...
     window: SpectralWindow
     system_size: int
     number_of_states: int
@@ -532,6 +546,10 @@ class compat:
         x: float, tol: float = 1e-15
     ) -> npt.NDArray[np.complex128]: ...
 
+# Available only in builds with CUDA enabled.
+def synchronize_cuda() -> None: ...
+
+# Available only in builds with CUDA enabled.
 class CudaVectorBlock:
     def __init__(self, rows: int, cols: int) -> None: ...
     @property
@@ -541,6 +559,7 @@ class CudaVectorBlock:
     def from_numpy(self, array: npt.NDArray[np.complex128]) -> None: ...
     def to_numpy(self) -> npt.NDArray[np.complex128]: ...
 
+# Available only in builds with CUDA enabled.
 class CudaAtomBlockOperator(LinearOperator):
     def __init__(
         self,

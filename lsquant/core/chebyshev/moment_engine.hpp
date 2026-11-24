@@ -2,7 +2,7 @@
  * @file moment_engine.hpp
  * @brief Bytecode execution engine evaluating Chebyshev moment tensors from a Plan.
  *
- * Executes the five-instruction `Plan` state machine over trace vectors yielded by a
+ * Executes the seven-instruction `Plan` state machine over trace vectors yielded by a
  * `StateGenerator`, reproducing the exact recursion, batching, and dot-product accumulation
  * order of legacy `SpectralMoments` and `CorrelationExpansionMoments`.
  */
