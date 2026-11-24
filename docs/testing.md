@@ -35,7 +35,7 @@ temporary directory, leaving `goldens/` unchanged.
 Example session, from a clean checkout:
 
 ```bash
-# 1. build the legacy drivers (needs Eigen, FFTW, GSL; see README.md)
+# 1. build the legacy drivers (needs C++17, CMake 3.21+, Boost headers, Eigen, FFTW, GSL; see README.md)
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DLSQUANT_BUILD_INPUT_TOOLS=OFF
 cmake --build build -j 16
 
