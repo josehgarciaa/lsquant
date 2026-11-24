@@ -21,6 +21,7 @@ from .bases import (
     make_basis,
     validate_w2s_csr_dir,
 )
+from .models.registry import CONNECTORS, ML_BASE_PARAMS, validate_connector_params
 from .models.wannier import load_wannier_model
 from .moments import run_plan, window_from_gershgorin
 from .reconstruct import (
@@ -391,14 +392,25 @@ def validate_runfile_dict(raw: Mapping[str, Any]) -> None:
     metric_kind = uses_metric_executor(model)
     if reference is not None and not isinstance(reference, bool):
         raise ValueError(f"Expected boolean for 'reference', got {type(reference).__name__}")
-    metric_names = ", ".join(("siesta", "openmx", "pyscf", "paoflow") + tuple(ML_MODEL_KINDS))
+    # Kinds that always run through the metric executors, in registry order;
+    # a Wannier90 model joins them only with a trigger param (below).
+    metric_names = ", ".join(
+        k for k, connector in CONNECTORS.items()
+        if connector.metric_trigger is None
+    )
     if reference is not None and not metric_kind:
         raise ValueError(f"Expected a metric-executor model ({metric_names}, or wannier with "
                          f"params.velocity_mode or params.spin) when 'reference' is set, got {kind!r}")
     if projection["kind"] != "none" and not metric_kind:
         raise ValueError(f"Expected a metric-executor model ({metric_names}, or wannier with "
                          f"params.velocity_mode or params.spin) when projection is enabled, got {kind!r}")
-    known_kinds = ("csr", "wannier", "siesta", "generator", "openmx", "pyscf", "paoflow") + tuple(ML_MODEL_KINDS)
+    # Non-connector kinds first; the connector kinds follow in registry order
+    # (siesta and wannier are named above: siesta keeps its own dispatch and
+    # wannier is also a plain CSR executor kind).
+    known_kinds = (
+        ("csr", "wannier", "siesta", "generator")
+        + tuple(k for k in CONNECTORS if k not in ("siesta", "wannier"))
+    )
     if kind not in known_kinds:
         raise ValueError(
             f"Unknown model.kind '{kind}'; expected one of {', '.join(repr(k) for k in known_kinds)}"
@@ -412,50 +424,15 @@ def validate_runfile_dict(raw: Mapping[str, Any]) -> None:
             raise ValueError(
                 "Run file with model.kind='csr' requires 'dir' and 'label'"
             )
-    elif kind == "wannier":
-        if not model.get("dir") or not model.get("seed"):
-            raise ValueError(
-                "Run file with model.kind='wannier' requires 'dir' and 'seed'"
-            )
-        if metric_kind:
-            _check_metric_params("wannier", model, ("bare", "berry_connection", "covariant"))
-            if (model.get("params") or {}).get("spin", "labels") not in ("labels", "exact"):
-                raise ValueError("model.params.spin must be 'labels' or 'exact'")
-    elif kind == "openmx":
-        if not model.get("file"):
-            raise ValueError("Run file with model.kind='openmx' requires 'file' (the .scfout file)")
-        _check_metric_params("openmx", model, ("bare", "berry_connection", "covariant"))
-    elif kind == "pyscf":
-        if not model.get("file"):
-            raise ValueError("Run file with model.kind='pyscf' requires 'file' (see write_pyscf_model)")
-        _check_metric_params("pyscf", model, ("bare", "berry_connection", "covariant"))
-    elif kind == "paoflow":
-        if not model.get("file"):
-            raise ValueError("Run file with model.kind='paoflow' requires 'file' (see write_paoflow_model)")
-        _check_metric_params("paoflow", model, ("bare", "berry_connection"))
-    elif kind in ML_MODEL_KINDS:
-        _check_ml_params(kind, model)
-    elif kind == "siesta":
-        if not model.get("dir") or not model.get("label"):
-            raise ValueError("SIESTA model requires dir and label")
-        if model.get("params") is not None and not isinstance(model["params"], Mapping):
-            raise ValueError("SIESTA model.params must be a JSON object")
-        _check_keys("model.params (siesta)", model.get("params") or {}, frozenset({
-            "velocity_mode", "oracle", "oracle_degeneracy_tolerance", "bloch_memory_mb",
-            "quadrature_order", "quadrature_max_order", "quadrature_tolerance",
-            "nonorthogonal_disorder"}))
-        if "nonorthogonal_disorder" in (model.get("params") or {}) and not isinstance(
-                model["params"]["nonorthogonal_disorder"], bool):
-            raise ValueError("model.params.nonorthogonal_disorder must be a boolean")
-        degeneracy_tolerance = float((model.get("params") or {}).get("oracle_degeneracy_tolerance", 1e-6))
-        if not np.isfinite(degeneracy_tolerance) or degeneracy_tolerance <= 0:
-            raise ValueError("oracle_degeneracy_tolerance must be positive and finite (eV)")
-        bloch_memory_mb = float((model.get("params") or {}).get("bloch_memory_mb", 256.0))
-        if not np.isfinite(bloch_memory_mb) or bloch_memory_mb <= 0:
-            raise ValueError("bloch_memory_mb must be positive and finite (MiB)")
-        if (model.get("params") or {}).get("velocity_mode", "berry_connection") not in (
-                "bare", "berry_connection", "covariant"):
-            raise ValueError("unknown SIESTA velocity_mode")
+    elif kind in CONNECTORS:
+        connector = CONNECTORS[kind]
+        for path_key in connector.path_keys:
+            if not model.get(path_key):
+                raise ValueError(connector.missing_path_error)
+        # A Wannier90 model without a trigger param keeps the plain CSR
+        # executor and its params stay unvalidated (preserved behaviour).
+        if connector.metric_trigger is None or metric_kind:
+            validate_connector_params(connector, model)
     elif kind == "generator":
         gen_name = model.get("name")
         if not gen_name or not isinstance(gen_name, str):
@@ -522,6 +499,8 @@ def validate_runfile_dict(raw: Mapping[str, Any]) -> None:
             _check_keys("basis.disorder", dis, ALLOWED_DISORDER_KEYS)
             if float(_get_or(dis, "W", 0.0)) < 0.0:
                 raise ValueError("basis.disorder.W must be non-negative")
+            if kind == "csr" and float(_get_or(dis, "W", 0.0)) != 0.0:
+                raise ValueError("Nonzero basis.disorder.W is not supported for model.kind='csr'")
             dkind = str(_get_or(dis, "kind", "scalar"))
             if dkind not in ("scalar", "magnetic", "independent"):
                 raise ValueError(
@@ -809,6 +788,8 @@ def validate_runfile_dict(raw: Mapping[str, Any]) -> None:
                 )
 
     # Validate word(s) syntax, catalogue membership, basis consistency, and time requirements
+    if projection["kind"] != "none" and exp.get("state_block") == "auto":
+        raise ValueError("Projected runs require an integer expansion.state_block; 'auto' is not supported")
     word_str = raw["word"]
     if not isinstance(word_str, str) or not word_str.strip():
         raise ValueError("Run file 'word' must be a non-empty string")
@@ -854,6 +835,28 @@ def validate_runfile_dict(raw: Mapping[str, Any]) -> None:
         w_allowed = SHAPE_ALLOWED_FORMULAS.get(
             comp_base.match.entry.shape_id, frozenset()
         )
+        effective_formulas = (
+            comp_base.match.default_formulas
+            if req_formulas_raw is None
+            else [str(f).lower() for f in req_formulas_raw if str(f).lower() in w_allowed]
+        )
+        if (
+            kind != "generator"
+            and raw_rec_obj is not None
+            and raw_rec_obj.get("broadening_meV") is not None
+            and {"time_correlation", "time_correlation_curve"}.intersection(effective_formulas)
+            and not raw_rec_obj.get("fermi_energies")
+        ):
+            raise ValueError("Time-correlation curve reconstruction requires nonempty reconstruction.fermi_energies")
+        for target in (raw_rec_obj or {}).get("targets") or ():
+            if (
+                kind != "generator"
+                and {"time_correlation", "time_correlation_curve"}.intersection(
+                    str(f).lower() for f in target.get("formulas") or ()
+                )
+                and not target.get("fermi_energies")
+            ):
+                raise ValueError("Time-correlation targets require nonempty reconstruction.targets.fermi_energies")
         union_allowed_formulas.update(w_allowed)
         if raw_rec_obj is not None:
             rec_for_w = dict(raw_rec_obj)
@@ -977,9 +980,11 @@ class RunFile:
         }
         if raw_model.get("file") is not None:
             model_cfg["file"] = _resolve_path(raw_model["file"])
-        if kind == "abacus":
-            # The S(R) file, the STRU and the orbital directory resolve like model.file.
-            for key in ("overlap_file", "stru_file", "orbital_dir", "position_file"):
+        connector = CONNECTORS.get(kind)
+        if connector is not None:
+            # ABACUS's S(R) file, STRU, orbital directory and position matrix
+            # resolve like model.file.
+            for key in connector.path_params:
                 if isinstance(model_cfg["params"].get(key), str):
                     model_cfg["params"][key] = _resolve_path(model_cfg["params"][key])
 
@@ -1192,6 +1197,8 @@ class RunFile:
         }
         if self.reference is not None:
             out["reference"] = self.reference
+        if self.model["kind"] == "generator":
+            out["basis"].pop("disorder", None)
         if len(self.words) > 1 or self.words != [self.word]:
             out["words"] = list(self.words)
         if self.projection["kind"] != "none":
@@ -1501,97 +1508,27 @@ def uses_metric_executor(model: Mapping[str, Any]) -> bool:
     original Wannier executor and its CSR and real-space bases.
     """
     kind = str(_get_or(model, "kind", "csr"))
-    params = model.get("params") or {}
-    if kind in ("siesta", "paoflow", "openmx", "pyscf") or kind in ML_MODEL_KINDS:
+    connector = CONNECTORS.get(kind)
+    if connector is None:
+        return False
+    if connector.metric_trigger is None:
         return True
-    return kind == "wannier" and isinstance(params, Mapping) and (
-        "velocity_mode" in params or "spin" in params or "fermi_energy" in params)
-
-
-def _check_metric_params(kind: str, model: Mapping[str, Any], modes: tuple[str, ...]) -> None:
-    """Validate params of an orthogonal model in the metric executor."""
     params = model.get("params") or {}
-    if not isinstance(params, Mapping):
-        raise ValueError(f"model.params ({kind}) must be a JSON object")
-    _check_keys(f"model.params ({kind})", params, frozenset({
-        "velocity_mode", "spin", "fermi_energy", "oracle", "oracle_degeneracy_tolerance", "bloch_memory_mb"}))
-    if kind == "openmx" and ("spin" in params or "fermi_energy" in params):
-        raise ValueError("an OpenMX model carries its spinors and stores energies from the chemical "
-                         "potential; remove model.params.spin and model.params.fermi_energy")
-    if kind == "pyscf" and ("spin" in params or "fermi_energy" in params):
-        raise ValueError("a PySCF model carries its spinors and stores energies from its Fermi energy; "
-                         "remove model.params.spin and model.params.fermi_energy")
-    if kind == "paoflow" and ("spin" in params or "fermi_energy" in params):
-        raise ValueError("a PAOFLOW model carries its own on-site spin and energies from E_F; "
-                         "remove model.params.spin and model.params.fermi_energy")
-    if params.get("velocity_mode", "berry_connection") not in modes:
-        raise ValueError(f"model.params.velocity_mode for {kind} must be one of {list(modes)}")
-    tolerance = float(params.get("oracle_degeneracy_tolerance", 1e-6))
-    if not np.isfinite(tolerance) or tolerance <= 0:
-        raise ValueError("oracle_degeneracy_tolerance must be positive and finite (eV)")
+    return isinstance(params, Mapping) and any(
+        key in params for key in connector.metric_trigger)
 
 
 #: Machine-learning Hamiltonians read by models/<kind>.py for the metric
 #: executors: kind -> (required model key, extra model.params keys).
+#: Derived from the connector registry (entries with the H(R)/S(R) input
+#: style); kept importable with the same content for tests and docs. GPAW is
+#: not machine learning, but shares the same kind of input: H(R) and S(R) of
+#: an atomic-orbital basis (models/gpaw.py); its position matrix is built by
+#: quadrature of the radial functions in the export, so covariant is allowed.
 ML_MODEL_KINDS: dict[str, tuple[str, frozenset[str]]] = {
-    "deeph": ("dir", frozenset({"hamiltonian_file"})),
-    "deeptb": ("dir", frozenset()),
-    "hamgnn": ("file", frozenset()),
-    "threebodytb": ("file", frozenset({"orbitals_per_element"})),
-    "abacus": ("file", frozenset({"overlap_file", "stru_file", "orbital_dir", "orbitals_per_element",
-                                  "position_file"})),
-    # Not machine learning, but the same kind of input: H(R) and S(R) of an
-    # atomic-orbital basis (models/gpaw.py); its position matrix is built by
-    # quadrature of the radial functions in the export, so covariant is allowed.
-    "gpaw": ("file", frozenset({"soc", "quadrature_order", "dipole_cache"})),
+    connector.kind: (connector.path_keys[0], connector.allowed_params - ML_BASE_PARAMS)
+    for connector in CONNECTORS.values() if connector.ml_style
 }
-
-
-def _check_ml_params(kind: str, model: Mapping[str, Any]) -> None:
-    """Validate a machine-learning model: its path key and params.
-
-    These models carry no position matrix and no radial orbitals, so the
-    covariant velocity is refused, except for an ABACUS model given its
-    position matrix (``position_file``). ``fermi_energy`` (eV) replaces the
-    reference energy the reader would otherwise use.
-    """
-    key, extra = ML_MODEL_KINDS[kind]
-    if not model.get(key):
-        raise ValueError(f"Run file with model.kind={kind!r} requires {key!r}")
-    params = model.get("params") or {}
-    if not isinstance(params, Mapping):
-        raise ValueError(f"model.params ({kind}) must be a JSON object")
-    _check_keys(f"model.params ({kind})", params, frozenset({
-        "velocity_mode", "fermi_energy", "oracle", "oracle_degeneracy_tolerance", "bloch_memory_mb"}) | extra)
-    modes = ("bare", "berry_connection")
-    # GPAW exports carry the radial functions: LSQuant builds the position matrix.
-    if kind == "gpaw" or (kind == "abacus" and params.get("position_file")):
-        modes += ("covariant",)
-    if params.get("velocity_mode", "berry_connection") not in modes:
-        if kind == "abacus":
-            raise ValueError("model.params.velocity_mode for abacus must be 'bare' or 'berry_connection'; "
-                             "'covariant' needs model.params.position_file (ABACUS's data-rR-sparse.csr)")
-        raise ValueError(f"model.params.velocity_mode for {kind} must be 'bare' or 'berry_connection' "
-                         "(no position matrix, so no 'covariant')")
-    if "fermi_energy" in params and not np.isfinite(float(params["fermi_energy"])):
-        raise ValueError("model.params.fermi_energy must be a finite number (eV)")
-    tolerance = float(params.get("oracle_degeneracy_tolerance", 1e-6))
-    if not np.isfinite(tolerance) or tolerance <= 0:
-        raise ValueError("oracle_degeneracy_tolerance must be positive and finite (eV)")
-    memory = float(params.get("bloch_memory_mb", 256.0))
-    if not np.isfinite(memory) or memory <= 0:
-        raise ValueError("bloch_memory_mb must be positive and finite (MiB)")
-    per_element = params.get("orbitals_per_element")
-    if per_element is not None and (not isinstance(per_element, Mapping) or not all(
-            isinstance(v, int) and not isinstance(v, bool) and v > 0 for v in per_element.values())):
-        raise ValueError("model.params.orbitals_per_element must map element symbols to positive integers")
-    if kind == "abacus":
-        for name in ("overlap_file", "stru_file"):
-            if not params.get(name):
-                raise ValueError(f"model.params.{name} is required for model.kind='abacus' "
-                                 "(the S(R) file and the STRU of the same structure)")
-    if kind == "gpaw" and not isinstance(params.get("soc", True), bool):
-        raise ValueError("model.params.soc must be true or false")
 
 
 def _checkpoint_file_identity(path: str) -> dict[str, Any]:
@@ -1654,11 +1591,14 @@ def execute_runfile(
         out_dir_override if out_dir_override is not None else rf.output["dir"]
     )
     kind = str(rf.model["kind"])
-    if (kind in ("wannier", "paoflow", "openmx", "pyscf") or kind in ML_MODEL_KINDS) and uses_metric_executor(rf.model):
+    connector = CONNECTORS.get(kind)
+    # Every connector except SIESTA runs the clean/projection metric executor;
+    # SIESTA keeps its own dispatch below (disorder, projection, clean).
+    if connector is not None and kind != "siesta" and uses_metric_executor(rf.model):
         if rf.basis["name"] == "real" or rf.basis["disorder"]["W"] != 0:
             raise ValueError(f"model.kind={kind!r} with params.velocity_mode/spin runs in the "
                              "clean bloch or eigen basis")
-        if kind not in ("openmx", "pyscf") and str(rf.metric["policy"]) == "orthogonal":
+        if not connector.keep_metric_policy and str(rf.metric["policy"]) == "orthogonal":
             # S = 1: the exact Lowdin route of the metric executors is the orthogonal one.
             # A non-orthogonal machine-learning model takes the same exact route with its S.
             rf.metric.update(policy="nonorthogonal", route="lowdin", applier="exact")
@@ -1696,6 +1636,10 @@ def execute_runfile(
             raise FileNotFoundError(
                 f"Hamiltonian CSR file not found: {ham_path}"
             )
+        for op_name in rf.model.get("operators") or ():
+            op_path = os.path.join(model_dir, f"{label}.{op_name}.CSR")
+            if not os.path.isfile(op_path):
+                raise FileNotFoundError(f"Operator CSR file not found: {op_path}")
         if str(rf.metric["policy"]) != "orthogonal":
             s_path = os.path.join(model_dir, f"{label}.S.CSR")
             if not os.path.isfile(s_path):
@@ -1735,7 +1679,10 @@ def execute_runfile(
         parsed_w = parse_word(w_str)
         comp_preview = compile_word(
             parsed_w,
-            basis={"name": rf.basis["name"]},
+            basis={"name": rf.basis["name"], **(
+                {"operators": list(rf.model["operators"])}
+                if rf.model.get("operators") is not None else {}
+            )},
             params={
                 "expansion": rf.expansion,
                 "time": rf.time,
@@ -2221,8 +2168,9 @@ def execute_runfile(
         else:
             for op_n in discovered_ops:
                 op_p = os.path.join(model_dir, f"{label}.{op_n}.CSR")
-                if os.path.isfile(op_p):
-                    raw_csr_mats[op_n] = _core.ReadCsrText(op_p)
+                if not os.path.isfile(op_p):
+                    raise FileNotFoundError(f"Operator CSR file not found: {op_p}")
+                raw_csr_mats[op_n] = _core.ReadCsrText(op_p)
 
         if use_atom_block and spatial_receipt is not None:
             perm_path = os.path.join(out_dir, "permutation.npy")
@@ -2557,6 +2505,12 @@ def execute_runfile(
                             if not os.path.exists(top_p):
                                 shutil.copyfile(c_path, top_p)
                                 written_files.append(top_p)
+
+    if "state_block_rule" in rf.expansion:
+        resolved_dict["expansion"].update(rf.expansion)
+        with open(resolved_path, "w", encoding="utf-8") as fh:
+            json.dump(resolved_dict, fh, indent=2)
+            fh.write("\n")
 
     if not rf.output["legacy_names"] and curves_json_payload:
         cjson_path = os.path.join(out_dir, "curves.json")

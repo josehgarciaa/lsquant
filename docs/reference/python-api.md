@@ -27,8 +27,9 @@ module (`runtime.py`, called from `__init__.py:14` and `__init__.py:25`).
 
 | Variable | Effect | Source |
 |---|---|---|
-| `OMP_PROC_BIND` | Set to `spread` if not already set, only when the process is the `lsquant` command. A plain import leaves it unset, because binding pins the importing process to one core. | `runtime.py`, `configure_threads` |
-| `OMP_PLACES` | Set to `cores` if not already set, only when the process is the `lsquant` command. | `runtime.py`, `configure_threads` |
+| `LSQUANT_BIND_THREADS` | `1` makes the `lsquant` command bind its threads to cores, `0` forbids it. Unset, the command binds only when its CPU affinity is smaller than the machine (a CPU set from the batch system). | `runtime.py`, `binding_requested` |
+| `OMP_PROC_BIND` | Set to `spread` if not already set, only when the process is the `lsquant` command and binding applies (`LSQUANT_BIND_THREADS`). A plain import leaves it unset, because binding pins the importing process to one core. | `runtime.py`, `configure_threads` |
+| `OMP_PLACES` | Set to `cores` if not already set, under the same condition. | `runtime.py`, `configure_threads` |
 | `OMP_NUM_THREADS` | Set to the number of physical cores in the process CPU affinity if not already set. | `runtime.py`, `configure_threads` |
 | `LSQ_ENGINE_MEM` | Any value turns on the allocation report of the native rank-2 path, on stderr. Passed to `_core.ConfigureEngineDiagnostics`. | `runtime.py:44–49` |
 | `LSQ_ENGINE_TIMING` | Any value turns on the phase timings of the native rank-2 path, on stderr. Passed to `_core.ConfigureEngineDiagnostics`. | `runtime.py:44–49` |
@@ -108,14 +109,9 @@ A relative `output.dir` (or `out_dir_override`) is taken relative to the current
 working directory (`runfile.py:1465–1467`). Relative model paths are resolved
 as described in [Path resolution](run-file.md#path-resolution).
 
-> **Known limitation: operator names.** Before it runs each word,
-> `execute_runfile` compiles it with `basis={"name": ...}` only
-> (`runfile.py:1547`). The compiler then checks the operators against the
-> built-in list `DEFAULT_KNOWN_OPERATORS` (`words/compiler.py:28`, fallback at
-> `words/compiler.py:393–394`) and raises `ValueError("Unknown operator ...")`
-> (`words/compiler.py:405`). A custom name listed in `model.operators` passes
-> `RunFile.from_dict` and `inspect`, but fails here. Use the catalogue names
-> (`A`, `B`, `O`, `P`, `PX`, `PY`, `PZ`, `SX`, …) for your own operators.
+Custom operator names listed in `model.operators` are accepted by validation and
+execution. For CSR models, provide each corresponding `<label>.<OP>.CSR` file;
+a missing listed file raises `FileNotFoundError` naming that file.
 
 ### `RunFile`
 
