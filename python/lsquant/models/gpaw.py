@@ -449,8 +449,8 @@ def load_gpaw_model(path, *, soc=True, fermi_energy=None, tolerance=1e-10, dipol
     quadrature error: 1e-5 at order 48 for PdSe2). ``dipole_cache`` names an
     ``.npz`` that stores the result for the same export, cells and order.
     """
-    from .lcao import assemble_blocks, build_lcao_model
-    from .siesta import fold_opposite, opposite_pairs, spinor_lift
+    from .lcao import assemble_blocks, build_lcao_model, fold_opposite, opposite_pairs
+    from .siesta import spinor_lift
 
     data = read_gpaw_lcao(path)
     norb = data["orbitals_per_atom"].astype(int)

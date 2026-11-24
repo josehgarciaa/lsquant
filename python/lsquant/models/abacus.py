@@ -342,7 +342,8 @@ def load_abacus_model(hamiltonian_file, *, overlap_file, stru_file, orbital_dir=
 
 def _attach_connection(model, q_path):
     """Give ``model`` the midpoint connection built from ABACUS's r(R) file."""
-    from .siesta import fold_opposite, midpoint_connection, opposite_pairs, spinor_lift
+    from .lcao import fold_opposite, opposite_pairs
+    from .siesta import midpoint_connection, spinor_lift
 
     q_r, q = read_abacus_rr(q_path)
     width = model.num_wann

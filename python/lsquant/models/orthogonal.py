@@ -363,7 +363,7 @@ def write_paoflow_model(paoflow, path, *, sh_l=None, sh_j=None, locality_warning
                 for a, b, c in combos:
                     r_int.append([-a, -b, -c])
                     blocks.append(hr[:, :, i, j, l] / len(combos))
-    tau = (np.asarray(arrays["Dnm"])[:, 0, :] - np.asarray(arrays["Dnm"])[0, 0, :]) * bohr
+    tau = (np.asarray(arrays["Dnm"])[:, 0, :] - np.asarray(arrays["Dnm"])[0, 0, :]) * BOHR_ANGSTROM
     r_arr, blocks = np.array(r_int), np.array(blocks)
     size = np.abs(blocks).max(axis=(1, 2))
     reach = np.max(np.abs(r_arr) / np.maximum(np.array([n1, n2, n3]) // 2, 1), axis=1)

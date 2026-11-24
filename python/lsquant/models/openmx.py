@@ -158,8 +158,10 @@ def load_openmx_model(path, *, dipoles=False):
         shift = (tau_orb[None, None, :, :] + r_cart[:, None, None, :] - tau_orb[None, :, None, :]) / 2
         A_orb = D * BOHR - np.moveaxis(shift, -1, 0) * S[None]
         # Exact integrals give A(-R)^+ = A(R); OpenMX's grid integration meets
-        # it to about 1e-4 relative. Fold it and record the removed part.
-        A, folded["connection"] = fold_opposite(A_orb, minus, residual="mean")
+        # it to about 1e-4 relative. Fold it, record the removed part, then
+        # lift the connection to spinors.
+        sym, folded["connection"] = fold_opposite(A_orb, minus, residual="mean")
+        A = spinor_lift(sym)
     seed = seed_name_from_file(path)
     model = SiestaModel(uc, tau, r_int, H, S_spin, dipoles=A, seed_name=seed,
                         metadata=dict(source="openmx", file=os.path.abspath(path),
