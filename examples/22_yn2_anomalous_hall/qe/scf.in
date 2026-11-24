@@ -1,0 +1,23 @@
+&control
+  calculation="scf", prefix="y", outdir="./tmp", pseudo_dir="../pseudo"
+/
+&system
+  ibrav=0, nat=3, ntyp=2, ecutwfc=80, occupations="smearing", smearing="fd", degauss=0.000735,
+  noncolin=.true., lspinorb=.true., starting_magnetization(2)=0.5, nbnd=40 
+/
+&electrons
+  conv_thr=1e-10, mixing_beta=0.2, electron_maxstep=300 
+/
+ATOMIC_SPECIES
+Y 88.906 Y.upf
+N 14.007 N.upf
+CELL_PARAMETERS angstrom
+ 3.776 0.0 0.0
+ -1.888 3.270112 0.0
+ 0.0 0.0 24.0
+ATOMIC_POSITIONS angstrom
+Y 0.0 0.0 12.0
+N 0.0 2.180075 12.877398
+N 1.888 1.090037 11.122602
+K_POINTS automatic
+24 24 1 0 0 0

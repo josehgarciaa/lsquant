@@ -134,6 +134,16 @@ python examples/20_pdse2_spin_hall_routes/plot.py
 
 It writes `fig_routes.png` from the curves in `data/`.
 
+```bash
+python examples/20_pdse2_spin_hall_routes/plot_bands.py
+```
+
+It writes `fig_bands.png` from `data/bands_qe_openmx.npz`: the bands of the
+Quantum ESPRESSO + Wannier90 model and of the OpenMX model (H and S of the
+`.scfout`, read by LSQuant) on the path Γ–X–S–Y–Γ–S, and the Quantum ESPRESSO
+eigenvalues at the points of the 12 × 12 nscf mesh that lie on the path,
+each minus its own VBM.
+
 ## Runtime
 
 On an AMD EPYC 9374F:
@@ -162,7 +172,8 @@ We stopped the OpenMX run; the OpenMX curve of the figure comes from
 | `run_*.json` | LSQuant run files |
 | `wannier_route.py`, `openmx_exact.py` | exact curves on dense meshes |
 | `data/*.dat` | $\sigma^z_{xy}$ of each route against $E - E_F$ of its code, in $e^2/h$ (Pauli $\sigma_z$); `plot.py` shifts them to $E - E_\mathrm{VBM}$ |
-| `plot.py` | the figure |
+| `data/bands_qe_openmx.npz` | bands of Quantum ESPRESSO and OpenMX on the path, from the VBM |
+| `plot.py`, `plot_bands.py` | the figures |
 
 ## References
 

@@ -1,4 +1,4 @@
-"""SIESTA non-orthogonal spin Hall and DOS run-file executor.
+"""Run-file executor for DFT models: spin Hall, anomalous Hall and DOS.
 
 No material data or expected plateau is embedded here. The same loaded
 SIESTA matrices feed the Bloch engine, exact eigen reference, and NumPy
@@ -16,12 +16,15 @@ import numpy as np
 from .. import _core
 from ..bases import BlochMetricBasis
 from ..models.orthogonal import load_runfile_model
-from ..reconstruct import dos_curve, shc
+from ..reconstruct import dos_curve, kubo_bastin_sea, kubo_bastin_surf, shc
 from ..words import compile as compile_word, parse as parse_word
 from ..words.grammar import OperatorSlot
 from ..oracle.spin_hall import UNITS, spin_berry_curvature, sigma_xy, spin_chern
 
 SHC_WORD = "Tr[JXSZ delta(E-H) VY dG-(E)/dE]"
+# Anomalous (charge) Hall: the same Bastin word with VX in place of JXSZ.
+AHC_WORD = "Tr[VX delta(E-H) VY dG-(E)/dE]"
+AHC_UNITS = "e^2/h"
 DOS_WORD = "Tr[delta(E-H)]"
 
 
@@ -176,12 +179,16 @@ def execute_siesta_runfile(rf, out_dir):
         )
     if rf.expansion["trace"] not in ("random", "exact"):
         raise ValueError(f"Expected trace in ('random', 'exact'), got {rf.expansion['trace']!r}")
-    supported = {parse_word(SHC_WORD).canonical(), parse_word(DOS_WORD).canonical()}
-    if any(parse_word(word).canonical() not in supported for word in rf.words):
+    canonical = {name: parse_word(word).canonical()
+                 for name, word in (("shc", SHC_WORD), ("ahc", AHC_WORD), ("dos", DOS_WORD))}
+    if any(parse_word(word).canonical() not in canonical.values() for word in rf.words):
         raise ValueError(
-            f"Expected SHC ({SHC_WORD!r}) or identity DOS ({DOS_WORD!r}) word, got {rf.words!r}"
+            f"Expected SHC ({SHC_WORD!r}), anomalous Hall ({AHC_WORD!r}) or identity DOS "
+            f"({DOS_WORD!r}) word, got {rf.words!r}"
         )
-    allowed_formulas = {"shc", "dos", "dos_curve"}
+    # "shc" and "ahc" both name the full Bastin curve in e^2/h; "sea" and "surf"
+    # add its two parts (reconstruct.kubo_bastin_sea/surf) with the same normalisation.
+    allowed_formulas = {"shc", "ahc", "sea", "surf", "dos", "dos_curve"}
     if rf.reconstruction["formulas"] and not set(rf.reconstruction["formulas"]) <= allowed_formulas:
         raise ValueError(
             f"Expected reconstruction.formulas subset of {sorted(allowed_formulas)}, "
@@ -261,8 +268,7 @@ def execute_siesta_runfile(rf, out_dir):
     for word, production_plan, reference_plan in prepared:
         with timing.phase("moments", word=word):
             mu, compiled = compute_moments(basis, word, _prepared=production_plan)
-        if mu.rank == 2 and parse_word(word).canonical() != parse_word(SHC_WORD).canonical():
-            raise ValueError("the shc formula requires the physical JXSZ/VY Bastin word")
+        spin_word = parse_word(word).canonical() == canonical["shc"]
         prefix = compiled.reconstruction.legacy_moment_prefix
         size = f"{rf.expansion['moments']}" + (f"x{rf.expansion['moments']}" if mu.rank == 2 else "")
         stem = f"{prefix}{model.seed_name}KPM_M{size}_state{mu.state_label}"
@@ -279,9 +285,21 @@ def execute_siesta_runfile(rf, out_dir):
                              if rf.reconstruction["legacy_text_round_trip"] else mu)
         with timing.phase("reconstruction", word=word):
             if mu.rank == 2:
+                # sigma = 2 pi KuboBastin/(N_k A) for either current operator.
                 energy, values = shc(reconstruction_mu, broadening, bloch.num_cells, area,
                                      backend=rf.reconstruction.get("bastin_backend", "tables"))
-                curve_name, header = "shc", f"energy_eV sigma_z_xy [{UNITS}]"
+                if spin_word:
+                    curve_name, header = "shc", f"energy_eV sigma_z_xy [{UNITS}]"
+                else:
+                    curve_name, header = "ahc", f"energy_eV sigma_xy [{AHC_UNITS}]"
+                scale = 2*np.pi/(bloch.num_cells*area)
+                for part, function in (("sea", kubo_bastin_sea), ("surf", kubo_bastin_surf)):
+                    if part in rf.reconstruction["formulas"]:
+                        part_energy, part_values = function(reconstruction_mu, broadening)
+                        part_path = out/f"{curve_name}_{part}.dat"
+                        np.savetxt(part_path, np.column_stack((part_energy, scale*np.real(part_values))),
+                                   fmt="%.17g", header=header.replace("sigma", f"{part} part of sigma", 1))
+                        curve_files.append(str(part_path))
             else:
                 energy, values = dos_curve(reconstruction_mu, broadening)
                 values = values/bloch.num_cells
@@ -319,7 +337,24 @@ def execute_siesta_runfile(rf, out_dir):
                                 max_moment_difference=float(np.max(np.abs(mu.data-reference.data))),
                                 max_curve_difference=float(np.max(np.abs(values-vr)))))
     _write_json(out/"eigen_comparison.json", comparisons)
-    if params.get("oracle", False):
+    hall_words = [parse_word(word).canonical() for word in rf.words
+                  if parse_word(word).canonical() != canonical["dos"]]
+    spin_oracle = not hall_words or canonical["shc"] in hall_words
+    if params.get("oracle", False) and not spin_oracle:
+        # Exact anomalous Hall: the same occupied-band sum with VX in place of JXSZ.
+        with timing.phase("oracle"):
+            curvature, degeneracy = spin_berry_curvature(
+                bloch.physical_eigenvalues, bloch.physical_eigenvectors,
+                bloch.operator_blocks("VX"), bloch.operator_blocks("VY"),
+                degeneracy_tolerance=degeneracy_tolerance,
+                hamiltonian=bloch.hk_array, overlap=bloch.sk_array, return_diagnostics=True)
+            energies = oracle_energies(rf.reconstruction, bloch.physical_eigenvalues, broadening)
+            curve = sigma_xy(bloch.physical_eigenvalues, curvature, energies, area, broadening=broadening/1000)
+            _write_json(out/"exact_ahc.json", dict(energies=energies.tolist(), values=curve.tolist(),
+                                                  units=AHC_UNITS, degeneracy=degeneracy,
+                                                  trace="exact occupied-band sum in eigenbasis",
+                                                  gaussian_standard_deviation_eV=broadening/1000))
+    elif params.get("oracle", False):
         with timing.phase("oracle"):
             curvature, degeneracy = spin_berry_curvature(
                 bloch.physical_eigenvalues, bloch.physical_eigenvectors,

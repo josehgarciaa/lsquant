@@ -1,0 +1,35 @@
+{
+  "model": {
+    "kind": "wannier",
+    "dir": "examples/22_yn2_anomalous_hall/w90",
+    "seed": "y",
+    "params": {
+      "velocity_mode": "covariant",
+      "fermi_energy": -3.504
+    }
+  },
+  "basis": {
+    "name": "eigen",
+    "supercell": [300, 300, 1]
+  },
+  "metric": {
+    "policy": "orthogonal"
+  },
+  "word": "Tr[VX delta(E-H) VY dG-(E)/dE]",
+  "expansion": {
+    "moments": 2048,
+    "window": "eigen",
+    "trace": "exact",
+    "seed": 12345
+  },
+  "reconstruction": {
+    "kernel": "jackson",
+    "formulas": ["ahc", "sea", "surf"],
+    "broadening_meV": 4.0
+  },
+  "output": {
+    "legacy_layout": false,
+    "write_chebmom": true,
+    "dir": "out/yn2_ahc"
+  }
+}

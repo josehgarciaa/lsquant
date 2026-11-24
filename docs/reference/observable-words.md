@@ -175,6 +175,7 @@ example `<label>.A.CSR` for a layer projector, as
 | Longitudinal conductivity σ_xx | `Tr[VX delta(E-H) VX delta(E-H)]` | `greenwood` |
 | Hall conductivity σ_xy | `Tr[VX delta(E-H) VY dG-(E)/dE]` | `bastin` |
 | Fermi-sea term of σ_xy | `Tr[sea[VX delta(E-H) VY dG-(E)/dE]]` | `sea` |
+| Anomalous Hall conductivity σ_xy of a DFT model, in e²/h | `Tr[VX delta(E-H) VY dG-(E)/dE]` | `ahc` |
 | Spin Hall conductivity σ^z_xy | `Tr[JXSZ delta(E-H) VY dG-(E)/dE]` | `shc` |
 | Mean-square displacement along x | `Tr[[X,U(t)]^+ delta(E-H) [X,U(t)]]` | `time_correlation` |
 | Spin precession of a projected state | `Tr[P:PX U(t)^+ SX U(t) delta(E-H) P:PX]` | `row_m0`, `time_correlation` |

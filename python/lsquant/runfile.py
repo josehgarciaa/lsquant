@@ -1274,6 +1274,12 @@ def _reconstruct_single_formula(
             raise ValueError("shc reconstruction requires num_cells and cell_area in the resolved run file")
         energies, values = shc(mu, broadening_meV, num_cells, cell_area)
         return [("SpinHall_", "JACKSON.dat", energies, values)]
+    if f == "ahc":
+        # Anomalous Hall: the shc normalisation applied to the VX/VY Bastin word, in e^2/h.
+        if num_cells is None or cell_area is None:
+            raise ValueError("ahc reconstruction requires num_cells and cell_area in the resolved run file")
+        energies, values = shc(mu, broadening_meV, num_cells, cell_area)
+        return [("AnomalousHall_", "JACKSON.dat", energies, values)]
     if f in ("dos", "dos_curve"):
         energies, values = dos_curve(mu, broadening_meV)
         return [("mean", "JACKSON.dat", energies, values)]
@@ -2577,7 +2583,7 @@ def reconstruct_target(
 
     shc_metadata = {}
     resolved_path = os.path.join(os.path.dirname(abs_target), "run.resolved.json")
-    if formula == "shc" and os.path.isfile(resolved_path):
+    if formula in ("shc", "ahc") and os.path.isfile(resolved_path):
         with open(resolved_path, encoding="utf-8") as fh:
             reconstruction = json.load(fh).get("reconstruction", {})
         shc_metadata = {key: reconstruction.get(key) for key in ("num_cells", "cell_area")}
@@ -2589,6 +2595,9 @@ def reconstruct_target(
         if formula == "shc":
             np.savetxt(c_path, np.column_stack((x_arr, y_arr)), fmt="%.17g",
                        header="energy_eV sigma_z_xy [e^2/h, sigma_z Pauli]")
+        elif formula == "ahc":
+            np.savetxt(c_path, np.column_stack((x_arr, y_arr)), fmt="%.17g",
+                       header="energy_eV sigma_xy [e^2/h]")
         else:
             _core.WriteCurveText(c_path, x_arr, y_arr)
         written_curves.append(c_path)
