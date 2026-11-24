@@ -118,3 +118,13 @@ number of the gap plateau, $C = +1.017$.
   Phys. Rev. Lett. **61**, 2015 (1988).
 - Z. Fan, J. H. García, A. W. Cummings et al., *Linear scaling quantum transport
   methodologies*, Phys. Rep. **893**, 1–123 (2021) ([arXiv:1811.07387](https://arxiv.org/abs/1811.07387)).
+
+## Check
+
+Check the saved run output without generating figures. The script prints each
+expectation and tolerance, then CHECK PASS or CHECK FAIL, and exits with status
+0 or 1 respectively:
+
+```bash
+python3 examples/03_haldane_hall/check.py /tmp/tut03
+```

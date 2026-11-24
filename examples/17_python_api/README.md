@@ -123,3 +123,13 @@ Kubo–Greenwood reconstruction keeps $M - 1$ points.
 
 On a shared 96-core node with one OpenMP thread, both levels together took
 3 s.
+
+## Check
+
+Check the saved run output without generating figures. The script prints each
+expectation and tolerance, then CHECK PASS or CHECK FAIL, and exits with status
+0 or 1 respectively:
+
+```bash
+python3 examples/17_python_api/check.py /tmp/ex17/level1
+```

@@ -189,3 +189,16 @@ $64 \times 64$ run with 4 random vectors took 28 s.
 - J. H. García, L. Covaci and T. G. Rappoport, *Real-space calculation of the
   conductivity tensor for disordered topological matter*, Phys. Rev. Lett. **114**,
   116602 (2015).
+
+## Check
+
+After the run, spin Hall reconstruction and oracle calculation above, check all
+five saved curves without generating figures. The script states each tolerance,
+prints CHECK PASS or CHECK FAIL and exits with status 0 or 1 respectively:
+
+```bash
+python3 examples/19_observable_words/check.py examples/19_observable_words/out --oracle examples/19_observable_words/operators/km_L16.oracle.json
+```
+
+An additional 25 meV oracle can be supplied with `--oracle-25` to check the
+conductivity-integral bracket as well.

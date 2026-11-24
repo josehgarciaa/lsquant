@@ -153,3 +153,13 @@ topological band, where the same Chebyshev moments give a quantized Hall plateau
 
 - Localization-length anomalies of the 1D Anderson model (weak-disorder Born
   result and the band-centre and band-edge anomalies), arXiv:cond-mat/9801226.
+
+## Check
+
+Check the saved run output without generating figures. The script prints each
+expectation and tolerance, then CHECK PASS or CHECK FAIL, and exits with status
+0 or 1 respectively:
+
+```bash
+python3 examples/02_localization_1d_chain/check.py /tmp/tut02
+```

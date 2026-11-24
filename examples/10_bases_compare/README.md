@@ -154,3 +154,13 @@ CHECK PASS
 ## Runtime
 
 The run times are in [the result](#the-result). The check took about 1 s.
+
+## Check
+
+Check the saved run output without generating figures. The script prints each
+expectation and tolerance, then CHECK PASS or CHECK FAIL, and exits with status
+0 or 1 respectively:
+
+```bash
+python3 examples/10_bases_compare/check.py /tmp/ex10
+```

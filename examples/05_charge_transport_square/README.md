@@ -168,3 +168,13 @@ the electron a spin, and asks how disorder relaxes it.
 
 - A. Weisse, G. Wellein, A. Alvermann, H. Fehske, *The kernel polynomial method*,
   Rev. Mod. Phys. **78**, 275 (2006).
+
+## Check
+
+Check the saved run output without generating figures. The script prints each
+expectation and tolerance, then CHECK PASS or CHECK FAIL, and exits with status
+0 or 1 respectively:
+
+```bash
+python3 examples/05_charge_transport_square/check.py /tmp/tut05
+```
