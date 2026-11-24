@@ -133,10 +133,10 @@ python -m lsquant words
 python -m lsquant words describe "Tr[VX delta(E-H) VY dG-(E)/dE]"
 ```
 
-> **Known limitation.** With `model.kind` set to `csr` or `wannier`, the
-> formula `shc` fails at the end of `run`. We run with `bastin` and then apply
-> `shc` with `reconstruct`, as described in the
-> [run-file reference](../reference/run-file.md#reconstruction).
+With an ordinary `csr` or `wannier` model, set `reconstruction.num_cells`
+and `reconstruction.cell_area` when requesting `shc`. Validation requires
+both keys before moments are computed; the run writes the curve directly.
+See the [run-file reference](../reference/run-file.md#reconstruction).
 
 ## The representation: supercell or k-mesh
 

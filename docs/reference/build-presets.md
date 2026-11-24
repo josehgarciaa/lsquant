@@ -30,7 +30,9 @@ is `90` (Hopper, for example H100 or H200). Only 90 is tested; other values are
 passed to the CUDA compiler unchanged. For another GPU, give its compute capability
 (for example `86`), a list such as `"80;86;90"`, or `native` for the GPU of the build
 machine.
-`CMAKE_CUDA_ARCHITECTURES` does not change the kernel; use the variable above.
+On a fresh configure, `CMAKE_CUDA_ARCHITECTURES` supplies the project default
+when set (for example `-DCMAKE_CUDA_ARCHITECTURES=86`). An explicit or cached
+`LSQUANT_CUDA_ARCHITECTURES` takes precedence; otherwise the fallback is `90`.
 
 A `native` build produces numbers that differ from the `golden` build in the
 last digits, so check a `native` build against the golden files with

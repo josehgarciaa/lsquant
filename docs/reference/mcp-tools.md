@@ -15,7 +15,7 @@ python -m lsquant.mcp_server [--root DIR]
 
 | Option | Meaning |
 |---|---|
-| `--root DIR` | Root directory. The server reads and writes only inside it, except for `model.hr_file`, `model.positions` and `model.atom_map`, which it does not check; see [Root directory](#root-directory). |
+| `--root DIR` | Root directory for explicit input and output paths; see [Root directory](#root-directory). |
 
 Requirements:
 
@@ -25,14 +25,15 @@ Requirements:
 
 ## Root directory
 
-The server checks run files, `model.dir`, `model.csr_dir`, generator scripts
-and output directories. It refuses any of them that resolves outside the root
-directory. It resolves symbolic links before the check, and it takes a relative
-path relative to the root. It does not check `model.hr_file`,
-`model.positions` or `model.atom_map`, so a run file can read those files from
-outside the root (`python/lsquant/mcp_server.py:108–118`). See the
-[known limitation](../how-to/mcp-server.md#work-with-the-assistant) in
-Connect an AI assistant.
+The server checks run-file paths, all explicit model input paths, connector
+path parameters, generator scripts and output directories after resolving
+symbolic links. Escapes are refused before dispatch, with the offending key
+and supplied value in the error, without revealing resolved outside paths.
+Inspection and reconstruction targets receive the same check; `status` takes
+only a run identifier. See [Path resolution](run-file.md#path-resolution) for
+input fallback and connector-specific bases. The default `output.dir: "."`
+is allowed and writes at the root. These checks do not sandbox connector code
+or protect against concurrent filesystem changes.
 
 The root is chosen in this order:
 

@@ -67,9 +67,12 @@ import xml.etree.ElementTree as ET
 
 import numpy as np
 
-#: Rydberg in eV and Bohr in Angstrom, as in ThreeBodyTB's GlobalUnits.jl.
-RYDBERG_EV = 13.6056980659
-BOHR_ANGSTROM = 0.529177210903
+#: Rydberg in eV and Bohr in Angstrom, as in ThreeBodyTB's GlobalUnits.jl
+#: (kept in lsquant.models.units under their own names; the Rydberg differs
+#: from the ABACUS value and from HARTREE_EV / 2 on purpose).
+from .units import BOHR_ANGSTROM
+from .units import RYDBERG_EV_THREEBODYTB as RYDBERG_EV
+from .siesta import spinor_lift
 _SHELL = {"s": 1, "p": 3, "d": 5, "f": 7}
 #: Orbital order inside a shell, from ``orbital_index`` in ThreeBodyTB's Crystal.jl.
 _LABELS = {"s": ["s"], "p": ["pz", "px", "py"], "d": ["dz2", "dxz", "dyz", "dx2_y2", "dxy"],
@@ -205,7 +208,7 @@ def load_threebodytb_model(path, *, fermi_energy=None, orbitals_per_element=None
         up, dn = np.diag([1.0, 0.0]), np.diag([0.0, 1.0])
         hamiltonian = np.array([np.kron(hu, up) + np.kron(hd, dn) for hu, hd in zip(*hamiltonian)])
         if overlap is not None:
-            overlap = np.array([np.kron(s, np.eye(2)) for s in overlap])
+            overlap = spinor_lift(overlap)
     else:
         hamiltonian = hamiltonian[0]
     uc = d["lattice"] * BOHR_ANGSTROM

@@ -24,11 +24,28 @@ Conventions of this module:
 """
 from __future__ import annotations
 
+import os
+
 import numpy as np
 
 from .bloch import bloch_sum
+from .siesta import spinor_lift
 
 _SPIN = (0, 1)
+
+#: Alias of :func:`~lsquant.models.siesta.spinor_lift` under its historical
+#: name (lift a spinless overlap stack to interleaved spinors).
+spinor_overlap = spinor_lift
+
+
+def seed_name_from_file(path):
+    """File stem used as ``seed_name``: the base name without its extension.
+
+    Most readers name the model outputs after the input file. ABACUS keeps
+    the extension, ThreeBodyTB cuts at the first dot and GPAW uses a fixed
+    name; those are the codes' own conventions and stay at their call sites.
+    """
+    return os.path.splitext(os.path.basename(str(path)))[0]
 
 
 def orbital_slices(norb, spinful):
@@ -75,11 +92,6 @@ def assemble_blocks(pairs, norb, *, spinful, name="H"):
     return np.array(list(index), int), np.array(mats)
 
 
-def spinor_overlap(overlap):
-    """Lift a spinless ``S(R)`` to interleaved spinors, ``S tensor I_2``."""
-    return np.array([np.kron(s, np.eye(2)) for s in overlap])
-
-
 def hermitian_pairs(r_int, mats):
     """Return ``(r_int, M, residual)`` with ``M(-R) = M(R)^+`` for every R.
 
@@ -102,10 +114,59 @@ def hermitian_pairs(r_int, mats):
             m_out.append(mats[lookup[r]].conj().T)
     m_out = np.array(m_out)
     partner = np.array([lookup[tuple(-x for x in r)] for r in r_out])
-    mirrored = m_out[partner].conj().swapaxes(1, 2)
-    scale = max(float(np.abs(m_out).max()), 1e-300)
-    residual = float(np.abs(m_out - mirrored).max()) / (2 * scale)
-    return np.array(r_out, int), 0.5 * (m_out + mirrored), residual
+    symmetrised, residual = fold_opposite(m_out, partner, residual="mean2")
+    return np.array(r_out, int), symmetrised, residual
+
+
+def opposite_pairs(r_int):
+    """Return ``partner`` with ``r_int[partner[n]] = -r_int[n]``.
+
+    Real-space R lists of the readers are closed under ``R -> -R`` (opposite
+    images are stored or generated in pairs); a missing opposite raises
+    ``ValueError``.
+    """
+    rows = [tuple(int(x) for x in r) for r in np.asarray(r_int)]
+    lookup = {r: n for n, r in enumerate(rows)}
+    partner = np.empty(len(rows), int)
+    for n, r in enumerate(rows):
+        neg = (-r[0], -r[1], -r[2])
+        if neg not in lookup:
+            raise ValueError(f"the R list is not closed under R -> -R (no {neg} for {r})")
+        partner[n] = lookup[neg]
+    return partner
+
+
+def fold_opposite(mats, partner, *, residual="mean"):
+    """Fold ``mats`` ``(..., N_R, n, n)`` to ``(M(R) + M(-R)^+)/2`` and measure the removed part.
+
+    ``partner`` maps each cell to the index of its opposite
+    (:func:`opposite_pairs`). ``residual`` selects the normalisation; every
+    reader keeps the exact number it writes to ``basis.json`` today:
+
+    - ``"mean"``: ``max|M - fold| / max|M|`` (OpenMX, ABACUS);
+    - ``"mean2"``: ``max|M - M(-R)^+| / (2 max|M|)`` (:func:`hermitian_pairs`
+      of the machine-learning readers);
+    - ``"absolute"``: ``max|M - M(-R)^+|`` (SIESTA's dipole certificate and
+      GPAW's annotation; the GPAW connection is measured but NOT folded —
+      audit item B7, fixed by a later PR).
+
+    Pitfall: the three residuals are the same quantity up to the rounding of
+    the intermediate mean, so they stay separate expressions on purpose; do
+    not merge them when touching this helper.
+    """
+    mirrored = mats[..., partner, :, :].conj().swapaxes(-1, -2)
+    fold = 0.5 * (mats + mirrored)
+    if residual == "absolute":
+        value = float(np.abs(mats - mirrored).max())
+    else:
+        scale = max(float(np.abs(mats).max()), 1e-300)
+        if residual == "mean":
+            value = float(np.abs(mats - fold).max()) / scale
+        elif residual == "mean2":
+            value = float(np.abs(mats - mirrored).max()) / (2 * scale)
+        else:
+            raise ValueError(f"unknown residual normalisation {residual!r}")
+    return fold, value
 
 
 def check_spin_scalar(r_int, overlap, name="S"):

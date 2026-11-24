@@ -268,7 +268,7 @@ rank-1 words, each one overwrites the file.
 
 | File | Written when | Content |
 |---|---|---|
-| `checkpoint_<hash>.lsqckpt` | `expansion.checkpoint = true` | Trace-state checkpoint; `<hash>` is the first 12 hex digits of the SHA-256 of the engine word. Deleted when the word finishes. |
+| `checkpoint_v2_<hash>.lsqckpt` | `expansion.checkpoint = true` | Trace-state checkpoint; `<hash>` is the full SHA-256 calculation fingerprint (settings and model input contents). Legacy and different fingerprints are reported and ignored. Deleted when the word finishes. |
 | `spatial_receipt.json` | `numerics.operator = "atom_block"` | Source of the atom blocks, domain size, spatial ordering, block counts and construction times. |
 | `permutation.npy` | `numerics.operator = "atom_block"` | Orbital permutation of the spatial ordering (NumPy array). |
 | `captured/NNNN_<name>` | `output.capture_tutorial = true` | Numbered copies of the curve files and of `projected_evolution` moment files, for the tutorial golden check. |
