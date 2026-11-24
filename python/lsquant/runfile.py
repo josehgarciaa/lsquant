@@ -22,7 +22,7 @@ from .bases import (
     validate_w2s_csr_dir,
 )
 from .models.wannier import load_wannier_model
-from .moments import run_plan, window_from_gershgorin
+from .moments import run_plan, velocity_window, window_from_gershgorin
 from .reconstruct import (
     dos_curve,
     shc,
@@ -2199,7 +2199,8 @@ def execute_runfile(
 
         for w_str, w_formulas in words_to_run:
             parsed_w = parse_word(w_str)
-            # For MSD, the velocity operator passed to the engine is RescaledOperator(V, window)
+            # The MSD commutator needs V/a without the Hamiltonian shift.
+            vel_window = velocity_window(window)
             concrete_ops = {}
             atom_op_refs: list[Any] = []
             if use_atom_block:
@@ -2215,7 +2216,7 @@ def execute_runfile(
                         for s in parsed_w.slots
                     )
                     if is_velocity:
-                        res_op = _core.RescaledOperator(op_core, window)
+                        res_op = _core.RescaledOperator(op_core, vel_window)
                         atom_op_refs.append(res_op)
                         concrete_ops[op_n] = res_op
                     else:
@@ -2228,7 +2229,7 @@ def execute_runfile(
                 if use_ginkgo:
                     gko_mat = (
                         mat.rescaled(
-                            complex(window.scale, 0.0), complex(window.shift, 0.0)
+                            complex(vel_window.scale, 0.0), complex(vel_window.shift, 0.0)
                         )
                         if is_velocity
                         else mat
@@ -2237,7 +2238,7 @@ def execute_runfile(
                         gko_mat, ginkgo_executor, ginkgo_format
                     )
                 elif is_velocity:
-                    concrete_ops[op_n] = _core.RescaledOperator(mat, window)
+                    concrete_ops[op_n] = _core.RescaledOperator(mat, vel_window)
                 else:
                     concrete_ops[op_n] = _core.SparseMatrixOperator(mat)
             concrete_ops["1"] = _core.IdentityOperator(dim)

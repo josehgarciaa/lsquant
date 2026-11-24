@@ -20,7 +20,7 @@ from collections.abc import Sequence
 from types import ModuleType
 
 from .. import _core
-from ..moments import run_plan
+from ..moments import run_plan, velocity_window
 from ..reconstruct import time_correlation_curve
 from ..words import compile as compile_word
 
@@ -94,7 +94,7 @@ def _run_one_chain(
 
     ham = _core.ReadCsrText(os.path.join(op_dir, f"{label}.HAM.CSR"))
     vx_mat = _core.ReadCsrText(os.path.join(op_dir, f"{label}.VX.CSR"))
-    vx_op = _core.RescaledOperator(vx_mat, window)
+    vx_op = _core.RescaledOperator(vx_mat, velocity_window(window))
     states = _core.RandomPhaseStates(n_sites, int(num_states), int(kpm_seed))
 
     compiled = compile_word(

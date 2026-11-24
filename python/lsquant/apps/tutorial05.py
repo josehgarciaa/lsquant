@@ -20,7 +20,7 @@ from collections.abc import Sequence
 from types import ModuleType
 
 from .. import _core
-from ..moments import run_plan
+from ..moments import run_plan, velocity_window
 from ..reconstruct import dos_curve, time_correlation_curve
 from ..words import compile as compile_word
 
@@ -123,7 +123,7 @@ def run_tutorial05(
 
             ham = _core.ReadCsrText(os.path.join(op_dir, f"{label}.HAM.CSR"))
             vx_mat = _core.ReadCsrText(os.path.join(op_dir, f"{label}.VX.CSR"))
-            vx_op = _core.RescaledOperator(vx_mat, win)
+            vx_op = _core.RescaledOperator(vx_mat, velocity_window(win))
             dim = ham.dimension
 
             for w_str in words:

@@ -67,13 +67,13 @@ def main(argv=None):
     rows, cols, h, v = chain(a.N)
     ham = _core.SparseMatrix.from_csr(a.N, rows, cols, h)
     vel = _core.SparseMatrix.from_csr(a.N, rows, cols, v)
-    window = _core.SpectralWindow(-2.2, 2.2)          # centred on 0: required by msd_plan (see docs)
+    window = _core.SpectralWindow(-2.2, 2.2)
     dt = lsq.time_step_from_tmax(a.steps, a.tmax)
     coeffs, phase = lsq.time_evolution_series(window, dt)
 
     plan = lsq.msd_plan(a.moments, a.steps, a.states, coeffs, velocity_index=0, phase=phase)
     mu_msd = lsq.run_plan(plan, ham, window, _core.RandomPhaseStates(a.N, a.states, a.seed),
-                          operators=[_core.RescaledOperator(vel, window)], dt=dt)
+                          operators=[_core.RescaledOperator(vel, lsq.velocity_window(window))], dt=dt)
     mu_dos = lsq.run_plan(lsq.dos_plan(a.moments, a.states, word="1 delta"), ham, window,
                           _core.RandomPhaseStates(a.N, a.states, a.seed))
     e_grid, n_rho = lsq.dos_curve(mu_dos, a.eta)                    # N * rho(E)

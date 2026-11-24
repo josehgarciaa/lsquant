@@ -524,6 +524,12 @@ parentheses.
 | `projected_evolution` | `Tr[P U(t)^+ SX U(t) delta(E-H) P]` | `row_m0` (`row0`), `time_correlation` (`time_correlation_curve`) | `row_m0` |
 | `time_correlation` | `Tr[A delta(E-H) U(t)^+ B U(t)]` | `time_correlation` (`time_correlation_curve`) | `time_correlation` |
 
+MSD words accept centred and off-centre enclosing spectral windows. Supply the
+physical velocity `V = i[H, X]` in the operator file; the executor scales it by
+`1/a`, with `a = (upper - lower)/2`, without adding an identity shift. The
+Hamiltonian retains the requested window. Direct Python callers should use
+`RescaledOperator(V, velocity_window(window))`; see [time evolution](../time-evolution.md).
+
 With several words, LSQuant applies each formula to every word whose shape
 allows it. Each formula must match at least one word; otherwise the validator
 stops with
