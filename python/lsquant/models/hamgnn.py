@@ -270,12 +270,13 @@ def _blocks(entries, cells, atom_i, atom_j, sizes):
         raise ValueError("the export file has more entries than its blocks")
 
 
-def load_hamgnn_model(path, *, fermi_energy=0.0):
+def load_hamgnn_model(path, *, fermi_energy=None):
     """Read a file of :func:`write_hamgnn_model` as an LSQuant model.
 
     Energies become eV and lengths Angstrom; ``fermi_energy`` (eV, on the
-    scale of the DFT code that HamGNN learned) is removed as
-    ``H - E_F S``. The model is non-orthogonal
+    scale of the DFT code that HamGNN learned) selects the energy origin and
+    is removed as ``H - E_F S``; the files carry none, so the default is 0.0.
+    The model is non-orthogonal
     (:class:`~lsquant.models.siesta.SiestaModel`), or orthogonal when the
     file has no overlap; with collinear spin or spin-orbit coupling it is
     spinful, with interleaved spinors. The file gives no velocity and no spin
@@ -305,15 +306,20 @@ def load_hamgnn_model(path, *, fermi_energy=0.0):
     if "overlap" in data:
         s_r_int, overlap = assemble_blocks(_blocks(data["overlap"], cells, atom_i, atom_j, norb), norb,
                                            spinful=False, name="S")
+    if fermi_energy is None:
+        origin, source = 0.0, "none"
+    else:
+        origin, source = float(fermi_energy), "run file"
     meta = dict(source="hamgnn", file=path, hamiltonian_source=str(data["source"]), spin=spin,
                 atomic_numbers=[int(z) for z in data["atomic_numbers"]], nao_max=int(data["nao_max"]),
                 dft_code=str(data.get("dft_code", "unknown")),
                 orbital_l=[int(x) for x in data.get("orbital_l", [])],
-                orbital_positions="atom-centred: every orbital on its atom")
+                orbital_positions="atom-centred: every orbital on its atom",
+                fermi_energy_source=source)
     return build_lcao_model(data["lattice"] * BOHR_ANGSTROM, data["positions"] * BOHR_ANGSTROM, norb,
                             r_int, hamiltonian, overlap, spinful=spinful,
                             seed_name=seed_name_from_file(path), metadata=meta,
-                            fermi_energy=float(fermi_energy), overlap_r_int=s_r_int)
+                            fermi_energy=origin, overlap_r_int=s_r_int)
 
 
 def main(argv=None):

@@ -85,8 +85,12 @@ def _pairs(path):
             yield parts[2:], parts[0], parts[1], np.asarray(group[key][()])
 
 
-def load_deeptb_model(directory, *, fermi_energy=0.0):
-    """Read a DeePTB export directory (see the module docstring) as an LSQuant model."""
+def load_deeptb_model(directory, *, fermi_energy=None):
+    """Read a DeePTB export directory (see the module docstring) as an LSQuant model.
+
+    ``fermi_energy`` (eV) selects the energy origin; the files carry none, so
+    the default is 0.0.
+    """
     root = Path(directory).expanduser().resolve()
     cell, positions, symbols, counts, spinful = _read_structure(root)
     norb = np.array([counts[s] for s in symbols], int)
@@ -97,7 +101,12 @@ def load_deeptb_model(directory, *, fermi_energy=0.0):
         raise ValueError("structure.json marks a spinful (spin-orbit) DeePTB model, but DeePTB exports "
                          "only its spinless blocks; the spin-orbit term is not in the files")
     r_int, hamiltonian = assemble_blocks(_pairs(h_path), norb, spinful=False, name="H")
-    meta = dict(source="deeptb", directory=str(root), hamiltonian_file=str(h_path), elements=symbols)
+    if fermi_energy is None:
+        origin, source = 0.0, "none"
+    else:
+        origin, source = float(fermi_energy), "run file"
+    meta = dict(source="deeptb", directory=str(root), hamiltonian_file=str(h_path), elements=symbols,
+                fermi_energy_source=source)
     overlap = s_r_int = None
     s_path = root / "predicted_overlaps.h5"
     if s_path.is_file():
@@ -105,4 +114,4 @@ def load_deeptb_model(directory, *, fermi_energy=0.0):
         meta["overlap_file"] = str(s_path)
     return build_lcao_model(cell, positions, norb, r_int, hamiltonian, overlap, spinful=False,
                             seed_name=os.path.basename(str(root)), metadata=meta,
-                            fermi_energy=float(fermi_energy), overlap_r_int=s_r_int)
+                            fermi_energy=origin, overlap_r_int=s_r_int)
