@@ -108,14 +108,9 @@ A relative `output.dir` (or `out_dir_override`) is taken relative to the current
 working directory (`runfile.py:1465–1467`). Relative model paths are resolved
 as described in [Path resolution](run-file.md#path-resolution).
 
-> **Known limitation: operator names.** Before it runs each word,
-> `execute_runfile` compiles it with `basis={"name": ...}` only
-> (`runfile.py:1547`). The compiler then checks the operators against the
-> built-in list `DEFAULT_KNOWN_OPERATORS` (`words/compiler.py:28`, fallback at
-> `words/compiler.py:393–394`) and raises `ValueError("Unknown operator ...")`
-> (`words/compiler.py:405`). A custom name listed in `model.operators` passes
-> `RunFile.from_dict` and `inspect`, but fails here. Use the catalogue names
-> (`A`, `B`, `O`, `P`, `PX`, `PY`, `PZ`, `SX`, …) for your own operators.
+Custom operator names listed in `model.operators` are accepted by validation and
+execution. For CSR models, provide each corresponding `<label>.<OP>.CSR` file;
+a missing listed file raises `FileNotFoundError` naming that file.
 
 ### `RunFile`
 
