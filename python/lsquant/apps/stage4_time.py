@@ -22,6 +22,7 @@ import sys
 from .. import _core
 from ..moments import (
     msd_plan,
+    velocity_window,
     projected_evolution_plan,
     run_plan,
     time_correlation_plan,
@@ -303,7 +304,7 @@ def main(argv: list[str] | None = None) -> int:
                 kept_matrices.append(vel_mat)
                 # Legacy RescaleCon2ChebyshevDomain rescales the commutator with
                 # both ScaleFactor and ShiftFactor.
-                vel_op = _core.RescaledOperator(vel_mat, window)
+                vel_op = _core.RescaledOperator(vel_mat, velocity_window(window))
                 prefix = f"Correlation{vel_name}"
             operators.append(vel_op)
             word_str = f"[{vel_name}, U(t)]^+ delta [{vel_name}, U(t)]"

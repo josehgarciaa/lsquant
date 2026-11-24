@@ -42,7 +42,7 @@ With w_m = (2 − δ_{m0})/R and t_n = n·dt:
 | `projected_evolution_plan(M, S, R, coeffs, operator_index, projector_index, phase=...)` | w_m Tr[P U(t_n)† O U(t_n) T_m(H̃) P] | O and the projector P |
 | `time_correlation_plan(M, S, R, coeffs, left_index, right_index, phase=...)` | w_m Tr[A T_m(H̃) U(t_n)† B U(t_n)] | A and B |
 
-Each formula matches a dense computation with matrix exponentials to 1e-12, on a centred
+Each formula is checked against a dense computation with matrix exponentials (MSD to 1e-10), on a centred
 and an off-centre window (`tests/unit/test_python_stage4.py`). Pass `dt=dt` to `run_plan`, so
 that the tensor records the time step. Then
 `time_correlation_curve(mu, broadening_meV, fermi_energy)` returns (t_n in fs, the
@@ -50,15 +50,15 @@ Jackson-damped series at E_F), that is Tr[… δ(E_F − H) …]/N for each t_n.
 
 **The MSD velocity.** `msd_plan` builds [X, U(t)] from a derived Chebyshev series, which
 needs the commutator in rescaled units, [X, H̃] = [X, H]/a. Pass the velocity as
-`RescaledOperator(V, window)`, with V = i[H, X] in eV·(length unit):
-- for a window centred on 0, this operator is exactly V/a, and the moments equal the MSD
-  formula above;
-- for an off-centre window, `RescaledOperator` returns V/a − (c/a)·I, and the identity term
-  changes the derived series. The moments then differ from the MSD: by factors from 2.5 to
-  22 on the random test model with window [−8, 6].
+`RescaledOperator(V, velocity_window(window))`, with V = i[H, X] in eV·(length unit).
+Import `velocity_window` from `lsquant`; it returns `SpectralWindow(-a, a)`,
+where a = (upper − lower)/2, so the velocity is V/a without an identity shift.
+The Hamiltonian and time-evolution series keep the original physical window.
+Both centred and off-centre enclosing windows give the MSD formula above.
 
-Use a window centred on 0 for the MSD. Every golden and every example does. The unit test
-pins both cases.
+Pitfall: `RescaledOperator(V, window)` adds −(c/a)·I for an off-centre
+window and corrupts the MSD. The unit tests check agreement with dense matrix
+exponentials and retain a check that this shifted velocity is wrong.
 
 ## Energy axis
 
@@ -96,7 +96,7 @@ from Python.
 
 | Test | What it checks | Run |
 |---|---|---|
-| `tests/unit/test_python_stage4.py` | the Bessel series against exp(−iE dt/ħ); the projected, correlation and MSD plans against dense matrix exponentials (centred and off-centre windows; MSD off-centre pinned as different); the exact Kubo energy axis on G4c; `time_correlation_curve` against its definition | `PYTHONPATH=build/lsquant_core:python python3 -m pytest tests/unit` |
+| `tests/unit/test_python_stage4.py` | the Bessel series against exp(−iE dt/ħ); the projected, correlation and MSD plans against dense matrix exponentials (centred and off-centre windows; shift-free MSD and an exact-trace run-file regression); the exact Kubo energy axis on G4c; `time_correlation_curve` against its definition | `PYTHONPATH=build/lsquant_core:python python3 -m pytest tests/unit` |
 | `tests/dev/stage_4_check.py` | G6 moments and curves; GSL Bessel coefficients against SciPy (5.6e-16); `time_correlation_plan` against the legacy `inline_compute-kpm-CorrOp` when its binary is found (`LSQUANT_LEGACY_BUILD`) | `PYTHONPATH=... python3 tests/dev/stage_4_check.py` |
 | stage-4 gate | stages 1–3 (now including G4c); then `python3 -m lsquant.apps.stage4_time` at 16 and 1 threads. G6: MSD moments, and its four curves from the golden and from the new moments. G7: SX, SY, SZ projected on PX. All byte-identical. A grep keeps the words time, velocity, spin, projector, bessel and gsl out of the code lines of `lsquant/core` and `lsquant/io` | `scripts/check_goldens.sh 4 build` |
 

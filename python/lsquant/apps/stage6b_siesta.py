@@ -16,7 +16,7 @@ import numpy as np
 from .. import _core
 from ..bases import BlochMetricBasis
 from ..models.registry import load_runfile_model
-from ..reconstruct import dos_curve, shc
+from ..reconstruct import dos_curve, shc, resolution_metadata
 from ..words import compile as compile_word, parse as parse_word
 from ..words.grammar import OperatorSlot
 from ..oracle.spin_hall import UNITS, spin_berry_curvature, sigma_xy, spin_chern
@@ -276,6 +276,8 @@ def execute_siesta_runfile(rf, out_dir):
         # Preserve full precision unless the run file explicitly requests the legacy round trip.
         reconstruction_mu = (_core.ReadChebmom(str(path))
                              if rf.reconstruction["legacy_text_round_trip"] else mu)
+        resolved["receipt"].setdefault("curve_resolution", []).append(
+            dict(word=word, **resolution_metadata(reconstruction_mu, broadening)))
         with timing.phase("reconstruction", word=word):
             if mu.rank == 2:
                 energy, values = shc(reconstruction_mu, broadening, bloch.num_cells, area,

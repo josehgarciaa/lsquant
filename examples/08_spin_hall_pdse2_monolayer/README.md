@@ -49,6 +49,13 @@ python3 -m lsquant run examples/08_spin_hall_pdse2_monolayer/run_dos_quick.json 
 python3 -m lsquant run examples/08_spin_hall_pdse2_monolayer/run_shc_quick.json --out /tmp/pdse2_quick
 ```
 
+The quick DOS and SHC curves are limited by the finite-M Jackson resolution
+`pi*a/M = pi*(upper-lower)/(2*256)` eV, about 0.6 eV on the wide eigen
+window used here, rather than the requested 20 meV. The eigen window is
+resolved from the selected mesh and padded by 10%; use its recorded endpoints
+in `run.resolved.json` for the precise value, also stored in
+`receipt.curve_resolution` in meV.
+
 For the production setting (`48x48x1`, $M = 1024$, $\eta = 10\ \mathrm{meV}$,
 `covariant` velocity + `lowdin` metric):
 

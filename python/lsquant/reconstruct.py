@@ -9,14 +9,63 @@ order of the legacy C++ reconstruction routines.
 
 from __future__ import annotations
 
+import json
 import math
 import os
+import warnings
 import numpy as np
 import numpy.typing as npt
 
 from . import _core
 from .kernels import jackson_damping, jackson_damping_2d
 from .spectral_functions import legacy_delta_table, legacy_green_tables
+
+
+def effective_broadening(broadening_meV, band_width, num_moments, *, warn=True):
+    """Return the finite-M Jackson resolution estimate in meV in constant time.
+
+    Pitfall: this is an approximate resolution floor, not extra smoothing.
+    Callers must keep the original requested broadening in the legacy moment
+    truncation arithmetic to preserve its floating-point operation order.
+    """
+    floor = math.pi * band_width * 1000.0 / (2.0 * num_moments)
+    effective = max(float(broadening_meV), floor)
+    if warn and broadening_meV < floor:
+        warnings.warn(
+            f"Requested broadening {broadening_meV:g} meV is below finite-M Jackson "
+            f"resolution; effective broadening is approximately {effective:g} meV",
+            RuntimeWarning, stacklevel=2,
+        )
+    return effective
+
+
+def resolution_metadata(moments, broadening_meV):
+    """Describe spectral-axis resolution without repeating reconstruction warnings.
+
+    Time indices are not spectral moments. Rectangular rank-two spectral
+    tensors have a separate resolution estimate for each expanded axis.
+    """
+    dims = list(moments.dims)
+    if moments.number_of_time_steps > 0:
+        dims = dims[:1]
+    width = moments.window.upper - moments.window.lower
+    return dict(requested_broadening_meV=float(broadening_meV),
+                effective_broadening_meV=[effective_broadening(broadening_meV, width, int(m), warn=False)
+                                          for m in dims])
+
+
+def record_resolution(receipt_path, moments, broadening_meV):
+    """Append curve provenance to an existing run receipt, if one is present."""
+    if os.path.isfile(receipt_path):
+        with open(receipt_path, encoding="utf-8") as fh:
+            resolved = json.load(fh)
+        entries = resolved.setdefault("receipt", {}).setdefault("curve_resolution", [])
+        entry = resolution_metadata(moments, broadening_meV)
+        if entry not in entries:
+            entries.append(entry)
+        with open(receipt_path, "w", encoding="utf-8") as fh:
+            json.dump(resolved, fh, indent=2)
+            fh.write("\n")
 
 
 def dos_curve(
@@ -86,6 +135,7 @@ def dos_curve(
     if band_width <= 0.0:
         raise ValueError("dos_curve: spectral window must have positive width")
 
+    effective_broadening(broadening_meV, band_width, int(moments.dims[0]))
     eta = 2.0 * float(broadening_meV) / 1000.0 / band_width
     max_mom = int(math.ceil(math.pi / eta))
     total_mom = int(moments.dims[0])
@@ -134,6 +184,8 @@ def _truncate_and_damp_2d(
     if band_width <= 0.0:
         raise ValueError("spectral window must have positive width")
 
+    effective_broadening(b0_meV, band_width, int(moments.dims[0]))
+    effective_broadening(b1_meV, band_width, int(moments.dims[1]))
     eta0 = 2.0 * float(b0_meV) / 1000.0 / band_width
     eta1 = 2.0 * float(b1_meV) / 1000.0 / band_width
 
@@ -700,6 +752,7 @@ def time_correlation_curve(
     max_mom = int(math.ceil(math.pi / eta))
     num_moms = int(moments.dims[0])
     num_times = int(moments.dims[1])
+    effective_broadening(broadening_meV, band_width, num_moms)
     if max_mom > num_moms:
         max_mom = num_moms
 

@@ -6,6 +6,8 @@
 # example session.
 #
 # usage: scripts/check_goldens.sh <stage> [build_dir]
+# PYTHON: interpreter executable or path (default python3), used for every
+# Python call. Set it to the interpreter matching the compiled _core module.
 #
 #   stage 0  legacy build (build_dir holds the inline_* drivers): reruns the G1, G2
 #            (chain1d, exact trace, M = 64) and G5 (Haldane, exact trace, M = 128)
@@ -133,6 +135,7 @@
 #
 # KPM_SEED=12345 always. Seeds, tolerances and goldens are never changed here.
 set -uo pipefail
+PYTHON="${PYTHON:-python3}"
 
 usage() { echo "usage: scripts/check_goldens.sh <stage> [build_dir]"; exit 2; }
 [ $# -ge 1 ] || usage
@@ -259,20 +262,20 @@ compare() {
   if cmp -s "$new" "$gold"; then
     echo "IDENTICAL $tag"; NBYTE=$((NBYTE + 1)); CMP_LAST=IDENTICAL
   elif [ "$GOLDEN_TOL" = 1 ] && [ "$FORCE_BYTE" = 0 ]; then
-    local t; t="$(python3 "$TOLCMP" "$new" "$gold" 2>&1)"
+    local t; t="$("$PYTHON" "$TOLCMP" "$new" "$gold" 2>&1)"
     if [ "${t%% *}" = TOLPASS ]; then
       echo "TOLPASS   $tag"; NTOLP=$((NTOLP + 1)); CMP_LAST=TOLPASS
     else
       echo "DIFFERS   $tag"; NFAIL=$((NFAIL + 1)); CMP_LAST=DIFFERS
     fi
     echo "          tolerance: ${t#* }"
-    echo "          golden_diff.py: $(python3 "$REPO/scripts/golden_diff.py" "$new" "$gold" 2>&1)"
+    echo "          golden_diff.py: $("$PYTHON" "$REPO/scripts/golden_diff.py" "$new" "$gold" 2>&1)"
   else
     NFAIL=$((NFAIL + 1)); CMP_LAST=DIFFERS
     echo "DIFFERS   $tag"
     echo "          cmp: $(cmp "$new" "$gold" 2>&1 | head -1)"
     cmp -l "$new" "$gold" 2>/dev/null | head -5 | sed 's/^/          cmp -l: /'
-    echo "          $(python3 "$REPO/scripts/golden_diff.py" "$new" "$gold" 2>&1)"
+    echo "          $("$PYTHON" "$REPO/scripts/golden_diff.py" "$new" "$gold" 2>&1)"
   fi
 }
 
@@ -327,7 +330,7 @@ legacy_haldane() {   # <threads> <workdir>
 stage0() {
   for b in inline_compute-kpm-nonEqOp inline_compute-kpm-spectralOp inline_kuboBastinFromChebmom \
            inline_kuboBastinSeaFromChebmom inline_kuboBastinSurfFromChebmom inline_kuboGreenwoodFromChebmom; do
-    [ -x "$BUILD/$b" ] || { echo "ERROR: legacy driver $BUILD/$b missing (build with the legacy tree)"; exit 2; }
+    [ -x "$BUILD/$b" ] || { echo "ERROR: legacy driver $BUILD/$b missing; stage 0 needs the legacy inline_* drivers from src/. Build with 'cmake --preset golden' and 'cmake --build --preset golden', then use build/golden (see docs/how-to/testing.md)."; exit 2; }
   done
   echo "== stage 0: legacy pipelines vs goldens/stage0 (KPM_SEED=$KPM_SEED, build $BUILD)"
   legacy_chain1d 16 "$TMP/g12_T16"
@@ -404,18 +407,18 @@ stage2() {
   local PYDIR="$BUILD/lsquant_core" T W rc
   ls "$PYDIR"/_core*.so >/dev/null 2>&1 || PYDIR="$BUILD/lsquant"
   ls "$PYDIR"/_core*.so >/dev/null 2>&1 || { echo "ERROR: _core*.so not found under $BUILD/lsquant_core or $BUILD/lsquant"; exit 2; }
-  echo "== stage 2: python3 -m lsquant.apps.stage2_dos, PYTHONPATH=$PYDIR:python, vs goldens/stage0/chain1d (KPM_SEED=$KPM_SEED)"
+  echo "== stage 2: $PYTHON -m lsquant.apps.stage2_dos, PYTHONPATH=$PYDIR:python, vs goldens/stage0/chain1d (KPM_SEED=$KPM_SEED)"
   for T in 1 16; do
     # form (a): reconstruct the G3 curve from the committed G1 moment file
     W="$TMP/s2_T${T}_a"; mkdir -p "$W"
-    ( cd "$REPO" && OMP_NUM_THREADS=$T PYTHONPATH="$PYDIR:$REPO/python" python3 -m lsquant.apps.stage2_dos \
+    ( cd "$REPO" && OMP_NUM_THREADS=$T PYTHONPATH="$PYDIR:$REPO/python" "$PYTHON" -m lsquant.apps.stage2_dos \
         --moments "$GOLD/chain1d/$G1F" --broadening-meV 120 --out "$W" ) >"$W/run.log" 2>&1; rc=$?
     [ $rc -eq 0 ] || echo "          [T=$T] stage2_dos form (a) exited $rc: $(tail -1 "$W/run.log")"
     sed "s|$W/||; s|^|          [T=$T] (a) printed: |" "$W/run.log"
     compare "$W/$G3F" "$GOLD/chain1d/$G3F" "[T=$T] (a) --moments G1 -> chain1d/$G3F (G3)"
     # form (b): moments through MomentEngine from the golden operators, then reconstruct
     W="$TMP/s2_T${T}_b"; mkdir -p "$W"
-    ( cd "$REPO" && OMP_NUM_THREADS=$T PYTHONPATH="$PYDIR:$REPO/python" python3 -m lsquant.apps.stage2_dos \
+    ( cd "$REPO" && OMP_NUM_THREADS=$T PYTHONPATH="$PYDIR:$REPO/python" "$PYTHON" -m lsquant.apps.stage2_dos \
         --operators "$GOLD/chain1d/operators" --label chain1d --window -2 2 --trace exact --states 2048 \
         --moments 64 --broadening-meV 120 --out "$W" ) >"$W/run.log" 2>&1; rc=$?
     [ $rc -eq 0 ] || echo "          [T=$T] stage2_dos form (b) exited $rc: $(tail -1 "$W/run.log")"
@@ -452,7 +455,7 @@ stage2_grep() {
 run_s3() {   # <threads> <workdir> <tag> <args...>
   local T="$1" W="$2" tag="$3" rc; shift 3
   mkdir -p "$W"
-  ( cd "$REPO" && OMP_NUM_THREADS=$T PYTHONPATH="$PYDIR3:$REPO/python" python3 -m lsquant.apps.stage3_kubo \
+  ( cd "$REPO" && OMP_NUM_THREADS=$T PYTHONPATH="$PYDIR3:$REPO/python" "$PYTHON" -m lsquant.apps.stage3_kubo \
       "$@" --out "$W" ) >"$W/run.log" 2>"$W/err.log"; rc=$?
   [ $rc -eq 0 ] || echo "          [T=$T] $tag exited $rc: $(tail -1 "$W/err.log")"
   sed "s|$W/||; s|^|          [T=$T] $tag printed: |" "$W/run.log"
@@ -478,7 +481,7 @@ stage3() {
   PYDIR3="$BUILD/lsquant_core"
   ls "$PYDIR3"/_core*.so >/dev/null 2>&1 || PYDIR3="$BUILD/lsquant"
   ls "$PYDIR3"/_core*.so >/dev/null 2>&1 || { echo "ERROR: _core*.so not found under $BUILD/lsquant_core or $BUILD/lsquant"; exit 2; }
-  echo "== stage 3: python3 -m lsquant.apps.stage3_kubo, PYTHONPATH=$PYDIR3:python, vs goldens/stage0/{haldane,graphene}"
+  echo "== stage 3: $PYTHON -m lsquant.apps.stage3_kubo, PYTHONPATH=$PYDIR3:python, vs goldens/stage0/{haldane,graphene}"
   for T in 16 1; do
     # 1. G5 moments: Haldane, exact trace over the 512 sites, M = 128, window [-4.5, 4.5]
     W="$TMP/s3_T${T}_g5m"
@@ -557,7 +560,7 @@ stage3_grep() {
 run_s4() {   # <threads> <workdir> <tag> <args...>
   local T="$1" W="$2" tag="$3" rc; shift 3
   mkdir -p "$W"
-  ( cd "$REPO" && OMP_NUM_THREADS=$T PYTHONPATH="$PYDIR4:$REPO/python" python3 -m lsquant.apps.stage4_time \
+  ( cd "$REPO" && OMP_NUM_THREADS=$T PYTHONPATH="$PYDIR4:$REPO/python" "$PYTHON" -m lsquant.apps.stage4_time \
       "$@" --out "$W" ) >"$W/run.log" 2>"$W/err.log"; rc=$?
   [ $rc -eq 0 ] || echo "          [T=$T] $tag exited $rc: $(tail -1 "$W/err.log")"
   sed "s|$W/||; s|^|          [T=$T] $tag printed: |" "$W/run.log"
@@ -572,7 +575,7 @@ stage4() {
   PYDIR4="$BUILD/lsquant_core"
   ls "$PYDIR4"/_core*.so >/dev/null 2>&1 || PYDIR4="$BUILD/lsquant"
   ls "$PYDIR4"/_core*.so >/dev/null 2>&1 || { echo "ERROR: _core*.so not found under $BUILD/lsquant_core or $BUILD/lsquant"; exit 2; }
-  echo "== stage 4: python3 -m lsquant.apps.stage4_time, PYTHONPATH=$PYDIR4:python, vs goldens/stage0/{chain1d_ballistic,chain1d_mag}"
+  echo "== stage 4: $PYTHON -m lsquant.apps.stage4_time, PYTHONPATH=$PYDIR4:python, vs goldens/stage0/{chain1d_ballistic,chain1d_mag}"
   for T in 16 1; do
     # 1. G6 moments: chain1d ballistic MSD, VX, window [-2, 2], exact trace 256 states, M = 256, 64 steps, tmax 20
     W="$TMP/s4_T${T}_g6m"; s=$(date +%s)
@@ -717,7 +720,7 @@ PY
 run_s5() {   # <threads> <workdir> <tag> <args...>
   local T="$1" W="$2" tag="$3" rc s e; shift 3
   mkdir -p "$W"; s=$(date +%s.%N)
-  ( cd "$REPO" && OMP_NUM_THREADS=$T PYTHONPATH="$PYDIR5:$REPO/python" python3 -m lsquant.apps.stage5_bases \
+  ( cd "$REPO" && OMP_NUM_THREADS=$T PYTHONPATH="$PYDIR5:$REPO/python" "$PYTHON" -m lsquant.apps.stage5_bases \
       "$@" --out "$W" ) >"$W/run.log" 2>"$W/err.log"; rc=$?
   e=$(date +%s.%N)
   [ $rc -eq 0 ] || { echo "          [T=$T] $tag exited $rc: $(tail -1 "$W/err.log")"; NFAIL=$((NFAIL + 1)); }
@@ -730,7 +733,7 @@ stage5() {
   ls "$PYDIR5"/_core*.so >/dev/null 2>&1 || PYDIR5="$BUILD/lsquant"
   ls "$PYDIR5"/_core*.so >/dev/null 2>&1 || { echo "ERROR: _core*.so not found under $BUILD/lsquant_core or $BUILD/lsquant"; exit 2; }
   [ -x "$S5_W2S" ] || { echo "ERROR: wannier2sparse binary $S5_W2S missing (set W2S_BIN)"; exit 2; }
-  echo "== stage 5: python3 -m lsquant.apps.stage5_bases, PYTHONPATH=$PYDIR5:python, vs goldens/stage0/bases (G9)"
+  echo "== stage 5: $PYTHON -m lsquant.apps.stage5_bases, PYTHONPATH=$PYDIR5:python, vs goldens/stage0/bases (G9)"
   s5_helpers
   for m in graphene haldane; do
     MD="$GOLD/bases/$m/model"; CSR="$TMP/s5w2s/$m"
@@ -740,7 +743,7 @@ stage5() {
       || echo "          wannier2sparse $m VX failed: $(tail -1 "$TMP/s5w2s/$m.log")"
     echo "   $m: model $MD (unchanged gen_models.py files), real basis = wannier2sparse CSR ($m $S5N $S5N 1 VX) via --csr-dir;"
     echo "      --window eigen (default), --broadening-meV $S5_BMEV, M=256, 32 random-phase states seed 12345, W=1: --disorder 1 --disorder-seed 7"
-    ( cd "$REPO" && OMP_NUM_THREADS=16 PYTHONPATH="$PYDIR5:$REPO/python" python3 "$TMP/s5py/s5_conv.py" "$MD" $m \
+    ( cd "$REPO" && OMP_NUM_THREADS=16 PYTHONPATH="$PYDIR5:$REPO/python" "$PYTHON" "$TMP/s5py/s5_conv.py" "$MD" $m \
         "$CSR" "$TMP/s5w2s/${m}_6x4" ) >"$TMP/s5_conv_$m.txt" 2>&1
     sed 's/^/          /' "$TMP/s5_conv_$m.txt"
     NCMP=$((NCMP + $(grep -c '^\(PASS\|FAIL\)' "$TMP/s5_conv_$m.txt")))
@@ -769,7 +772,7 @@ stage5() {
         case "$rel" in
           */real/*) compare "$g" "$f" "[T=1 vs T=16] $rel/$(basename "$f")" ;;
           *) if cmp -s "$g" "$f"; then echo "INFO      [T=1 vs T=16] $rel/$(basename "$f") identical"
-             else echo "INFO      [T=1 vs T=16] $rel/$(basename "$f") differs: $(python3 "$REPO/scripts/golden_diff.py" "$g" "$f" 2>&1)"; fi ;;
+             else echo "INFO      [T=1 vs T=16] $rel/$(basename "$f") differs: $("$PYTHON" "$REPO/scripts/golden_diff.py" "$g" "$f" 2>&1)"; fi ;;
         esac
       done
     done
@@ -777,7 +780,7 @@ stage5() {
   # the stage-5 tolerance table, at T = 16 and T = 1
   for T in 16 1; do
     echo "   tolerance table, T=$T"
-    ( cd "$REPO" && OMP_NUM_THREADS=16 PYTHONPATH="$PYDIR5:$REPO/python" python3 "$REPO/figures/stage_5_table.py" "$TMP/s5/T$T" "$GOLD/bases" ) >"$TMP/s5_table_T$T.txt" 2>&1
+    ( cd "$REPO" && OMP_NUM_THREADS=16 PYTHONPATH="$PYDIR5:$REPO/python" "$PYTHON" "$REPO/figures/stage_5_table.py" "$TMP/s5/T$T" "$GOLD/bases" ) >"$TMP/s5_table_T$T.txt" 2>&1
     rc=$?
     sed 's/^/          /' "$TMP/s5_table_T$T.txt"
     # a table that stops early (e.g. hr_exactdiag not importable) leaves rows unchecked
@@ -869,9 +872,9 @@ s6_judge() {
   if [ ! -f "$new" ] || [ ! -f "$gold" ]; then
     verdict=FAIL; out="nan (missing: $([ -f "$new" ] || basename "$new") $([ -f "$gold" ] || echo "${gold#$TMP/}"))"
   else
-    out="$(python3 "$S6CMP" "$new" "$gold" 2>&1)"
+    out="$("$PYTHON" "$S6CMP" "$new" "$gold" 2>&1)"
     rel="${out%% *}"; hdr="$(echo "$out" | grep -o 'header_ok=[A-Za-z]*')"
-    if python3 -c "import sys; r=float('$rel'); sys.exit(0 if (r == r and r <= $tol and '$hdr' == 'header_ok=True') else 1)" 2>/dev/null
+    if "$PYTHON" -c "import sys; r=float('$rel'); sys.exit(0 if (r == r and r <= $tol and '$hdr' == 'header_ok=True') else 1)" 2>/dev/null
     then verdict=PASS; else verdict=FAIL; fi
   fi
   rel="${out%% *}"
@@ -883,7 +886,7 @@ s6_judge() {
     printf '%-9s %s  rel=%s  tol=%s\n' "$verdict" "$tag" "$out" "$tol"
   fi
   if [ -f "$new" ] && [ -f "$gold" ]; then
-    echo "          golden_diff.py: $(python3 "$REPO/scripts/golden_diff.py" "$new" "$gold" 2>&1)"
+    echo "          golden_diff.py: $("$PYTHON" "$REPO/scripts/golden_diff.py" "$new" "$gold" 2>&1)"
   fi
   S6_LAST="$rel $verdict"
 }
@@ -977,22 +980,22 @@ stage6() {
     done
   fi
   # Hall plateau from every produced Haldane VX-VY file (stage-3 Bastin, 10 meV)
-  echo "== stage 6: Hall plateau, python3 -m lsquant.apps.stage3_kubo --formula bastin --broadening-meV 10"
+  echo "== stage 6: Hall plateau, $PYTHON -m lsquant.apps.stage3_kubo --formula bastin --broadening-meV 10"
   printf 'source\tC\tverdict\n' > "$CTSV"
-  C="$(python3 "$S6CHERN" "$GOLD/haldane/KuboBastin_${XY}JACKSON.dat" 512 2>&1)"
+  C="$("$PYTHON" "$S6CHERN" "$GOLD/haldane/KuboBastin_${XY}JACKSON.dat" 512 2>&1)"
   echo "REFERENCE Hall golden G5 KuboBastin (legacy)  C=$C"
   printf 'golden_G5\t%s\tREF\n' "${C%% *}" >> "$CTSV"
   for W in "$TMP"/s6/haldane_*_kuboxy_*; do
     tag="$(basename "$W")"
     if [ -f "$W/$XY.chebmom2D" ]; then
-      ( cd "$REPO" && OMP_NUM_THREADS=$T6 PYTHONPATH="$PYDIR6:$REPO/python" python3 -m lsquant.apps.stage3_kubo \
+      ( cd "$REPO" && OMP_NUM_THREADS=$T6 PYTHONPATH="$PYDIR6:$REPO/python" "$PYTHON" -m lsquant.apps.stage3_kubo \
           --moments "$W/$XY.chebmom2D" --formula bastin --broadening-meV 10 --out "$W" ) >"$W/bastin.log" 2>&1 \
         || echo "          [$tag] stage3_kubo exited non-zero: $(tail -1 "$W/bastin.log")"
-      C="$(python3 "$S6CHERN" "$W/KuboBastin_${XY}JACKSON.dat" 512 2>&1 | tail -1)"
+      C="$("$PYTHON" "$S6CHERN" "$W/KuboBastin_${XY}JACKSON.dat" 512 2>&1 | tail -1)"
     else
       C="nan (no VX-VY moments produced)"
     fi
-    if python3 -c "import sys; c=float('${C%% *}'); sys.exit(0 if abs(c - 1) <= 0.05 else 1)" 2>/dev/null
+    if "$PYTHON" -c "import sys; c=float('${C%% *}'); sys.exit(0 if abs(c - 1) <= 0.05 else 1)" 2>/dev/null
     then rc=PASS; else rc=FAIL; fi
     case "$tag" in
       *_naive_*) echo "EVIDENCE  Hall $tag  C=$C  (would be $rc; not counted)"; rc="EVIDENCE($rc)" ;;
@@ -1057,7 +1060,7 @@ s7idx() {   # <group> <produced captured dir> <golden index.tsv> <tag>
     n=$((n + 1))
     [ -f "$d/$name" ] && [ "$(sha1sum "$d/$name" | cut -d' ' -f1)" = "$sha" ] && continue
     if [ "$GOLDEN_TOL" = 1 ] && [ -f "$d/$name" ] && [ -f "$(dirname "$idx")/$name" ] \
-       && t="$(python3 "$TOLCMP" "$d/$name" "$(dirname "$idx")/$name" 2>&1)"; then
+       && t="$("$PYTHON" "$TOLCMP" "$d/$name" "$(dirname "$idx")/$name" 2>&1)"; then
       tp=$((tp + 1)); echo "          index.tsv line $n: $name sha1 differs, capture within tolerance: ${t#* }"; continue
     fi
     bad=$((bad + 1)); echo "          index.tsv line $n: $name sha1 $sha not matched by $d/$name"
@@ -1082,7 +1085,7 @@ s7cmp() {   # <group> <new> <golden> <tag>   (compare(), plus a per-group tally)
 # difference of scripts/golden_diff.py is ~1 on moments that vanish by symmetry, so it is not used.
 s7relval() {
   cmp -s "$1" "$2" && { echo 0; return; }
-  python3 - "$1" "$2" <<'PY'
+  "$PYTHON" - "$1" "$2" <<'PY'
 import sys
 def data(p):
     L = open(p).read().split("\n")
@@ -1116,7 +1119,7 @@ s7rel() {   # <group> <new> <golden> <tol|INFO> <tag>
 run_s7() {   # <threads> <run file name> <outdir>
   local T="$1" n="$2" W="$3" rc s e
   rm -rf "$W"; mkdir -p "$(dirname "$W")"; s=$(date +%s.%N)
-  ( cd "$REPO" && OMP_NUM_THREADS=$T PYTHONPATH="$PYDIR7:$REPO/python" python3 -m lsquant run "runs/goldens/$n.json" --out "$W" ) \
+  ( cd "$REPO" && OMP_NUM_THREADS=$T PYTHONPATH="$PYDIR7:$REPO/python" "$PYTHON" -m lsquant run "runs/goldens/$n.json" --out "$W" ) \
     >"$W.out" 2>"$W.err"; rc=$?
   e=$(date +%s.%N)
   [ $rc -eq 0 ] || { echo "          [T=$T] lsquant run runs/goldens/$n.json exited $rc: $(tail -1 "$W.err")"; NFAIL=$((NFAIL + 1)); }
@@ -1131,7 +1134,7 @@ s7_prep_csr() {
   local f n C m sc
   for f in "$S7_RUNS"/g9_*.json; do
     n="$(basename "$f" .json)"; s7want $n || continue
-    read -r C m sc <<<"$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["model"].get("csr_dir") or "-", d["model"]["seed"], " ".join(map(str, d["basis"].get("supercell", [1,1,1]))))' "$f")"
+    read -r C m sc <<<"$("$PYTHON" -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["model"].get("csr_dir") or "-", d["model"]["seed"], " ".join(map(str, d["basis"].get("supercell", [1,1,1]))))' "$f")"
     [ "$C" = - ] && continue
     case "$C" in /*) ;; *) C="$REPO/$C" ;; esac
     if [ -f "$C/$m.HAM.CSR" ]; then echo "          csr_dir ${C#$REPO/} for $n: present"; continue; fi
@@ -1155,7 +1158,7 @@ s7_ref5() {   # <threads> <model> <cfg> <outdir> [csr dir]: stage5_bases with th
   [ -z "$C" ] || a="$a --csr-dir $C"
   for w in dos kuboxx; do
     mkdir -p "$O/$w"
-    ( cd "$REPO" && OMP_NUM_THREADS=$T PYTHONPATH="$PYDIR7:$REPO/python" python3 -m lsquant.apps.stage5_bases \
+    ( cd "$REPO" && OMP_NUM_THREADS=$T PYTHONPATH="$PYDIR7:$REPO/python" "$PYTHON" -m lsquant.apps.stage5_bases \
         --model "$GOLD/bases/$m/model" --seed $m --seed 12345 --supercell 48 48 1 --word $w --moments 256 \
         --broadening-meV 40 $a --out "$O/$w" ) >"$O/$w.log" 2>&1 || echo "          [T=$T] stage5_bases $m $c $w failed: $(tail -1 "$O/$w.log")"
   done
@@ -1166,7 +1169,7 @@ s7_ref5() {   # <threads> <model> <cfg> <outdir> [csr dir]: stage5_bases with th
 s7_ref6() {   # <threads> <model> <variant> <resolved run file> <outdir>
   local T="$1" m="$2" v="$3" J="$4" O="$5" w win st M ma
   if [ "$m" = chain1d ]; then win="-2 2"; st=2048; M=64; set -- dos kubo; else win="-4.5 4.5"; st=512; M=128; set -- kuboxy kubo; fi
-  ma="$(python3 -c 'import json,sys; x=json.load(open(sys.argv[1]))["metric"]; print("--route %s --applier %s --order %d --coeff-tol %r --tol %r --max-iter %d --max-dim %d" % (x["route"], x["applier"], x["order"], x["coeff_tol"], x["tol"], x["max_iter"], x["max_dim"]))' "$J")"
+  ma="$("$PYTHON" -c 'import json,sys; x=json.load(open(sys.argv[1]))["metric"]; print("--route %s --applier %s --order %d --coeff-tol %r --tol %r --max-iter %d --max-dim %d" % (x["route"], x["applier"], x["order"], x["coeff_tol"], x["tol"], x["max_iter"], x["max_dim"]))' "$J")"
   mkdir -p "$O"; echo "stage6_nonorth $ma" >"$O.args"
   for w in "$@"; do
     OMP_NUM_THREADS=$T "$EXE6" --fixture "$GOLD/nonorth/$m/$v" --label $m --window $win $ma \
@@ -1239,7 +1242,7 @@ s7_goldens() {   # <threads>: every run file, every golden
   for m in graphene haldane; do
     for c in real bloch bloch_exact eigen real_w1 bloch_w1; do
       s7want g9_${m}_$c || continue
-      C="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["model"].get("csr_dir") or "")' "$S7_RUNS/g9_${m}_$c.json")"
+      C="$("$PYTHON" -c 'import json,sys; print(json.load(open(sys.argv[1]))["model"].get("csr_dir") or "")' "$S7_RUNS/g9_${m}_$c.json")"
       [ -z "$C" ] || case "$C" in /*) ;; *) C="$REPO/$C" ;; esac
       if [ -n "$C" ] && [ ! -e "$TMP/s7w2s/$m.done" ]; then
         mkdir -p "$TMP/s7w2s/$m"; : >"$TMP/s7w2s/$m.done"
@@ -1268,7 +1271,7 @@ s7_goldens() {   # <threads>: every run file, every golden
   n=0; for m in graphene haldane; do for c in real bloch bloch_exact eigen real_w1 bloch_w1; do s7want g9_${m}_$c && n=$((n + 1)); done; done
   if [ $n -eq 12 ]; then
   echo "   [T=$T] figures/stage_5_table.py on the run-file outputs"
-  ( cd "$REPO" && OMP_NUM_THREADS=16 PYTHONPATH="$PYDIR7:$REPO/python" python3 "$REPO/figures/stage_5_table.py" "$TMP/s7tab/T$T" "$GOLD/bases" ) >"$TMP/s7_table_T$T.txt" 2>&1
+  ( cd "$REPO" && OMP_NUM_THREADS=16 PYTHONPATH="$PYDIR7:$REPO/python" "$PYTHON" "$REPO/figures/stage_5_table.py" "$TMP/s7tab/T$T" "$GOLD/bases" ) >"$TMP/s7_table_T$T.txt" 2>&1
   sed 's/^/          /' "$TMP/s7_table_T$T.txt"
   g="T$T G9 table"; [ -n "${S7ORDER[$g]:-}" ] || { S7ORDER[$g]=1; S7GROUPS+=("$g"); }
   S7I[$g]=$(grep -c '^PASS' "$TMP/s7_table_T$T.txt"); S7D[$g]=$(grep -c '^FAIL' "$TMP/s7_table_T$T.txt")
@@ -1295,13 +1298,13 @@ s7_goldens() {   # <threads>: every run file, every golden
     # a reference pre-computed outside the gate (S7_REF6 set by the caller) is used once its log says DONE
     if [ -n "${S7_REF6_WAIT_LOG:-}" ]; then until grep -q "^DONE $n " "$S7_REF6_WAIT_LOG"; do sleep 60; done; fi
     [ -d "$R" ] || s7_ref6 $T $m $v "$B/$n/run.resolved.json" "$R"
-    a="stage6_nonorth $(python3 -c 'import json,sys; x=json.load(open(sys.argv[1]))["metric"]; print("--route %s --applier %s --order %d --coeff-tol %r --tol %r --max-iter %d --max-dim %d" % (x["route"], x["applier"], x["order"], x["coeff_tol"], x["tol"], x["max_iter"], x["max_dim"]))' "$B/$n/run.resolved.json")"
+    a="stage6_nonorth $("$PYTHON" -c 'import json,sys; x=json.load(open(sys.argv[1]))["metric"]; print("--route %s --applier %s --order %d --coeff-tol %r --tol %r --max-iter %d --max-dim %d" % (x["route"], x["applier"], x["order"], x["coeff_tol"], x["tol"], x["max_iter"], x["max_dim"]))' "$B/$n/run.resolved.json")"
     [ "$a" = "$(cat "$R.args" 2>/dev/null)" ]; s7chk $? "[T=$T] $n.json: reference arguments equal the run's resolved metric ($a)"
     for r in "$R"/*; do
       [ -f "$r" ] || continue
       s7cmp "T$T G10" "$B/$n/$(basename "$r")" "$r" "[T=$T] $n.json -> stage6_nonorth $(basename "$r") (G10)"
     done
-    case "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["metric"]["applier"])' "$B/$n/run.resolved.json")" in
+    case "$("$PYTHON" -c 'import json,sys; print(json.load(open(sys.argv[1]))["metric"]["applier"])' "$B/$n/run.resolved.json")" in
       exact) tol=1e-10 ;; ischo) tol=1e-9 ;; *) tol=1e-8 ;;
     esac
     if [ $m = chain1d ]; then
@@ -1367,7 +1370,7 @@ async def main(root, runfiles):
 asyncio.run(main(os.path.realpath(sys.argv[1]), sys.argv[2:]))
 PY
   echo "== stage 7 MCP: python -m lsquant.mcp_server --root $R (copies of the chain1d and haldane golden operators), OMP_NUM_THREADS=16"
-  ( cd "$R" && OMP_NUM_THREADS=16 PYTHONPATH="$PYDIR7:$REPO/python" python3 "$TMP/s7_mcp_client.py" "$R" "$S7_RUNS/g1.json" "$S7_RUNS/g5.json" ) >"$TMP/s7_mcp.txt" 2>"$TMP/s7_mcp.err"
+  ( cd "$R" && OMP_NUM_THREADS=16 PYTHONPATH="$PYDIR7:$REPO/python" "$PYTHON" "$TMP/s7_mcp_client.py" "$R" "$S7_RUNS/g1.json" "$S7_RUNS/g5.json" ) >"$TMP/s7_mcp.txt" 2>"$TMP/s7_mcp.err"
   echo "          (server stderr: $(wc -l <"$TMP/s7_mcp.err") lines; first error line: $(grep -m1 -E "Error|ValueError" "$TMP/s7_mcp.err" | sed "s/  */ /g"))"
   sed "s|$TMP|\$TMP|g; s/^/          /" "$TMP/s7_mcp.txt"
   { grep -q "MCP RESULT confinement (model.dir=/etc): refused" "$TMP/s7_mcp.txt" && grep -q "MCP RESULT out dir created: False" "$TMP/s7_mcp.txt"; } || { echo "FAIL      MCP confinement"; NFAIL=$((NFAIL + 1)); }
@@ -1382,7 +1385,7 @@ PY
 # refusals through the CLI: non-zero exit, message on stderr, nothing written
 s7_refuse() {   # <tag> <args...>
   local tag="$1" rc O="$TMP/s7ref/out_$1"; shift
-  ( cd "$REPO" && PYTHONPATH="$PYDIR7:$REPO/python" python3 -m lsquant "$@" ) >"$TMP/s7ref/$tag.out" 2>"$TMP/s7ref/$tag.err"; rc=$?
+  ( cd "$REPO" && PYTHONPATH="$PYDIR7:$REPO/python" "$PYTHON" -m lsquant "$@" ) >"$TMP/s7ref/$tag.out" 2>"$TMP/s7ref/$tag.err"; rc=$?
   NCMP=$((NCMP + 1))
   if [ $rc -ne 0 ] && [ -s "$TMP/s7ref/$tag.err" ] && [ ! -e "$O" ]; then
     echo "REFUSED   [$tag] exit $rc, stderr: $(cat "$TMP/s7ref/$tag.err")"
@@ -1398,7 +1401,7 @@ s7_refusals() {
   echo "== stage 7 refusals through the CLI (python -m lsquant run <bad>.json --out <dir>; the dir must not appear)"
   # a run file built from g1.json / g2.json / g6.json with one change; jq-free, by python
   mk() {   # <name> <base> <python expression on d>
-    python3 - "$S7_RUNS/$2.json" "$R/$1.json" "$3" <<'PY'
+    "$PYTHON" - "$S7_RUNS/$2.json" "$R/$1.json" "$3" <<'PY'
 import json, sys
 d = json.load(open(sys.argv[1]))
 for stmt in sys.argv[3].split(";"):
@@ -1442,8 +1445,8 @@ PY
   for f in "Tr[FOO delta(E-H)]" "Tr[VX delta(E-H) VY delta(E-H) VZ delta(E-H)]" "Tr[VX@bloch delta(E-H)]" \
            "Tr[VX delta(E-H) U(t)^+ VX U(t)]" "Tr[VX delta(E-H) VY G+(E)]" "Tr[VX delta(E-H) VY dG+(E)/dE]" \
            "Tr[VX delta(E-H) VY G-(E)]" "Tr[VX G+(E) VY delta(E-H)]"; do
-    ( cd "$REPO" && PYTHONPATH="$PYDIR7:$REPO/python" python3 -m lsquant words describe "$f" ) >"$R/d.out" 2>"$R/d.err"
-    echo "INFO      words describe \"$f\": exit $?, $( [ -s "$R/d.err" ] && cat "$R/d.err" || python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); c=d.get("catalogue",{}); print("ACCEPTED as", c.get("shape_id"), "formulas", c.get("default_formulas"), "engine word", repr(c.get("engine_word")))' "$R/d.out")"
+    ( cd "$REPO" && PYTHONPATH="$PYDIR7:$REPO/python" "$PYTHON" -m lsquant words describe "$f" ) >"$R/d.out" 2>"$R/d.err"
+    echo "INFO      words describe \"$f\": exit $?, $( [ -s "$R/d.err" ] && cat "$R/d.err" || "$PYTHON" -c 'import json,sys; d=json.load(open(sys.argv[1])); c=d.get("catalogue",{}); print("ACCEPTED as", c.get("shape_id"), "formulas", c.get("default_formulas"), "engine word", repr(c.get("engine_word")))' "$R/d.out")"
   done
 }
 
@@ -1470,7 +1473,7 @@ s7_totals() {
 stage7() {
   local T
   stage7_setup
-  echo "== stage 7: python3 -m lsquant run runs/goldens/*.json ($(ls "$S7_RUNS"/*.json | wc -l) run files, S7_SET=$S7_SET), PYTHONPATH=$PYDIR7:python, threads: $S7_THREADS"
+  echo "== stage 7: $PYTHON -m lsquant run runs/goldens/*.json ($(ls "$S7_RUNS"/*.json | wc -l) run files, S7_SET=$S7_SET), PYTHONPATH=$PYDIR7:python, threads: $S7_THREADS"
   [ "$S7_SET" = all ] || echo "   deferred (not run in this set): $(for f in "$S7_RUNS"/*.json; do n=$(basename "$f" .json); s7want $n || printf "%s " $n; done)"
   for T in $S7_THREADS; do s7_goldens $T; done
   s7_mcp

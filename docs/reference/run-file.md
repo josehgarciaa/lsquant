@@ -305,6 +305,9 @@ requested moment count.
 `numerics` selects alternative engine paths. Every value other than the default
 needs the `native` [build preset](build-presets.md).
 
+The `backend` object accepts `name` (back end), `executor` (Ginkgo execution
+device) and `format` (Ginkgo matrix layout), described below.
+
 | Key | Type | Allowed values | Default | Meaning |
 |---|---|---|---|---|
 | `backend.name` | string | `"native"`, `"ginkgo"` | `"native"` | Sparse matrix–vector back end. |
@@ -339,6 +342,9 @@ With `hr_file`, only the operators `VX`, `VY` and `VZ` can be built (as
 i[H, X_a]).
 
 ## `basis`
+
+The `disorder` object accepts `W` (box width in eV), `seed` (draw seed) and
+`kind` (spin layout), described below.
 
 | Key | Type | Allowed values | Default | Meaning |
 |---|---|---|---|---|
@@ -444,6 +450,7 @@ a missing listed file raises `FileNotFoundError` naming that file.
 | `right_window` | integer or string | positive integer, `"all"` | `16` | Ket-side storage window of the native rank-2 path; `"all"` stores all M vectors (resolves to `null`). |
 | `checkpoint` | boolean | — | `false` | `csr` only: checkpoint after every trace state to `checkpoint_v2_<hash>.lsqckpt` in the output directory and resume from it on restart only when the calculation fingerprint matches. The file is deleted when the word finishes. |
 | `state_block_rule` | string | — | — | Output only. Ignored on input. The CSR and ordinary Wannier executors record the effective numeric block size and its selection reason in `run.resolved.json`. |
+| `trace_coverage` | object | — | — | Output only. Ignored on input. Written to `run.resolved.json` when an exact trace uses fewer states than the dimension: `{"states": n, "dimension": N}`, an average over the first n of N basis functions. |
 
 | Condition | Error |
 |---|---|
@@ -451,6 +458,16 @@ a missing listed file raises `FileNotFoundError` naming that file.
 | `basis.name` `"bloch"` or `"eigen"` with `csr` and no `window` | Same message, raised by the executor (the default resolves to `"eigen"`). |
 | `window = "gershgorin"` with `model.kind = "siesta"` | Raised by the SIESTA executors. |
 | `window = "gershgorin"` with `model.hr_file` | `model.hr_file requires an explicit expansion.window` |
+
+With an exact trace, a truncated local seed set still uses the legacy file
+label `exact` and normalises by `states`. It emits a `RuntimeWarning`:
+the result is an average over the first n of N basis functions, not the
+trace. `expansion.trace_coverage = {"states": n, "dimension": N}` in
+`run.resolved.json` records this case. Full block-local Bloch/eigen traces
+use all orbitals at every k point and are not truncated local traces.
+The coverage field is output only and ignored on input. Generator suites
+with several dimensions also retain each distinct coverage in
+`receipt.trace_coverages`.
 
 Checkpoint filenames use a versioned, full SHA-256 calculation fingerprint.
 It covers the engine word and expansion sizes, resolved numerical window,
@@ -502,8 +519,8 @@ The SIESTA projection executor refuses a `time` section.
 | `targets` | list of objects | see [Reconstruction targets](#reconstruction-targets) | `[]` | Extra reconstructions of the same moments, `csr` only. |
 | `per_site_dos` | boolean | — | `false` | `csr` only: also write `DOS_reconstructed.dat`, the DOS divided by the dimension of H, from all M moments. |
 | `legacy_text_round_trip` | boolean | — | `false` | Golden/legacy byte compatibility: write the legacy moment file and reconstruct from the copy read back (15 significant digits). `csr` and SIESTA runs only; the clean SIESTA and projection executors write the legacy file only when `output.legacy_layout` is `true`. |
-| `fft_grid` | boolean | — | `false` | Recorded only. It does not change the curves. To reconstruct on the Chebyshev-node grid, use the formulas `greenwood_fft` or `bastin_fft`. With `true`, `bastin_backend = "folded"` is refused. |
-| `num_points` | integer | — | `null` | Number of points of the default SIESTA oracle energy grid (1001 when `null`). Not used by KPM curves. |
+| `fft_grid` | boolean | — | `false` | Recorded and used by the folded-backend consistency check; it does not select a grid. The formulas `greenwood_fft` or `bastin_fft` select the Chebyshev-node grid. With `true`, `bastin_backend = "folded"` is refused. Validation warns when true without a requested `*_fft` formula (including targets). |
+| `num_points` | integer | — | `null` | Number of points of the default SIESTA oracle energy grid (1001 when `null`), also for models using the same metric executors. Explicit `energies` or `energy_grid` override it. Not used by KPM curves; validation warns when set for a model outside the metric executors. |
 | `energies` | list of numbers | non-empty, finite, strictly increasing | absent | SIESTA oracle energy grid, in eV. |
 | `energy_grid` | list of 3 numbers | `[E_min, E_max, n]`, `E_min < E_max`, integer `n ≥ 2` | absent | SIESTA oracle energy grid as a uniform grid. Give `energies` or `energy_grid`, not both. |
 | `num_cells` | integer | — | absent | Number of unit cells for the `shc` normalisation. SIESTA runs overwrite it with the k-mesh size. |
@@ -515,6 +532,12 @@ spans the gap around the first Fermi energy, extended by
 `max(0.25 × gap, 5 × broadening)`.
 If the Fermi energy lies outside the spectrum, the run fails with
 `Fermi level is outside the spectrum; supply reconstruction.energies or energy_grid`.
+
+The grid-control diagnostics are a single `RuntimeWarning` per validation,
+combining both no-effect keys if necessary. The keys remain accepted and
+resolved as before; warnings do not change numerical results. `num_points`
+is read only when a clean oracle or projection energy grid is constructed;
+it does not affect a disordered run or a clean run without the oracle.
 
 For ordinary `csr` and `wannier` runs, `formulas: ["shc"]` requires both
 `reconstruction.num_cells` and `reconstruction.cell_area`. Missing either is
@@ -561,6 +584,12 @@ parentheses.
 | `projected_evolution` | `Tr[P U(t)^+ SX U(t) delta(E-H) P]` | `row_m0` (`row0`), `time_correlation` (`time_correlation_curve`) | `row_m0` |
 | `time_correlation` | `Tr[A delta(E-H) U(t)^+ B U(t)]` | `time_correlation` (`time_correlation_curve`) | `time_correlation` |
 
+MSD words accept centred and off-centre enclosing spectral windows. Supply the
+physical velocity `V = i[H, X]` in the operator file; the executor scales it by
+`1/a`, with `a = (upper - lower)/2`, without adding an identity shift. The
+Hamiltonian retains the requested window. Direct Python callers should use
+`RescaledOperator(V, velocity_window(window))`; see [time evolution](../time-evolution.md).
+
 With several words, LSQuant applies each formula to every word whose shape
 allows it. Each formula must match at least one word; otherwise the validator
 stops with
@@ -584,6 +613,22 @@ ignores them and the SIESTA executors refuse a non-empty list.
 
 Target curves are always written as `.dat` files, whatever
 `output.legacy_names` says.
+
+Finite-M Jackson reconstruction estimates the effective broadening as
+`max(broadening_meV, 1000*pi*(upper-lower)/(2*M))`, in meV.
+A request below this floor emits a `RuntimeWarning` with requested and
+effective values; moment truncation and curve numbers are unchanged.
+`receipt.curve_resolution` records the requested value and a list of
+`effective_broadening_meV` values, one per spectral axis (time is excluded).
+When `curves.json` is written, each curve also carries these fields.
+For rectangular tensors the two spectral axes may have different floors.
+The estimate describes KPM curves, not the separate Gaussian eigen oracle.
+
+For the real-space nonorthogonal metric probe, the acceptance rule and default
+`metric.tol` are unchanged. Exact-applier failures report measured residuals,
+the rounding floor of an ill-conditioned overlap, an estimate of cond(S) from
+existing overlap bounds, and advice to raise `metric.tol`. Chebyshev failures
+continue to suggest increasing order or reducing `coeff_tol`.
 
 ## `output`
 
