@@ -8,9 +8,7 @@ U(t) = exp(-i H t / hbar) with hbar = 0.6582119624 eV fs, on a random 12 x 12 mo
     eigenvalue, for a centred and an off-centre window;
   * projected_evolution_plan: mu[m, n] = w_m Tr[P U(t_n)^+ O U(t_n) T_m(H~) P];
   * time_correlation_plan:    mu[m, n] = w_m Tr[A T_m(H~) U(t_n)^+ B U(t_n)];
-  * msd_plan with RescaledOperator(V, window), V = i[H, X]:
-      centred window   -> mu[m, n] = w_m Tr[[X, U(t_n)]^+ T_m(H~) [X, U(t_n)]];
-      off-centre window -> differs (RescaledOperator adds -(c/a) I to V/a): pinned;
+  * msd_plan with shift-free V/a agrees with the dense MSD for both windows;
   * time_step_from_tmax, the corrected energy axis E = a x + c of the uniform-grid Kubo
     reconstructions, and time_correlation_curve against its definition.
 w_m = (2 - delta_m0) / N, t_n = n dt, dt = tmax / (steps - 1).
@@ -33,7 +31,7 @@ if os.path.join(REPO, "python") not in sys.path:
 lsq = pytest.importorskip("lsquant", reason="lsquant._core not built")
 _core = lsq._core
 sl = pytest.importorskip("scipy.linalg")
-from lsquant.moments import HBAR  # noqa: E402
+from lsquant.moments import HBAR, velocity_window  # noqa: E402
 
 N, M, STEPS, TMAX = 12, 8, 5, 2.0
 
@@ -125,7 +123,7 @@ def test_msd_against_dense(model):
     x_op = np.diag(np.random.default_rng(1).normal(size=N))
     v = 1j * (d["h"] @ x_op - x_op @ d["h"])
     plan = lsq.msd_plan(M, STEPS, N, d["coeffs"], velocity_index=0, phase=d["phase"])
-    mu = lsq.run_plan(plan, core(d["h"]), d["w"], states(), operators=[_core.RescaledOperator(core(v), d["w"])])
+    mu = lsq.run_plan(plan, core(d["h"]), d["w"], states(), operators=[_core.RescaledOperator(core(v), velocity_window(d["w"]))])
 
     def comm(time):
         return x_op @ ut(d, time) - ut(d, time) @ x_op
@@ -133,13 +131,14 @@ def test_msd_against_dense(model):
     ref = np.array([[d["wts"][m] * np.trace(comm(k * d["dt"]).conj().T @ d["t"][m] @ comm(k * d["dt"]))
                      for k in range(STEPS)] for m in range(M)])
     err = np.max(np.abs(as_array(mu) - ref)) / np.max(np.abs(ref))
-    if d["centred"]:
-        assert err < 1e-12
-    else:
-        # RescaledOperator(V, window) = V/a - (c/a) I: the identity term changes the
-        # derived series, so an off-centre window gives a different tensor (see the
-        # msd_plan docstring and docs/time-evolution.md).
-        assert err > 0.1
+    assert err < 1e-10
+    if not d["centred"]:
+        shifted = lsq.run_plan(
+            plan, core(d["h"]), d["w"], states(),
+            operators=[_core.RescaledOperator(core(v), d["w"])],
+        )
+        # A Hamiltonian shift is not part of the commutator velocity.
+        assert np.max(np.abs(as_array(shifted) - ref)) > 0.1 * np.max(np.abs(ref))
 
 
 def test_kubo_uniform_axis_is_exact_offcentre():
@@ -168,3 +167,55 @@ def test_time_correlation_curve_definition():
     ref = np.array([np.sum(delta * g * data[:m_eff, n].real) / a for n in range(n_t)])
     assert len(val) == n_t
     assert np.max(np.abs(val - ref)) < 1e-10 * max(1.0, np.max(np.abs(ref)))
+
+
+@pytest.mark.parametrize("radius", [2.0, 2.2, 3.7])
+def test_velocity_window_preserves_centred_bits(radius):
+    import struct
+
+    original = _core.SpectralWindow(-radius, radius)
+    symmetric = velocity_window(original)
+    for field in ("scale", "shift"):
+        assert struct.pack("d", getattr(symmetric, field)) == struct.pack("d", getattr(original, field))
+    assert math.copysign(1.0, symmetric.shift) == -1.0
+
+
+@pytest.mark.parametrize("bounds", [(-3.0, 3.0), (-4.0, 2.5)], ids=["centred", "offcentre"])
+def test_msd_runfile_against_dense(tmp_path, bounds):
+    from scipy.sparse import csr_matrix
+    from lsquant.models.nonorthogonal import write_csr_text
+    from lsquant.runfile import execute_runfile
+
+    n, moments, steps, dt = 4, 8, 4, 0.2
+    h = np.diag(np.full(n - 1, -1.0), 1) + np.diag(np.full(n - 1, -1.0), -1)
+    x = np.diag(np.arange(n, dtype=float))
+    v = 1j * (h @ x - x @ h)
+    ops = tmp_path / "ops"
+    write_csr_text(ops / "chain.HAM.CSR", csr_matrix(h))
+    write_csr_text(ops / "chain.VX.CSR", csr_matrix(v))
+    raw = {
+        "model": {"kind": "csr", "dir": str(ops), "label": "chain", "operators": ["VX"]},
+        "basis": {"name": "real"},
+        "metric": {"policy": "orthogonal"},
+        "word": "Tr[[X,U(t)]^+ delta(E-H) [X,U(t)]]",
+        "expansion": {"moments": moments, "window": list(bounds), "trace": "exact", "states": n},
+        "time": {"steps": steps, "dt": dt},
+        "reconstruction": {"broadening_meV": None},
+        "output": {"dir": str(tmp_path / "out"), "legacy_layout": False},
+    }
+    result = execute_runfile(raw, repo_root=REPO)
+    paths = [p for p in result["written_files"] if ".chebmom" in p]
+    assert len(paths) == 1
+    mu = _core.ReadChebmom(paths[0])
+    eps, u = np.linalg.eigh(h)
+    w = _core.SpectralWindow(*bounds)
+    assert np.all(np.abs(eps * w.scale + w.shift) < 1.0)
+    polys = [u @ np.diag(np.cos(m * np.arccos(eps * w.scale + w.shift))) @ u.conj().T
+             for m in range(moments)]
+    ref = np.empty((moments, steps), dtype=complex)
+    for k in range(steps):
+        propagator = sl.expm(-1j * h * k * dt / HBAR)
+        comm = x @ propagator - propagator @ x
+        for m in range(moments):
+            ref[m, k] = (1.0 if m == 0 else 2.0) / n * np.trace(comm.conj().T @ polys[m] @ comm)
+    assert np.max(np.abs(as_array(mu) - ref)) < 1e-10
