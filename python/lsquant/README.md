@@ -65,71 +65,25 @@ Every calculation is configured by a strictly validated JSON run file. Unknown k
 at the top level or inside any sub-object are rejected before any operator file is
 loaded.
 
-### Top-level sections
+See the maintained [run-file reference](../../docs/reference/run-file.md) for
+all accepted keys, defaults, model sources and executor restrictions. The main
+sections select the model, basis, metric, observable word(s), expansion, time
+grid, reconstruction and output; `numerics` selects engine options.
 
-| Section / Field | Allowed Values / Type | Default | Description |
-|---|---|---|---|
-| `model.kind` | `"csr"` \| `"wannier"` \| `"siesta"` \| `"generator"` | `"csr"` | Model input source. |
-| `model.dir` | path | `null` | Directory containing `<label>.<OP>.CSR` (`csr`), `<seed>_hr.dat` (`wannier`), or `<label>.fdf` + `.TSHS`/`.HSX` (`siesta`). |
-| `model.label` | string | `null` | File prefix `<label>` for `csr` or `siesta` models. |
-| `model.seed` | string | `null` | Wannier90 seed name when `model.kind == "wannier"`. |
-| `model.operators` | `list[str]` | `[]` | Static operator names available in `model.dir`. |
-| `model.csr_dir` | path | `null` | Pre-built supercell CSR directory for `model.kind == "wannier"`. |
-| `model.name` | string | `null` | Generator name from `GENERATOR_CATALOGUE` when `model.kind == "generator"`. |
-| `model.tutorial` | `1..6` | `null` | Tutorial driver selector when `model.kind == "generator"`. |
-| `model.params` | `dict` | `{}` | Generator or SIESTA model parameters (e.g. `velocity_mode`: `"bare"` \| `"berry_connection"` \| `"covariant"`, `oracle`: `bool`). |
-| `basis.name` | `"real"` \| `"bloch"` \| `"eigen"` | `"real"` | Representation basis. |
-| `basis.supercell` | `[N1, N2, N3]` | `[1, 1, 1]` | Supercell or $k$-mesh dimensions. |
-| `basis.disorder` | `{"W": float, "seed": int, "kind": str}` | `{"W": 0.0, "seed": 7, "kind": "scalar"}` | Real-space Anderson box disorder parameters; `kind` is `"scalar"`, `"magnetic"` or `"independent"` (the last two for SIESTA models only). |
-| `metric.policy` | `"orthogonal"` \| `"nonorthogonal"` | `"orthogonal"` | Basis overlap policy. |
-| `metric.route` | `"lowdin"` \| `"generalised"` | `"lowdin"` | Non-orthogonal evaluation route ($S^{-1/2} H S^{-1/2}$ vs. $S^{-1} H$). |
-| `metric.applier` | `"exact"` \| `"chebyshev"` \| `"ischo"` | `"exact"` | Overlap inverse / inverse-square-root applier. |
-| `metric.order` | `int` | `60` | Chebyshev polynomial order for overlap appliers. |
-| `metric.coeff_tol` | `float` | `1e-12` | Chebyshev coefficient truncation threshold for overlap appliers. |
-| `metric.tol` | `float` | `1e-13` | PCG tolerance for `"ischo"`. |
-| `metric.max_iter` | `int` | `200` | Maximum PCG iterations for `"ischo"`. |
-| `metric.max_dim` | `int` | `4096` | Maximum dense matrix dimension for `"exact"` overlap appliers. |
-| `projection` | `dict` \| `null` | `null` | Spectral window projection (`{"kind": "hard" \| "shift" \| "orthogonal", "window": [emin, emax], ...}`). |
-| `word` | string | *(required)* | Primary observable word `Tr[...]`. |
-| `words` | `list[str]` | `[word]` | Multiple observable words evaluated on the same basis in one run. |
-| `expansion.moments` | `int` | `64` | Number of Chebyshev moments $M$ per expanded slot. |
-| `expansion.window` | `"gershgorin"` \| `"eigen"` \| `[lo, hi]` | `"gershgorin"` (`real`), `"eigen"` (`bloch`, `eigen`) | Spectral window mode or explicit `[lo, hi]` bounds in eV. |
-| `expansion.trace` | `"exact"` \| `"random"` | `"exact"` | Trace evaluation mode. |
-| `expansion.states` | `int` \| `null` | `null` | Number of trace states (`dim` for `exact`, `1` for `random` when omitted). |
-| `expansion.seed` | `int` | `12345` | Random-phase state generator seed. |
-| `expansion.batch` | `int` \| `null` | `moments` | Engine vector batch size. |
-| `time.steps` | `int` | — | Number of time steps (`> 1`) for time-dependent words. |
-| `time.tmax` | `float` \| `null` | `20.0` | Maximum evolution time in fs. |
-| `time.dt` | `float` \| `null` | `null` | Explicit time step in fs as an alternative to `tmax = dt * (steps - 1)`. |
-| `time.bessel` | `"scipy"` \| `"legacy"` | `"scipy"` | Bessel coefficient backend (`"legacy"` uses GSL values for legacy byte identity). |
-| `reconstruction.kernel` | `"jackson"` | `"jackson"` | Chebyshev damping kernel; only Jackson is implemented. |
-| `reconstruction.broadening_meV` | `float` \| `null` | `null` | Target broadening in meV. |
-| `reconstruction.fermi_energies` | `list[float]` | `[]` | Fermi energies in eV for time-correlation reconstruction. |
-| `reconstruction.formulas` | `list[str]` \| `null` | shape default | Reconstruction formulas (`dos`, `greenwood`, `bastin`, `sea`, `surf`, `greenwood_fft`, `bastin_fft`, `shc`, `time_correlation`, `row_m0`). |
-| `reconstruction.num_points` | `int` \| `null` | `null` | Explicit energy grid point count. |
-| `reconstruction.fft_grid` | `bool` | `false` | Reconstruct on the Chebyshev-node FFT grid. |
-| `reconstruction.legacy_text_round_trip` | `bool` | `false` | Round-trip moments through the 15-digit legacy ASCII format before reconstruction. |
-| `reconstruction.per_site_dos` | `bool` | `false` | Also write standalone per-site `DOS_reconstructed.dat`. |
-| `reconstruction.targets` | `list[dict]` | `[]` | Additional `(formulas, broadening_meV, subdir, also_top_dir)` reconstruction targets from the same moments. |
-| `output.dir` | path | `"."` | Output directory (always receives `run.resolved.json`). |
-| `output.legacy_names` | `bool` | `true` | `true`: write each curve as a legacy-named `.dat` file; `false`: write curves to `curves.json` (`csr`, `wannier`). Moment file names never change. |
-| `output.legacy_layout` | `bool` | `true` | Write `.chebmom1D`/`.chebmom2D`/`.chebmomTD` text files. |
-| `output.write_chebmom` | `bool` | `false` | Also write the unified `.chebmom` file. |
-| `output.write_basis_json` | `bool` | `true` for `wannier`, `false` otherwise | Write `<stem>.basis.json` provenance metadata. |
-| `output.capture_tutorial` | `bool` | `false` | Copy outputs into `captured/NNNN_*` for tutorial golden verification. |
+The metric routes are `lowdin`, `generalised`, and the approximate
+`anticommutator` route, available only in the clean SIESTA executor. A `time`
+section requires `steps > 1` and at least one of `tmax` or `dt` (in fs); `dt`
+takes precedence when both are given. There is no default `tmax`.
 
-### Generator catalogue (`model.kind = "generator"`)
-
-| `model.name` | Module path |
-|---|---|
-| `make_chain` | `examples/01_dos_1d_chain/make_chain.py` |
-| `make_disordered_chain` | `examples/02_localization_1d_chain/make_disordered_chain.py` |
-| `make_haldane` | `examples/03_haldane_hall/make_haldane.py` |
-| `make_chain_mag` | `examples/04_spin_precession_magnetic_chain/make_chain_mag.py` |
-| `make_square` | `examples/05_charge_transport_square/make_square.py` |
-| `make_ey` | `examples/06_spin_relaxation_square/make_ey.py` |
-| `make_rashba` | `examples/06_spin_relaxation_square/make_rashba.py` |
-| `gen_models` | `python/lsquant/models/wannier.py` |
+`reconstruction.num_points` sets only the default SIESTA oracle energy grid
+(1001 points when null), including models using that executor. Explicit
+`energies` or `energy_grid` override it. It does not set KPM curve grids.
+`reconstruction.fft_grid` does not select a grid: the formula names
+`greenwood_fft` and `bastin_fft` select the Chebyshev-node grid. The flag is
+recorded and checked for incompatibility with `bastin_backend = "folded"`.
+Validation emits one `RuntimeWarning` when `fft_grid` is true without a
+requested `*_fft` formula, or `num_points` is set for a model outside the
+metric executors, where it has no effect. Both keys remain accepted.
 
 ---
 

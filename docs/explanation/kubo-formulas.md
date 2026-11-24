@@ -203,7 +203,9 @@ Kubo–Bastin the cumulative integral over energy is taken on these few nodes.
 > 511 nodes, while $C$ converges to 1.002. `bastin_fft` is therefore suited to
 > plateau values, and `bastin` to full curves. The run-file key
 > `reconstruction.fft_grid` does not select this grid; only the formula names
-> `greenwood_fft` and `bastin_fft` do.
+> `greenwood_fft` and `bastin_fft` do. Validation emits a `RuntimeWarning`
+> when the flag is true without a requested `*_fft` formula. The flag
+> remains accepted and does not change the curves.
 <!-- source: python/lsquant/reconstruct.py:534–662 -->
 
 [Running LSQuant](../how-to/run-lsquant.md) lists the observable and formula
