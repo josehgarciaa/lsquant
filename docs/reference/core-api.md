@@ -369,6 +369,7 @@ threads.
 | `ContractRank2Imag(moments, table_a, table_b)` | Σ_{m,n} A[m, i]·Im(B[n, i]·μ[m, n]). `table_a` `float64`, `table_b` `complex128`. |
 | `ContractRank2Real(moments, table_a, table_b)` | Σ_{m,n} Re(A[m, i]·B[n, i]·μ[m, n]). Both tables `complex128`. |
 | `ContractRank2RealReal(moments, table_a, table_b)` | Σ_{m,n} A[m, i]·B[n, i]·Re μ[m, n]. Both tables `float64`. |
+| `ContractRank2Optical(moments, energies, omegas)` | Integrand of the finite-frequency Kubo–Bastin formula, complex, shape (ω, E): Σ_{m,n} [a_m(x) b⁺_n(x, ω) + b⁻_m(x, ω) a_n(x)] μ[m, n] with a_m = T_m(x)/√(1−x²) and b^s_n = s e^{s i n arccos(x+sω)}/√(1−(x+sω)²). Rescaled energies; x and x ± ω must lie inside (−1, 1). |
 | `FftMomentContraction(moments, points)` | Returns a `(2, points)` `complex128` array: row 0 = Σ μ[m, n] cos(mθ) e^(−inθ), row 1 = Σ n·μ[m, n] cos(mθ) e^(−inθ), on θ_j = (2j + 0.5)π/`points`. `moments`: 2D `complex128`. |
 
 For the rank-2 functions, `moments` is a 2D `complex128` array or a rank-2

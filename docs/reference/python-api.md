@@ -63,7 +63,7 @@ Other environment variables read by the Python layer:
 | `RunFile`, `execute_runfile`, `reconstruct_target`, `inspect_target` | class, functions | `runfile.py` |
 | `RealBasis`, `BlochBasis`, `EigenBasis`, `BlochMetricBasis`, `EigenMetricBasis`, `make_basis` | classes, function | `bases.py` |
 | `HBAR`, `dos_plan`, `kubo_plan`, `msd_plan`, `projected_evolution_plan`, `time_correlation_plan`, `time_evolution_series`, `time_step_from_tmax`, `window_from_gershgorin`, `run_plan` | constant, functions | `moments.py` |
-| `dos_curve`, `kubo_greenwood`, `kubo_bastin`, `kubo_bastin_sea`, `kubo_bastin_surf`, `kubo_fft_grid`, `time_correlation_curve`, `shc` | functions | `reconstruct.py` |
+| `dos_curve`, `kubo_greenwood`, `kubo_bastin`, `kubo_bastin_sea`, `kubo_bastin_surf`, `kubo_fft_grid`, `time_correlation_curve`, `shc`, `optical_conductivity`, `dielectric_function` | functions | `reconstruct.py` |
 | `jackson_damping`, `jackson_damping_2d` | functions | `kernels.py` |
 | `SpectralFunction`, `TimeEvolutionFunction`, `DeltaFunction`, `GaussianDelta`, `GreenRetarded`, `GreenRetardedDerivative`, `TimeEvolution`, `bessel_series_coefficients`, `legacy_bessel_coefficients`, `legacy_delta_table`, `legacy_green_tables` | classes, instances, functions | `spectral_functions.py` |
 
@@ -364,6 +364,8 @@ units. Units and normalisation are those of the curve files; see
 | `kubo_fft_grid(moments, broadening_meV, formula='bastin', *, backend=None)` | rank 2 | Chebyshev nodes, M_eff − 1 | E (eV), Bastin (`'bastin'`, `'bastin_fft'`, `True`) or Greenwood (`'greenwood'`, `'greenwood_fft'`, `False`). `backend`: `'tables'` or `'fft'`; `None` reads `LSQUANT_FFT_BACKEND`, default `'tables'`. |
 | `time_correlation_curve(moments, broadening_meV, fermi_energy)` | rank 2 (M × N_t) | time steps | t (fs, `n · moments.time_step`), correlation at `fermi_energy` (eV). |
 | `shc(moments, broadening_meV, num_cells, cell_area, *, backend='tables')` | rank 2 | as `kubo_bastin` | E (eV), `kubo_bastin` × 2π / (`num_cells` · `cell_area`), in e²/h for Pauli spin. |
+| `optical_conductivity(moments, photon_energies, *, energy_window, num_cells, cell_area, num_moments=None, num_energies=None, spin_degeneracy=1)` | rank 2, two velocity operators | uniform in `energy_window`, 2 M by default | μ (eV) and the complex σ(μ, ω) in e²/h, shape (photon energies, μ). Finite-frequency Kubo–Bastin with the Jackson kernel. `energy_window` must contain the spectrum, and widened by the largest photon energy it must lie inside the window of the moments. See [example 23](../../examples/23_optical_conductivity_graphene/README.md). |
+| `dielectric_function(sigma, photon_energies, thickness)` | — | — | ε = 1 + 2i (e²/4πε₀) σ / (ħω d) for a sheet of thickness d (Å), σ in e²/h. |
 
 Raises `ValueError` for the wrong rank, a non-positive broadening, `alpha`
 outside (0, 1), an unknown `formula` or `backend`, or (for `shc`) a
