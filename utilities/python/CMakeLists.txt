@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 2.4.0)
+cmake_minimum_required(VERSION 3.21)
 
 # CMake useful variables
 project("lsquant_utilities")

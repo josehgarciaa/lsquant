@@ -2,7 +2,8 @@
 
 - Importing the package must not bind the process to one core: core binding
   (``OMP_PROC_BIND``/``OMP_PLACES``) is set only when the process is the
-  ``lsquant`` command, and caller values always win.
+  ``lsquant`` command and has its own cores (a scheduler CPU set) or
+  ``LSQUANT_BIND_THREADS=1``; caller values always win.
 - ``bloch_sum`` with a workspace bound too small for one k point gives the
   same result as with a generous bound (one k point at a time), instead of
   stopping.
@@ -33,20 +34,45 @@ def test_cli_detection(argv, expected):
     assert runtime.launched_as_cli(argv) is expected
 
 
-@pytest.mark.parametrize("cli", [False, True])
-def test_binding_only_for_the_command(monkeypatch, cli):
-    for key in ("OMP_PROC_BIND", "OMP_PLACES", "OMP_NUM_THREADS"):
+@pytest.mark.parametrize("cli, confined, choice, bound", [
+    (False, True, None, False),    # a plain import never binds
+    (False, True, "1", False),
+    (True, True, None, True),      # the command with its own cores binds
+    (True, False, None, False),    # the command on a shared node does not
+    (True, False, "1", True),      # explicit request
+    (True, True, "0", False),      # explicit refusal
+])
+def test_binding_only_for_a_confined_command(monkeypatch, cli, confined, choice, bound):
+    for key in ("OMP_PROC_BIND", "OMP_PLACES", "OMP_NUM_THREADS", "LSQUANT_BIND_THREADS"):
         monkeypatch.delenv(key, raising=False)
+    if choice is not None:
+        monkeypatch.setenv("LSQUANT_BIND_THREADS", choice)
+    monkeypatch.setattr(runtime, "owns_its_cores", lambda: confined)
     argv = ["python", "-m", "lsquant", "run"] if cli else ["python", "script.py"]
     runtime.configure_threads(argv)
-    assert (os.environ.get("OMP_PROC_BIND") == "spread") is cli
-    assert (os.environ.get("OMP_PLACES") == "cores") is cli
+    assert (os.environ.get("OMP_PROC_BIND") == "spread") is bound
+    assert (os.environ.get("OMP_PLACES") == "cores") is bound
     assert int(os.environ["OMP_NUM_THREADS"]) >= 1
+
+
+def test_owns_its_cores_compares_affinity_with_the_machine(monkeypatch):
+    monkeypatch.setattr(os, "cpu_count", lambda: 8)
+    monkeypatch.setattr(os, "sched_getaffinity", lambda pid: set(range(8)), raising=False)
+    assert runtime.owns_its_cores() is False
+    monkeypatch.setattr(os, "sched_getaffinity", lambda pid: {2, 3}, raising=False)
+    assert runtime.owns_its_cores() is True
+
+
+def test_bad_binding_choice_is_refused(monkeypatch):
+    monkeypatch.setenv("LSQUANT_BIND_THREADS", "maybe")
+    with pytest.raises(ValueError, match="LSQUANT_BIND_THREADS"):
+        runtime.binding_requested(["python", "-m", "lsquant", "run"])
 
 
 def test_caller_values_win(monkeypatch):
     monkeypatch.setenv("OMP_PROC_BIND", "false")
     monkeypatch.setenv("OMP_NUM_THREADS", "3")
+    monkeypatch.setenv("LSQUANT_BIND_THREADS", "1")
     runtime.configure_threads(["python", "-m", "lsquant", "run"])
     assert os.environ["OMP_PROC_BIND"] == "false"
     assert os.environ["OMP_NUM_THREADS"] == "3"

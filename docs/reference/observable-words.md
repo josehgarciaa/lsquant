@@ -143,24 +143,19 @@ An accepted name must also exist in the model:
 | `siesta` | `VX`, `VY`, `VZ`, `SX`, `SY`, `SZ`, the spin currents `J<a>S<b>`, and `WINDOW` in projection runs. The executors restrict the words further; see [Use a SIESTA calculation](../how-to/use-siesta.md). |
 | `generator` | Built by the tutorial driver. |
 
-For `csr` models, give your operator files names from the default list, for
-example `<label>.A.CSR` for a layer projector, as
-`examples/15_spatial_operators` does.
+For `csr` models, use a default name such as `A` for a layer projector, or
+register a custom name such as `PTOP` in `model.operators` and provide
+`<label>.PTOP.CSR`.
 
-> **Known limitation: custom operator names fail in `run`.** A name outside
-> `DEFAULT_KNOWN_OPERATORS`, for example `PTOP`, passes validation and
-> `inspect` when it is listed in `model.operators`, but
-> `python -m lsquant run` stops with `Unknown operator 'PTOP'` for `csr` and
-> `wannier` models. Before it runs each word, `execute_runfile` compiles it
-> again without the model's operators (`python/lsquant/runfile.py:1546–1554`),
-> so the compiler falls back to the default list (`words/compiler.py:28`,
-> `393–394`) and raises at `words/compiler.py:405`. `words describe` refuses
-> such a name too. Use names from the default list, as above.
+Custom names registered in `model.operators` work in `run` as well as
+validation and `inspect`. The model must supply the named operator; ordinary
+Wannier models supply only `VX`, `VY` and `VZ`. Standalone `words describe`
+uses the default operator list.
 
 > **Known limitation: `WINDOW` needs `model.operators`.** `WINDOW` is not in
 > the default list, so the validator refuses `Tr[WINDOW delta(E-H)]` unless the
 > run file has `"operators": ["WINDOW"]` in `model`. The word runs only in
-> SIESTA projection runs, which skip the compile step of the previous box; see
+> SIESTA projection runs, which provide that operator; see
 > `examples/16_projection_downfold`. Because of the replacement rule in
 > [Names the compiler accepts](#names-the-compiler-accepts), list every
 > operator of every word.
