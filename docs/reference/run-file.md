@@ -184,6 +184,8 @@ Allowed keys in `model.params`: `velocity_mode` (`"bare"`,
 `oracle_degeneracy_tolerance`, `bloch_memory_mb` and `fermi_energy`.
 `spin` is refused (the file stores the spinors). `fermi_energy` (eV) overrides
 the origin the file was written with: H is shifted by `−(x − E_F(file)) S`.
+The Bloch-sum workspace defaults to 4 GiB for PySCF (all-electron blocks are
+large); `bloch_memory_mb` overrides it.
 
 ### Wannier90 and PAOFLOW models in the metric executors
 
@@ -256,7 +258,7 @@ out. These runs need `basis.name` `bloch` or `eigen` and
 | `position_file` | `abacus` | path | none | ABACUS's position matrix `data-rR-sparse.csr` (`out_mat_r 1`), text or binary, of the same run. Gives the connection A = Q − (τ_i + τ_j + R) S/2 of `"covariant"`; read only for that velocity. The removed anti-Hermitian part goes to `basis.json` as `connection_hermiticity_residual`. Resolved like `model.file`. |
 | `soc` | `gpaw` | `true`, `false` | `true` | Add GPAW's spin–orbit term (spinful model) or not (spinless). |
 | `velocity_mode` | `gpaw` | also `"covariant"` | `"berry_connection"` | The position matrix is integrated from the radial functions of the export. |
-| `quadrature_order`, `dipole_cache` | `gpaw` | integer; path | `48`; none | Order of that integration; file that stores it for reuse. |
+| `quadrature_order`, `dipole_cache` | `gpaw` | integer; path | `48`; none | Order of that integration; file that stores the unfolded result for reuse. `dipole_cache` is resolved like `model.file` (relative to the run file). |
 | `oracle`, `oracle_degeneracy_tolerance`, `bloch_memory_mb` | all | as for SIESTA | as for SIESTA | As in [SIESTA models](#siesta-models). |
 
 LSQuant makes H(R) Hermitian as the mean of H(R) and H(−R)† and writes the

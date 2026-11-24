@@ -293,7 +293,8 @@ def _shells_of(label, orbital_file, search_dirs, orbitals_per_element):
 
 
 def load_abacus_model(hamiltonian_file, *, overlap_file, stru_file, orbital_dir=None,
-                      orbitals_per_element=None, fermi_energy=None, position_file=None):
+                      orbitals_per_element=None, fermi_energy=None, dipoles=True,
+                      position_file=None):
     """Read an ABACUS-format H(R) (NextHAM ``hr_tot``, or ABACUS's own) with its S(R) and STRU.
 
     Returns a non-orthogonal model (:class:`~lsquant.models.siesta.SiestaModel`)
@@ -301,10 +302,13 @@ def load_abacus_model(hamiltonian_file, *, overlap_file, stru_file, orbital_dir=
     number of orbitals (``nspin = 4``). ``fermi_energy`` (eV) selects the
     energy origin and is removed as ``H - E_F S``; the files carry none, so
     the default is 0.0. The orbital files are searched in ``orbital_dir``,
-    then next to ``stru_file``. ``position_file`` (ABACUS's ``data-rR-sparse.csr``)
-    adds the connection of the covariant velocity.
+    then next to ``stru_file``. ``position_file`` (ABACUS's
+    ``data-rR-sparse.csr``) adds the connection of the covariant velocity;
+    ``dipoles`` (default ``True``) says to use it when given, so the run-file
+    loader can pass ``dipoles = velocity_mode == "covariant"`` together with
+    the path.
     """
-    from .lcao import build_lcao_model
+    from .lcao import build_lcao_model, seed_name_from_file
 
     paths = [os.path.abspath(os.path.expanduser(str(p))) for p in (hamiltonian_file, overlap_file, stru_file)]
     h_path, s_path, stru_path = paths
@@ -338,9 +342,9 @@ def load_abacus_model(hamiltonian_file, *, overlap_file, stru_file, orbital_dir=
                 orbital_positions="atom-centred: every orbital on its atom",
                 fermi_energy_source=source)
     model = build_lcao_model(lattice, positions, norb, h_r, hamiltonian * RYDBERG_EV, overlap, spinful=spinful,
-                             seed_name=os.path.basename(h_path), metadata=meta,
+                             seed_name=seed_name_from_file(h_path), metadata=meta,
                              fermi_energy=origin, overlap_r_int=s_r)
-    if position_file is not None:
+    if position_file is not None and dipoles:
         q_path = os.path.abspath(os.path.expanduser(str(position_file)))
         _attach_connection(model, q_path)
     return model

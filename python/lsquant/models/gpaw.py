@@ -449,7 +449,7 @@ def load_gpaw_model(path, *, soc=True, fermi_energy=None, tolerance=1e-10, dipol
     quadrature error: 1e-5 at order 48 for PdSe2). ``dipole_cache`` names an
     ``.npz`` that stores the result for the same export, cells and order.
     """
-    from .lcao import assemble_blocks, build_lcao_model, fold_opposite, opposite_pairs
+    from .lcao import assemble_blocks, build_lcao_model, fold_opposite, opposite_pairs, seed_name_from_file
     from .siesta import spinor_lift
 
     data = read_gpaw_lcao(path)
@@ -486,7 +486,8 @@ def load_gpaw_model(path, *, soc=True, fermi_energy=None, tolerance=1e-10, dipol
             "gpaw_fermi_level_eV": float(data["fermi_energy"]),
             "fermi_energy_source": "file" if fermi_energy is None else "run file"}
     model = build_lcao_model(data["lattice"], data["positions"], norb, r_h, H, S, spinful=with_soc,
-                             seed_name="gpaw", metadata=meta, fermi_energy=ef, overlap_r_int=r_s)
+                             seed_name=seed_name_from_file(path), metadata=meta, fermi_energy=ef,
+                             overlap_r_int=r_s)
     if dipoles:
         if "YL" not in data:
             raise ValueError(f"{path} holds no radial functions; export it again to use dipoles=True")
@@ -513,9 +514,12 @@ def load_gpaw_model(path, *, soc=True, fermi_energy=None, tolerance=1e-10, dipol
         if error > overlap_tolerance:
             raise ValueError(f"the quadrature overlap differs from GPAW's S(R) by {error:.1e} "
                              f"(> {overlap_tolerance:g}); raise quadrature_order")
-        partner = opposite_pairs(model.r_int)
-        # The connection is only measured, not folded (audit item B7).
-        model.metadata["dipole_hermiticity_residual"] = fold_opposite(A_q, partner, residual="absolute")[1]
+        # Fold the connection Hermitian, as the SIESTA, OpenMX and ABACUS
+        # readers do (audit item B7); the recorded residual is measured before
+        # the fold, with its historical normalisation. Caches hold the
+        # unfolded A: folding after reading keeps old caches valid.
+        A_q, residual = fold_opposite(A_q, opposite_pairs(model.r_int), residual="absolute")
+        model.metadata["dipole_hermiticity_residual"] = residual
         lifted = spinor_lift(A_q) if with_soc else A_q
         model.dipoles = np.asarray(lifted, complex)
     return model

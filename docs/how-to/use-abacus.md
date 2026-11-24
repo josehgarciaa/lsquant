@@ -103,7 +103,8 @@ python -m lsquant inspect run.json
 python -m lsquant run run.json
 ```
 
-The output files and units are those of the OpenMX and SIESTA runs: σ^z_xy in
+The output files and units are those of the OpenMX and SIESTA runs, named
+after the stem of `model.file` (ABACUS `hr_tot` writes `hr_totKPM_...`): σ^z_xy in
 e²/h with the Pauli matrix σ_z; divide by 2 for spin ħ/2. See
 [Results and units](use-siesta.md#results-and-units).
 

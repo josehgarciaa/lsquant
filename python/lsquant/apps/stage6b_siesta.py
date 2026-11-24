@@ -202,7 +202,6 @@ def execute_siesta_runfile(rf, out_dir):
         raise ValueError("oracle_degeneracy_tolerance must be positive and finite (eV)")
     mode = params.get("velocity_mode", "berry_connection")
     model = load_runfile_model(rf.model, mode, phase=timing.phase)
-    model.bloch_memory_mb = float(params.get("bloch_memory_mb", 256.0))
     with timing.phase("metric build"):
         bloch = BlochMetricBasis(model, rf.basis["supercell"], velocity_mode=mode,
                                  route=rf.metric["route"], seed=rf.expansion["seed"])

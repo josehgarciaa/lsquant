@@ -103,6 +103,10 @@ class ModelConnector:
     spin_values: tuple[str, ...] = ()
     required_params: tuple[str, ...] = ()
     required_param_hint: str = ""
+    #: Bloch-sum workspace bound (MiB) when the run file does not set
+    #: ``bloch_memory_mb``: the reader's own default (4096 for PySCF, whose
+    #: all-electron blocks are large; 256 for every other kind).
+    default_bloch_memory_mb: float = 256.0
 
     @property
     def missing_path_error(self) -> str:
@@ -129,7 +133,7 @@ def _load_wannier(model, velocity_mode, phase):
     params = model.get("params") or {}
     return load_wannier_metric_model(
         model["dir"], model["seed"], spin=params.get("spin", "labels"),
-        positions=True if velocity_mode == "covariant" else False,
+        dipoles=velocity_mode == "covariant",
         fermi_energy=params.get("fermi_energy"))
 
 
@@ -143,7 +147,7 @@ def _load_openmx(model, velocity_mode, phase):
 def _load_pyscf(model, velocity_mode, phase):
     from .pyscf_lcao import load_pyscf_model
     params = model.get("params") or {}
-    return load_pyscf_model(model["file"], connection=velocity_mode == "covariant",
+    return load_pyscf_model(model["file"], dipoles=velocity_mode == "covariant",
                             fermi_energy=params.get("fermi_energy"))
 
 
@@ -190,7 +194,8 @@ def _load_abacus(model, velocity_mode, phase):
         orbital_dir=params.get("orbital_dir"),
         orbitals_per_element=params.get("orbitals_per_element"),
         fermi_energy=params.get("fermi_energy"),
-        position_file=params.get("position_file") if velocity_mode == "covariant" else None)
+        dipoles=velocity_mode == "covariant",
+        position_file=params.get("position_file"))
 
 
 def _load_gpaw(model, velocity_mode, phase):
@@ -247,6 +252,7 @@ CONNECTORS: dict[str, ModelConnector] = {
             covariant_rule="always",
             refusal="a PySCF model carries its spinors; remove model.params.spin",
             keep_metric_policy=True,
+            default_bloch_memory_mb=4096.0,
         ),
         ModelConnector(
             "wannier",
@@ -335,6 +341,7 @@ CONNECTORS: dict[str, ModelConnector] = {
             _BASE_MODEL_KEYS | {"file"},
             _load_gpaw,
             covariant_rule="always",
+            path_params=("dipole_cache",),
             ml_style=True,
         ),
     )
@@ -513,6 +520,23 @@ def validate_bare_params(kind: str, model: Mapping[str, Any]) -> None:
     _refuse_unknown_param_keys(kind, frozenset(), params)
 
 
+def apply_bloch_memory(model_obj: Any, connector: ModelConnector,
+                       params: Mapping[str, Any]) -> None:
+    """Bound the Bloch-sum workspace: the run-file value wins when present,
+    otherwise the kind's default (the reader's own default) stays.
+
+    Applied by :func:`load_runfile_model`, so every executor sees the same
+    bound. The exact spin operator of a Wannier90 model sums over R per k as
+    well and follows the model bound.
+    """
+    value = params.get("bloch_memory_mb")
+    bound = float(value) if value is not None else float(connector.default_bloch_memory_mb)
+    model_obj.bloch_memory_mb = bound
+    spin = getattr(model_obj, "spin", None)
+    if hasattr(spin, "bloch_memory_mb"):
+        spin.bloch_memory_mb = bound
+
+
 def load_runfile_model(model, velocity_mode, *, phase=None):
     """Load the model of a run file for the metric executors (SIESTA, OpenMX, Wannier90,
     PySCF, PAOFLOW, and the machine-learning Hamiltonians of ``runfile.ML_MODEL_KINDS``).
@@ -527,7 +551,9 @@ def load_runfile_model(model, velocity_mode, *, phase=None):
     connector = CONNECTORS.get(kind)
     if connector is None or connector.loader is None:
         raise ValueError(f"model.kind {kind!r} has no metric executor")
-    return connector.loader(model, velocity_mode, phase)
+    loaded = connector.loader(model, velocity_mode, phase)
+    apply_bloch_memory(loaded, connector, model.get("params") or {})
+    return loaded
 
 
 def _optional_float(value):
