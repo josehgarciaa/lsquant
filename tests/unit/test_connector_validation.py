@@ -222,7 +222,7 @@ def test_model_keys_per_kind(connector):
         f"allowed keys are {sorted(connector.model_keys)}"
     )
     # A null value means absent (run.resolved.json round trips carry nulls).
-    _validated(connector, **{foreign: None})
+    _validated(connector, params=_accepted_params(connector), **{foreign: None})
     _validated(connector, params=_accepted_params(connector), operators=["VX"])
 
 
@@ -246,7 +246,7 @@ def test_model_keys_csr_and_generator():
                                             "seed": 1}))
     assert "model.kind='generator'" in str(exc.value)
     gen = {"kind": "generator", "name": "make_chain", "tutorial": 1, "params": {}}
-    RunFile.from_dict(dict(BASE, model=gen))
+    RunFile.from_dict(dict(BASE, basis={"name": "real"}, model=gen))
 
 
 # --------------------------------------------------------------------- A.6
@@ -636,14 +636,14 @@ def _openmx_file(tmp_path, rng):
     cells = [(0, 0, 0), (1, 0, 0), (-1, 0, 0)]
 
     def herm_pair(build):
-        m0 = build()
-        m0 = 0.5 * (m0 + m0.conj())
-        return {(0, 0, 0): m0, (1, 0, 0): build() * 0.3, (-1, 0, 0): (build() * 0.3).conj()}
+        a = np.complex128(build())
+        return {(0, 0, 0): 0.5 * (a + a.conj()), (1, 0, 0): 0.3 * a,
+                (-1, 0, 0): 0.3 * a.conj()}
 
     uu = herm_pair(lambda: rng.normal() + 1j * rng.normal())
     dd = herm_pair(lambda: rng.normal() + 1j * rng.normal())
-    b = rng.normal() + 1j * rng.normal()
-    ud = {(0, 0, 0): 0.2 * b, (1, 0, 0): 0.1 * b, (-1, 0, 0): 0.15 * b.conj()}
+    b = np.complex128(rng.normal() + 1j * rng.normal())
+    ud = {(0, 0, 0): 0.2 * b, (1, 0, 0): 0.1 * b, (-1, 0, 0): 0.15 * np.conj(b)}
     s1 = rng.normal(scale=0.05)
     s = {(0, 0, 0): 1.0, (1, 0, 0): s1, (-1, 0, 0): s1}
     mu_hartree = -0.12
