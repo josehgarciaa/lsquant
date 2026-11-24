@@ -9,8 +9,8 @@ description = "Python library and SymPy spectral-function front end for the LSQU
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "numpy",
-    "scipy",
+    "numpy>=2.0",
+    "scipy>=1.13",
     "sympy",
 ]
 
