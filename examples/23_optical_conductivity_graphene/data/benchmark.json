@@ -1,61 +1,63 @@
 {
  "graphene": {
-  "moments": 1024,
+  "moments": 1400,
   "window": [
-   -19.0,
-   19.0
+   -26.0,
+   26.0
   ],
-  "resolution_eV": 0.05829126993965436,
-  "transition_width_eV": 0.08243630451661031,
+  "resolution_eV": 0.05834386356666759,
+  "transition_width_eV": 0.08251068313722681,
   "van_hove_target": 5.4,
-  "van_hove_x": 5.39189140736245,
-  "van_hove_y": 5.3924374899668015,
-  "van_hove_exact": 5.3919971798624635,
-  "anisotropy_max_relative": 0.007841091064934863,
-  "plateau": 1.5978892218376115,
-  "plateau_exact": 1.5979608156599812,
+  "van_hove_x": 5.391795354444958,
+  "van_hove_y": 5.392348609127583,
+  "van_hove_exact": 5.391984472820901,
+  "anisotropy_max_relative": 0.00784041062196198,
+  "kramers_kronig_max_relative": 0.00017346346544292916,
+  "plateau": 1.5978911253986545,
+  "plateau_exact": 1.5979617700428177,
   "universal": 1.5707963267948966,
-  "optical_at_1em4_eV": 2.130804184454587,
-  "static_kubo_bastin": 2.1318943185397,
+  "optical_at_1em4_eV": 2.13150766315851,
+  "static_kubo_bastin": 2.1317917026989024,
   "pauli_onsets": {
    "0.5": {
-    "moments": 0.9999689833224662,
-    "exact": 0.9929301217993342
+    "moments": 0.9999738304986988,
+    "exact": 0.9929174244936537
    },
    "1.0": {
-    "moments": 1.9999969303041218,
-    "exact": 1.9961399506598616
+    "moments": 1.999991654528586,
+    "exact": 1.9961329910980152
    },
    "1.5": {
-    "moments": 2.999997275187593,
-    "exact": 2.996556049309098
+    "moments": 3.0000016061975354,
+    "exact": 2.996550478693242
    }
   }
  },
  "hbn": {
-  "moments": 1024,
+  "moments": 1400,
   "window": [
-   -19.0,
-   19.0
+   -26.0,
+   26.0
   ],
-  "resolution_eV": 0.05829126993965436,
-  "transition_width_eV": 0.08243630451661031,
+  "resolution_eV": 0.05834386356666759,
+  "transition_width_eV": 0.08251068313722681,
   "van_hove_target": 8.618474342944928,
-  "van_hove_x": 8.607979086187518,
-  "van_hove_y": 8.60852558509007,
-  "van_hove_exact": 8.607567078429001,
-  "anisotropy_max_relative": 0.00347203123447757,
+  "van_hove_x": 8.607721520671152,
+  "van_hove_y": 8.608269033905927,
+  "van_hove_exact": 8.6075494587218,
+  "anisotropy_max_relative": 0.0034486708134331087,
+  "kramers_kronig_max_relative": 0.00017810251688920196,
   "gap": 7.25,
-  "onset_moments": 7.25088408368702,
-  "onset_exact": 7.250404383122635,
-  "alpha_2d_static_moments": 0.19748772257848743,
+  "onset_moments": 7.250867047160963,
+  "onset_exact": 7.250403121739192,
+  "alpha_2d_static_moments": 0.19747064106211273,
   "alpha_2d_static_exact": 0.19726467352143118,
-  "eps_static_d_3_33": 1.745256430542649
+  "eps_static_d_3_33": 1.7451919702827632
  },
  "checks": [
   {
    "test": "graphene: van Hove peak, field along x",
-   "value": 5.39189140736245,
+   "value": 5.391795354444958,
    "target": 5.4,
    "tolerance": 0.02,
    "unit": "eV",
@@ -63,7 +65,7 @@
   },
   {
    "test": "graphene: van Hove peak, field along y",
-   "value": 5.3924374899668015,
+   "value": 5.392348609127583,
    "target": 5.4,
    "tolerance": 0.02,
    "unit": "eV",
@@ -71,7 +73,15 @@
   },
   {
    "test": "graphene: |Re sigma_xx - Re sigma_yy| / max Re sigma, 0.3 to 9.5 eV",
-   "value": 0.007841091064934863,
+   "value": 0.00784041062196198,
+   "target": 0.0,
+   "tolerance": 0.03,
+   "unit": "",
+   "passed": true
+  },
+  {
+   "test": "graphene: |Im sigma - KK[Re sigma]| / max |sigma|, 0.5 to 16.0 eV",
+   "value": 0.00017346346544292916,
    "target": 0.0,
    "tolerance": 0.03,
    "unit": "",
@@ -79,47 +89,47 @@
   },
   {
    "test": "graphene: mean Re sigma(0, omega), 0.5 to 1.5 eV, against the exact model",
-   "value": 1.5978892218376115,
-   "target": 1.5979608156599812,
-   "tolerance": 0.031959216313199625,
+   "value": 1.5978911253986545,
+   "target": 1.5979617700428177,
+   "tolerance": 0.03195923540085636,
    "unit": "e^2/h",
    "passed": true
   },
   {
    "test": "graphene: Re sigma(0, 1e-4 eV) against the static Kubo-Bastin value of the same moments",
-   "value": 2.130804184454587,
-   "target": 2.1318943185397,
-   "tolerance": 0.021318943185397,
+   "value": 2.13150766315851,
+   "target": 2.1317917026989024,
+   "tolerance": 0.021317917026989024,
    "unit": "e^2/h",
    "passed": true
   },
   {
    "test": "graphene: half-absorption point at mu = 0.5 eV",
-   "value": 0.9999689833224662,
+   "value": 0.9999738304986988,
    "target": 1.0,
-   "tolerance": 0.05829126993965436,
+   "tolerance": 0.05834386356666759,
    "unit": "eV",
    "passed": true
   },
   {
    "test": "graphene: half-absorption point at mu = 1.0 eV",
-   "value": 1.9999969303041218,
+   "value": 1.999991654528586,
    "target": 2.0,
-   "tolerance": 0.05829126993965436,
+   "tolerance": 0.05834386356666759,
    "unit": "eV",
    "passed": true
   },
   {
    "test": "graphene: half-absorption point at mu = 1.5 eV",
-   "value": 2.999997275187593,
+   "value": 3.0000016061975354,
    "target": 3.0,
-   "tolerance": 0.05829126993965436,
+   "tolerance": 0.05834386356666759,
    "unit": "eV",
    "passed": true
   },
   {
    "test": "hbn: van Hove peak, field along x",
-   "value": 8.607979086187518,
+   "value": 8.607721520671152,
    "target": 8.618474342944928,
    "tolerance": 0.02,
    "unit": "eV",
@@ -127,7 +137,7 @@
   },
   {
    "test": "hbn: van Hove peak, field along y",
-   "value": 8.60852558509007,
+   "value": 8.608269033905927,
    "target": 8.618474342944928,
    "tolerance": 0.02,
    "unit": "eV",
@@ -135,7 +145,15 @@
   },
   {
    "test": "hbn: |Re sigma_xx - Re sigma_yy| / max Re sigma, 0.3 to 9.5 eV",
-   "value": 0.00347203123447757,
+   "value": 0.0034486708134331087,
+   "target": 0.0,
+   "tolerance": 0.03,
+   "unit": "",
+   "passed": true
+  },
+  {
+   "test": "hbn: |Im sigma - KK[Re sigma]| / max |sigma|, 0.5 to 16.0 eV",
+   "value": 0.00017810251688920196,
    "target": 0.0,
    "tolerance": 0.03,
    "unit": "",
@@ -143,15 +161,15 @@
   },
   {
    "test": "hbn: half-height point of the absorption step against the exact step",
-   "value": 7.25088408368702,
-   "target": 7.250404383122635,
-   "tolerance": 0.01457281748491359,
+   "value": 7.250867047160963,
+   "target": 7.250403121739192,
+   "tolerance": 0.014585965891666898,
    "unit": "eV",
    "passed": true
   },
   {
    "test": "hbn: alpha_2D at 0.0001 eV against the clean k-space sum",
-   "value": 0.19748772257848743,
+   "value": 0.19747064106211273,
    "target": 0.19726467352143118,
    "tolerance": 0.003945293470428624,
    "unit": "Angstrom",
@@ -159,7 +177,7 @@
   },
   {
    "test": "hbn: alpha_2D at 2 eV against the clean k-space sum",
-   "value": 0.20922796120256756,
+   "value": 0.2092304886549773,
    "target": 0.20897526528419724,
    "tolerance": 0.004179505305683945,
    "unit": "Angstrom",
@@ -167,7 +185,7 @@
   },
   {
    "test": "hbn: alpha_2D at 4 eV against the clean k-space sum",
-   "value": 0.25535734408042415,
+   "value": 0.25536115132301523,
    "target": 0.25498523628955344,
    "tolerance": 0.005099704725791069,
    "unit": "Angstrom",

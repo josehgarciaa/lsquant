@@ -40,18 +40,20 @@ returns $\sigma_{xy}$ rather than $\sigma_{yx}$.
 
 ![Optical conductivity of graphene and hBN from the moments, compared with exact results](fig_benchmark.png)
 
-**FIG. 1.** Nearest-neighbour honeycomb model, 400 × 400 cells, 1024 × 1024
-moments on $[-19, 19]$ eV (resolution 58 meV), Jackson kernel, 8 random-phase
-states, $g_s = 2$. Graphene: $t = -2.7$ eV. hBN: $t = -2.33$ eV and on-site
-energies $\pm 3.625$ eV. Squares: exact result of the same model on a
-1200 × 1200 k mesh, with each transition broadened by a Gaussian of 82 meV
-($\sqrt2$ times the resolution). (a) Graphene at $\mu = 0$, with the field
-along $x$ (black line) and along $y$ (blue dashed line). Dotted line: the
-universal value $\pi/2$. Grey line: $2|t|$. (b) Re σ of graphene against
-$\hbar\omega$ and $\mu$. The dashed line is $\hbar\omega = 2\mu$. (c) hBN at
-$\mu = 0$. Grey lines: the gap $2\Delta$ and $2\sqrt{\Delta^2+t^2}$. (d) The
-2D polarisability of hBN below the gap, obtained from Im σ, compared with the
-clean sum over states.
+**FIG. 1.** Nearest-neighbour honeycomb model, 400 × 400 cells, 1400 × 1400
+moments on $[-26, 26]$ eV (resolution 58 meV), Jackson kernel, 8 random-phase
+states, $g_s = 2$, $\mu = 0$ unless stated. Graphene: $t = -2.7$ eV. hBN:
+$t = -2.33$ eV and on-site energies $\pm 3.625$ eV. Orange squares: exact
+result of the same model on a 1200 × 1200 k mesh, with each transition
+broadened by a Gaussian of 82 meV ($\sqrt2$ times the resolution). Top row,
+graphene: (a) Re σ with the field along $x$ (black line) and along $y$ (blue
+dashed line); dotted line, the universal value $\pi/2$; grey line, $2|t|$.
+(b) Im σ from the moments (line) and the Kramers–Kronig transform of Re σ
+(green squares). (c) Re σ against $\hbar\omega$ and $\mu$; dashed line,
+$\hbar\omega = 2\mu$. Bottom row, hBN: (d) Re σ; grey lines, the gap
+$2\Delta$ and $2\sqrt{\Delta^2+t^2}$. (e) Im σ and the Kramers–Kronig
+transform of Re σ. (f) The 2D polarisability $\alpha_{2D}$ from Im σ, up to
+the gap, compared with the clean sum over states.
 
 | Test | From the moments | Expected |
 |---|---|---|
@@ -62,6 +64,7 @@ clean sum over states.
 | Graphene, mean Re σ(0, ω) from 0.5 to 1.5 eV | 1.598 e²/h | exact for the model 1.598; universal π/2 = 1.571 |
 | Graphene, σ(0, 10⁻⁴ eV) compared with the static Kubo–Bastin value | 2.131 e²/h | 2.132 e²/h |
 | hBN 2D polarisability at ω → 0 | 0.1975 Å | 0.1973 Å |
+| Largest difference between Im σ and the Kramers–Kronig transform of Re σ, 0.5–16 eV | 0.02 % of max \|σ\| (both) | 0 |
 | Largest relative difference between Re σ_xx and Re σ_yy | 0.8 % (graphene), 0.3 % (hBN) | 0 up to trace noise |
 
 Every peak and onset is where the analytic result puts it. The peaks lie
@@ -74,8 +77,15 @@ slightly above π/2 because the bands are not linear. As ω → 0, the optical
 curve tends to the static Kubo–Bastin conductivity of the same moments. This
 links the optical prefactor to the static one.
 
+Re σ and Im σ come from the same moments but from different parts of the
+reconstruction, and causality ties them by the Kramers–Kronig relation. Each
+peak of Re σ has its partner in Im σ: in graphene, Im σ jumps at the van Hove
+peak; in hBN, Im σ has a minimum at the gap and changes sign at the van Hove
+peak. The transform of Re σ reproduces Im σ to 0.02 % of the largest |σ|.
+
 Im σ of hBN is negative below the gap, and its polarisability agrees with the
-clean sum over states within 0.2 %. This checks the imaginary part, its sign
+clean sum over states within 0.2 % at 0, 2 and 4 eV, and follows it up to its
+rise at the gap. This checks the imaginary part, its sign
 (time dependence $e^{-i\omega t}$) and Re ε. The responses to light polarised
 along $x$ and along $y$ differ only by the noise of the random trace.
 
@@ -84,7 +94,7 @@ Kubo–Bastin formula evaluated on the eigenstates to $10^{-11}$. This holds
 for $\sigma_{xx}$, and for $\sigma_{xy}$ of the Haldane model, whose
 $\omega \to 0$ limit is the static Hall value.
 
-The dark band at $\hbar\omega < 0.3$ eV in (b) is the Drude peak of the doped
+The dark band at $\hbar\omega < 0.3$ eV in (c) is the Drude peak of the doped
 sheet. Its width is the resolution, not a scattering rate.
 
 [1] T. Galvani, Bastin optical conductivity script and notes (private

@@ -24,6 +24,10 @@ on-site energies +Delta (B) and -Delta (N) and hopping t:
    its sign and Re epsilon.
 6. Polarisation: a hexagonal crystal has sigma_xx = sigma_yy. With the same
    random states the two differ only by the noise of the trace.
+7. Kramers-Kronig: Re sigma and Im sigma are not independent. Im sigma from
+   the moments is compared with the Kramers-Kronig transform of Re sigma
+   from the same moments, over the whole absorption range, so every peak
+   of Re sigma must come with its feature in Im sigma.
 
 Usage (from this directory, after the two runs of run_graphene.json and run_hbn.json):
     python benchmark.py ../../out/optical_graphene ../../out/optical_hbn
@@ -44,10 +48,34 @@ from make_honeycomb import GRAPHENE, HBN, lattice
 
 SPIN = 2
 CELLS = 400 * 400
-PHOTON = np.concatenate(([1e-4, 2e-4], np.arange(0.02, 10.0 + 1e-9, 0.02)))
-ENERGY_WINDOW = (-8.6, 8.6)           # eV: contains both spectra (8.10 and 7.87 eV); 8.6 + 10 < 19
+PHOTON = np.concatenate(([1e-4, 2e-4], np.arange(0.02, 17.0 + 1e-9, 0.02)))
+ENERGY_WINDOW = (-8.6, 8.6)           # eV: contains both spectra (8.10 and 7.87 eV); 8.6 + 17 < 26
+KK_RANGE = (0.5, 16.0)               # eV: photon energies where Im sigma is compared with Kramers-Kronig
 DOPED = (0.5, 1.0, 1.5)               # eV
 MU_MAP = np.arange(0.0, 2.51, 0.05)   # eV: chemical potentials of the (mu, omega) map
+
+
+_trapezoid = getattr(np, "trapezoid", None) or np.trapz   # NumPy 2 renamed trapz
+
+
+def kramers_kronig(photon, re_sigma):
+    """Im sigma(omega) = -(2 omega/pi) P int_0^W Re sigma(w') / (w'^2 - omega^2) dw'  (exp(-i omega t)).
+
+    Re sigma is given on `photon` (ascending, from near zero to W, beyond the
+    largest transition). The principal value is taken by subtracting
+    Re sigma(omega): P int_0^W dw' / (w'^2 - omega^2) = ln|(W - omega)/(W + omega)| / (2 omega).
+    Trapezoid rule; the subtracted integrand is regular at w' = omega.
+    """
+    w, f = np.asarray(photon), np.asarray(re_sigma)
+    top = w[-1]
+    out = np.full(len(w), np.nan)                       # undefined at the upper limit W
+    for i, w0 in enumerate(w[:-1]):
+        den = w**2 - w0**2
+        g = np.where(np.abs(den) > 1e-12, (f - f[i]) / np.where(den == 0, 1, den), 0.0)
+        g[i] = np.gradient(f, w)[i] / (2 * w0)            # limit of the subtracted integrand
+        principal = _trapezoid(g, w) + f[i] * np.log(abs((top - w0) / (top + w0))) / (2 * w0)
+        out[i] = -2 * w0 / np.pi * principal
+    return out
 
 
 def load(out_dir, op):
@@ -120,6 +148,14 @@ def main():
         aniso = np.max(np.abs(s0x.real - s0y.real)[band]) / np.max(s0x.real[band])
         report[name]["anisotropy_max_relative"] = aniso
         check(f"{name}: |Re sigma_xx - Re sigma_yy| / max Re sigma, 0.3 to 9.5 eV", aniso, 0.0, 0.03, "")
+        # 7. Kramers-Kronig consistency of the two parts from the same moments.
+        kk = kramers_kronig(PHOTON, s0x.real)
+        sel = (PHOTON > KK_RANGE[0]) & (PHOTON < KK_RANGE[1])
+        kk_dev = np.max(np.abs(kk - s0x.imag)[sel]) / np.max(np.abs(s0x)[sel])
+        curves[name]["im_kk"] = kk
+        report[name]["kramers_kronig_max_relative"] = kk_dev
+        check(f"{name}: |Im sigma - KK[Re sigma]| / max |sigma|, {KK_RANGE[0]} to {KK_RANGE[1]} eV",
+              kk_dev, 0.0, 0.03, "")
 
         if name == "graphene":
             # 4. prefactor: universal value, model value and continuity with the static curve.
@@ -139,7 +175,7 @@ def main():
             for mu in DOPED:
                 ratio = at(energies, sx, mu).real / np.where(s0x.real > 0, s0x.real, np.nan)
                 w_half = crossing(PHOTON, ratio, 0.5, mu, 2 * mu + 1.0)
-                ref_ratio = exact.re_sigma(PHOTON[2:], mu, width) / ref0
+                ref_ratio = exact.re_sigma(PHOTON[2:], mu, width) / np.where(ref0 > 0, ref0, np.nan)
                 w_ref = crossing(PHOTON[2:], ref_ratio, 0.5, mu, 2 * mu + 1.0)
                 onsets[mu] = dict(moments=w_half, exact=w_ref)
                 check(f"graphene: half-absorption point at mu = {mu} eV", w_half, 2 * mu, res, "eV")
@@ -161,7 +197,7 @@ def main():
                   0.25 * res, "eV")
             report[name].update(gap=gap, onset_moments=w_on, onset_exact=w_on_exact)
             # 5. polarisability and Im sigma below the gap.
-            below = PHOTON < 5.0
+            below = PHOTON < gap - 0.3
             alpha_kpm = -E2 * s0x.imag[below] / (2 * np.pi * PHOTON[below])
             alpha_exact = exact.polarisability(PHOTON[below])
             curves[name].update(alpha_photon=PHOTON[below], alpha_moments=alpha_kpm, alpha_exact=alpha_exact)

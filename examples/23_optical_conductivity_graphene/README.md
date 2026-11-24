@@ -73,14 +73,16 @@ python -m lsquant run examples/23_optical_conductivity_graphene/run_hbn.json
 
 [`run_graphene.json`](run_graphene.json) and [`run_hbn.json`](run_hbn.json)
 compute the moments of `Tr[VX delta(E-H) VX dG-(E)/dE]` and
-`Tr[VY delta(E-H) VY dG-(E)/dE]`: 1024 × 1024 moments, 8 random-phase
-states, and the window [−19, 19] eV.
+`Tr[VY delta(E-H) VY dG-(E)/dE]`: 1400 × 1400 moments, 8 random-phase
+states, and the window [−26, 26] eV (resolution 58 meV).
 
 The window needs care. The Green functions are expanded at E ± ħω, so the
 window must contain the spectrum widened by the largest photon energy on each
 side. The spectra are |E| ≤ 8.10 eV (graphene) and 7.87 eV (hBN). The
 reconstruction integrates over [−8.6, 8.6] eV, so photon energies up to
-10 eV fit. `optical_conductivity` refuses a window that is too narrow and
+17 eV fit. The Kramers–Kronig test needs Re σ up to the end of the
+absorption, above 2√(Δ² + t²) ≈ 8.6 eV, and the hBN polarisability is
+plotted up to the gap; both need the wide window. `optical_conductivity` refuses a window that is too narrow and
 names the range it needs.
 
 ## Step 4: the tests
@@ -94,8 +96,9 @@ python benchmark.py ../../out/optical_graphene ../../out/optical_hbn
 both materials and runs the tests the [page](PAGE.md) lists. The exact
 references come from [`exact_honeycomb.py`](exact_honeycomb.py), which uses
 the same model on a 1200 × 1200 k mesh. The script prints one line per test
-and the count of passing tests (16 of 16), writes every number to
-`benchmark.json`, and writes the curves to `bench_*.npz`.
+and the count of passing tests (18 of 18), writes every number to
+`benchmark.json`, and writes the curves to `bench_*.npz` in the current
+directory.
 
 The tolerances are as follows:
 
@@ -106,6 +109,8 @@ The tolerances are as follows:
 - 2 % for the graphene plateau and the polarisability.
 - 1 % for the static limit.
 - 3 % for the difference between the two polarisations.
+- 3 % of max |σ| for the difference between Im σ and the Kramers–Kronig
+  transform of Re σ, from 0.5 to 16 eV.
 
 ## Step 5: plot
 
@@ -124,7 +129,7 @@ This writes `fig_benchmark.png`.
 from lsquant import _core
 from lsquant.reconstruct import optical_conductivity, dielectric_function
 
-moments = _core.ReadChebmom("out/optical_hbn/NonEqOpVX-VXhbnKPM_M1024x1024_statedefault.chebmom")
+moments = _core.ReadChebmom("out/optical_hbn/NonEqOpVX-VXhbnKPM_M1400x1400_statedefault.chebmom")
 energies, sigma = optical_conductivity(
     moments, photon_energies, energy_window=(-8.6, 8.6),
     num_cells=400 * 400, cell_area=5.412659, spin_degeneracy=2)
@@ -164,9 +169,9 @@ centred on zero; the script assumes a symmetric one.
 
 ## Runtime
 
-Each run of step 3 keeps 320 000 orbitals and 1024 moments per axis. The
-graphene and hBN runs ran side by side on 30 cores each, in about 4.5 min per
-velocity operator and 21 GB of memory each. Steps 1, 2, 4 and 5 take seconds
+Each run of step 3 keeps 320 000 orbitals and 1400 moments per axis. The
+graphene and hBN runs ran side by side on 30 cores each of a shared node, in
+about 16 min per velocity operator. Steps 1, 2, 4 and 5 take seconds
 to a minute; most of step 4 is the 1200 × 1200 k mesh of the exact
 references.
 
