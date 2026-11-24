@@ -57,13 +57,15 @@ atom positions. A crystal can also be given as hoppings H(R) (`model.hr_file`) w
 ## Checkpoints
 
 `"expansion": {"checkpoint": true}` makes the engine write the moment tensor to
-`<out>/checkpoint_<hash>.lsqckpt` after every fully accumulated trace state:
+`<out>/checkpoint_v2_<hash>.lsqckpt` after every fully accumulated trace state:
 - the file is versioned and written atomically (temporary file, `fsync`, `rename`);
 - a run restarted with the same run file resumes after the last state in the file;
 - the result is bit-identical to an uninterrupted run;
 - the file is removed when the run completes.
 
-This works in both profiles.
+This works for `csr` models (including atom blocks) in both profiles. The filename
+identifies the calculation settings and model file contents. Different or legacy
+checkpoints are reported and ignored; see [the run-file reference](reference/run-file.md).
 
 ## Optional backends
 

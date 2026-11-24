@@ -191,23 +191,18 @@ See [Use a SIESTA calculation](use-siesta.md).
 ### Resume a killed run
 
 With `expansion.checkpoint: true`, a `csr` run writes
-`checkpoint_<hash>.lsqckpt` into the output directory after every random or
+`checkpoint_v2_<hash>.lsqckpt` into the output directory after every random or
 unit vector. Run the same command again with the same `--out` directory, and
 LSQuant continues after the last finished vector. The file is deleted when the
 calculation of the quantity finishes.
 
-> **Known limitation: the checkpoint does not record the model or the window.**
-> The file name depends only on the `word`. On loading, LSQuant checks only
-> the number of indices of the moment table (one per Chebyshev expansion,
-> plus one for the time axis of a time-dependent observable), its dimensions,
-> the number of trace vectors, the label of the trace vectors (random or
-> exact) and the `word`. A mismatch in these stops the run with an error that
-> contains `checkpoint does not match this run (rank/dims/states/label/word)`.
-> If you change the Hamiltonian, the window or the seed and run again into a
-> directory that still holds a checkpoint from a killed run, the new run
-> continues from the old moments. Delete stale `checkpoint_*.lsqckpt` files,
-> or use a new output directory, whenever you change the run file.
-> <!-- source: python/lsquant/runfile.py:2148 (file name from the word); lsquant/core/chebyshev/checkpoint.cpp:144–148 (checks rank, dimensions, number of trace vectors, state label, word; error message); label = states_->Label(), set before the load, lsquant/core/chebyshev/moment_engine.cpp:1463 (expansion.state_label is applied only after the run, runfile.py:2150, 2156); rank includes the time axis, moment_engine.cpp:194–204 -->
+> **Checkpoint identity:** the filename fingerprints the resolved window, state
+> generator and seed, expansion and time settings, basis, metric, numerics and
+> model input contents. Changing the window, seed or matrix bytes starts a fresh
+> calculation. Other fingerprints and legacy word-only checkpoints are explicitly
+> reported and ignored, and left in place for their original calculations. No
+> manual deletion is required. See [the run-file reference](../reference/run-file.md)
+> for the fingerprint and hashing cost.
 
 ## Write a batch script
 

@@ -417,7 +417,7 @@ word.
 | `state_block` | integer or string | positive integer, `"auto"` | `1` | Number of trace states propagated together. `"auto"` picks a value from available memory in the native build and resolves to 1 in the golden build. The clean and disordered SIESTA executors treat `"auto"` as 1; the projection executor accepts only an integer. |
 | `left_window` | integer | positive | `32` | Bra-side streaming window of the native rank-2 path. |
 | `right_window` | integer or string | positive integer, `"all"` | `16` | Ket-side storage window of the native rank-2 path; `"all"` stores all M vectors (resolves to `null`). |
-| `checkpoint` | boolean | — | `false` | `csr` only: checkpoint after every trace state to `checkpoint_<hash>.lsqckpt` in the output directory and resume from it on restart. The file is deleted when the word finishes. |
+| `checkpoint` | boolean | — | `false` | `csr` only: checkpoint after every trace state to `checkpoint_v2_<hash>.lsqckpt` in the output directory and resume from it on restart only when the calculation fingerprint matches. The file is deleted when the word finishes. |
 | `state_block_rule` | string | — | — | Output only. Ignored on input. The `"auto"` resolution records its reason here in memory; current executors write `run.resolved.json` before this happens. |
 
 | Condition | Error |
@@ -426,6 +426,26 @@ word.
 | `basis.name` `"bloch"` or `"eigen"` with `csr` and no `window` | Same message, raised by the executor (the default resolves to `"eigen"`). |
 | `window = "gershgorin"` with `model.kind = "siesta"` | Raised by the SIESTA executors. |
 | `window = "gershgorin"` with `model.hr_file` | `model.hr_file requires an explicit expansion.window` |
+
+Checkpoint filenames use a versioned, full SHA-256 calculation fingerprint.
+It covers the engine word and expansion sizes, resolved numerical window,
+expansion settings (including trace kind, seed, resolved state count and state
+block), basis and disorder settings, metric, numerics, resolved atom-domain
+size, build profile and time settings. Model settings and the size and SHA-256
+of every model file read are included: Hamiltonian or H(R), loaded operators,
+overlap matrix when used, and file-based atom-block positions and atom maps.
+Inline geometry is covered by the model settings. Output and reconstruction
+settings do not affect the fingerprint.
+
+Files are streamed in 1 MiB chunks once per checkpoint-enabled execution, even
+when multiple words run. This adds one sequential read of the input bytes,
+with bounded memory; no mtime cache is used, so same-size edits with preserved
+timestamps are detected. Keep model inputs unchanged during loading and execution.
+Other fingerprints and old word-only checkpoints are reported with an
+`Ignoring checkpoint` warning, left in place, and never passed to the loader.
+An identical calculation can still resume byte-identically. This changes neither
+the binary checkpoint format nor the C++ loader. Wannier and SIESTA executors
+do not currently checkpoint.
 
 ## `time`
 
