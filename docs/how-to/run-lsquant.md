@@ -194,7 +194,8 @@ resolution of the curve, much as the smearing does for a DFT DOS. The finest
 broadening we can resolve is $\pi a/M$, where $a$ is the half-width of the
 spectral window. We therefore choose $M$ from the resolution we need.
 
-A broadening finer than $\pi a/M$ is replaced by $\pi a/M$ without a warning.
+A broadening finer than $\pi a/M$ is replaced by $\pi a/M$ with a
+`RuntimeWarning`; the effective estimate is recorded in the curve metadata or run receipt.
 A wide window, as in most DFT Hamiltonians, therefore needs many moments: a
 20 eV window and a 10 meV broadening need $M \ge 3142$.
 [The kernel polynomial method](../explanation/kpm.md) explains the kernel and

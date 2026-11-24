@@ -25,6 +25,7 @@ import numpy.typing as npt
 from .. import _core
 from ..moments import kubo_plan, run_plan
 from ..reconstruct import (
+    record_resolution,
     kubo_bastin,
     kubo_bastin_sea,
     kubo_bastin_surf,
@@ -252,21 +253,25 @@ def run_tutorial03(
     captured_dir = os.path.join(out_dir, "captured")
     os.makedirs(captured_dir, exist_ok=True)
 
+    record_resolution(os.path.join(out_dir, "run.resolved.json"), mu_xy_disk, broadening_meV)
     e_bastin, s_bastin = kubo_bastin(mu_xy_disk, broadening_meV)
     bastin_path = os.path.join(out_dir, f"KuboBastin_{stem_xy}JACKSON.dat")
     _core.WriteCurveText(bastin_path, e_bastin, s_bastin)
     written.append(bastin_path)
 
+    record_resolution(os.path.join(out_dir, "run.resolved.json"), mu_xy_disk, broadening_meV)
     e_sea, s_sea = kubo_bastin_sea(mu_xy_disk, broadening_meV)
     sea_path = os.path.join(out_dir, f"KuboBastinSea_{stem_xy}JACKSON.dat")
     _core.WriteCurveText(sea_path, e_sea, s_sea)
     written.append(sea_path)
 
+    record_resolution(os.path.join(out_dir, "run.resolved.json"), mu_xy_disk, broadening_meV)
     e_surf, s_surf = kubo_bastin_surf(mu_xy_disk, broadening_meV)
     surf_path = os.path.join(out_dir, f"KuboBastinSurf_{stem_xy}JACKSON.dat")
     _core.WriteCurveText(surf_path, e_surf, s_surf)
     written.append(surf_path)
 
+    record_resolution(os.path.join(out_dir, "run.resolved.json"), mu_xx_disk, broadening_meV)
     e_gw, s_gw = kubo_greenwood(mu_xx_disk, broadening_meV)
     gw_path = os.path.join(out_dir, f"KuboGreenWood_{stem_xx}JACKSON.dat")
     _core.WriteCurveText(gw_path, e_gw, s_gw)

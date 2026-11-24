@@ -10,6 +10,7 @@ and energies ``E in (0.0, 1.0, -1.0, 1.9)`` eV.
 
 from __future__ import annotations
 
+
 import argparse
 import importlib.util
 import os
@@ -21,7 +22,7 @@ from types import ModuleType
 
 from .. import _core
 from ..moments import run_plan
-from ..reconstruct import time_correlation_curve
+from ..reconstruct import time_correlation_curve, record_resolution
 from ..words import compile as compile_word
 
 W_DISORDER: float = 1.0
@@ -73,6 +74,7 @@ def _run_one_chain(
     stage_dir: str,
     dest_dir: str,
     *,
+    receipt_path: str | None = None,
     num_moments: int = M_MOMENTS,
     num_states: int = 1,
     window_override: _core.SpectralWindow | None = None,
@@ -138,6 +140,7 @@ def _run_one_chain(
     os.makedirs(dest_dir, exist_ok=True)
     results: list[tuple[str, str]] = []
     for ef in energies:
+        record_resolution(receipt_path or os.path.join(dest_dir, "run.resolved.json"), mu_disk, float(broadening_meV))
         times, values = time_correlation_curve(mu_disk, float(broadening_meV), ef)
         dat_name = f"mean{stem}EF{ef:.6f}JACKSON.dat"
         dat_path = os.path.join(dest_dir, dat_name)
@@ -195,6 +198,7 @@ def run_tutorial02(
             stage_dir,
             out_dir,
             num_moments=int(num_moments),
+            receipt_path=os.path.join(out_dir, "run.resolved.json"),
             num_states=int(num_states),
             window_override=win_override,
             ntime=int(ntime),
@@ -223,6 +227,7 @@ def run_tutorial02(
                     stage_dir,
                     r_dir,
                     num_moments=int(num_moments),
+                    receipt_path=os.path.join(out_dir, "run.resolved.json"),
                     num_states=int(num_states),
                     window_override=win_override,
                     ntime=int(ntime),

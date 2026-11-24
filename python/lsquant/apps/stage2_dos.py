@@ -11,6 +11,8 @@ Supports two invocation forms:
 
 from __future__ import annotations
 
+from ..trace_coverage import trace_coverage
+
 import argparse
 import os
 import sys
@@ -175,6 +177,7 @@ def main(argv: list[str] | None = None) -> int:
                 state_gen: _core.StateGenerator = _core.LocalStates(
                     dim, list(range(num_states))
                 )
+                trace_coverage(num_states, dim)
                 state_label = "exact"
             else:
                 num_states = args.states if args.states is not None else 1

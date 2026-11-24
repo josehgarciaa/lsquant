@@ -303,7 +303,8 @@ Choose the number of moments M from the broadening you need. M sets the
 energy resolution of every curve, as the smearing does for a DFT density of
 states. The finest broadening of a run is πa/M, with a the half-width of the
 energy window. A finer value in `broadening_meV` uses all M moments, and
-LSQuant applies πa/M instead, without a warning.
+LSQuant applies πa/M instead, emits a RuntimeWarning, and records the effective
+resolution in the run receipt.
 
 > **Rule of thumb.** For a broadening η, use M ≈ πa/η moments, where a is
 > the half-width of the energy window in eV.
@@ -374,10 +375,11 @@ To see the residuals of a run, look at `metric_residuals` in its
 `basis.json`. Example 12 shows the case and checks the result against the
 `bloch` basis.
 
-> **Known limitation: `metric.tol` and its error message.** The default
-> tolerance stays at 10⁻¹³ whatever cond(S) is. The message suggests changing
-> the Chebyshev order or `coeff_tol` even with `"applier": "exact"`, where
-> those keys have no effect. Set `tol` as shown above.
+> **Known limitation: `metric.tol` ignores conditioning.** The default
+> tolerance stays at 10⁻¹³ whatever cond(S) is. Exact-applier failures now
+> report the residual, estimated cond(S), and rounding floor, with advice to
+> raise `metric.tol`. Chebyshev failures retain their order/coefficient advice.
+> Set `tol` as shown above.
 <!-- source: python/lsquant/disorder_bases.py:315–319, python/lsquant/runfile.py:297 -->
 
 ## Results and units

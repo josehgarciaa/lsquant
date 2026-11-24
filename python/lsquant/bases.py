@@ -15,6 +15,8 @@ objects and is completely agnostic of which basis adapter produced them.
 
 from __future__ import annotations
 
+from .trace_coverage import trace_coverage
+
 import hashlib
 import json
 import math
@@ -695,6 +697,7 @@ class RealBasis:
                 raise ValueError(
                     "RealBasis.states: num_states must lie in 1..dimension for exact trace"
                 )
+            trace_coverage(n_st, self.dimension)
             return _core.LocalStates(self.dimension, list(range(n_st)))
         if mode == "random":
             n_st = 1 if num_states is None else int(num_states)
@@ -863,6 +866,7 @@ class BlochBasis:
                 raise ValueError(
                     "BlochBasis.states: num_states must lie in 1..dimension for full exact trace"
                 )
+            trace_coverage(n_st, self.dimension)
             return _core.LocalStates(self.dimension, list(range(n_st)))
         if mode == "random":
             n_st = 1 if num_states is None else int(num_states)
@@ -1023,6 +1027,7 @@ class EigenBasis:
                 raise ValueError(
                     "EigenBasis.states: num_states must lie in 1..dimension"
                 )
+            trace_coverage(n_st, self.dimension)
             return _core.LocalStates(self.dimension, list(range(n_st)))
         if mode == "random":
             n_st = 1 if num_states is None else int(num_states)
