@@ -178,10 +178,11 @@ server, `status` reports only the runs started since the restart. The output
 directories and logs of earlier runs remain on disk, and `inspect` still
 reads them.
 
-When you ask for a reconstruction from a directory that holds both rank-1
-(DOS) and rank-2 (conductivity) moments, ask the assistant to pass the moment
-file and the formula explicitly. With a directory, `reconstruct` applies one
-formula to every moment file in it; see example 18.
+When you request a formula for a directory containing both rank-1 (DOS) and
+rank-2 (conductivity) moments, `reconstruct` skips incompatible files and
+returns their paths and reasons in `skipped_files`. If no file admits the
+formula, it reports an error before writing curves. Without an explicit
+formula, each file uses its own default; see example 18.
 
 > **Known limitation: not every path is checked against the root.** The `run`
 > tool checks `model.dir`, `model.csr_dir`, the generator script and

@@ -471,43 +471,35 @@ spans the gap around the first Fermi energy, extended by
 If the Fermi energy lies outside the spectrum, the run fails with
 `Fermi level is outside the spectrum; supply reconstruction.energies or energy_grid`.
 
-> **Known limitation: `shc` in `csr` and `wannier` runs.** During
-> `python -m lsquant run`, the `csr` and `wannier` executors do not pass
-> `num_cells` and `cell_area` to the `shc` formula, even when they are set in
-> `reconstruction` (`runfile.py:1714`, `2228`, `2307`). A run with
-> `formulas: ["shc"]` therefore fails with
-> `shc reconstruction requires num_cells and cell_area`. Only the
-> [`reconstruct`](cli.md#reconstruct) subcommand reads them, from the
-> `run.resolved.json` in the same directory as the moment file
-> (`runfile.py:2438`). Verified by running for both `csr` and `wannier`: the
-> run exits with status 1 after writing the moments.
-> `siesta` runs are not affected; they write `shc.dat` themselves.
->
-> Workaround:
->
-> 1. Set `num_cells` and `cell_area` in the `reconstruction` section of the
->    run file **before** the run, because `reconstruct` has no option for
->    them.
-> 2. Run with `formulas` that leave out `"shc"` (for example `["bastin"]`).
-> 3. Reconstruct from the moment file, kept next to its `run.resolved.json`,
->    and pass the broadening and the Fermi energies explicitly. For a single
->    moment file, `reconstruct` otherwise falls back to 10 meV and `[0.0]`
->    and ignores the run-file values:
->
->    ```bash
->    python -m lsquant reconstruct <dir>/<file>.chebmom2D --formula shc --broadening-meV <same as the run>
->    ```
->
-> Use the moment file, not the directory. With a directory, `reconstruct`
-> applies `--formula shc` to every moment file in it (`runfile.py:2393`),
-> including the DOS moments of the same run. It takes the legacy
-> `.chebmom1D`, `.chebmom2D` and `.chebmomTD` files first, and the unified
-> `.chebmom` only when there are no legacy files.
->
-> Verified by running, the workaround writes the `SpinHall_…` curve. On a
-> directory that also holds DOS moments, `reconstruct` writes the spin Hall
-> curve, then exits 1 on the rank-1 file with
-> `rank-2 reconstruction requires moments.rank == 2`.
+For ordinary `csr` and `wannier` runs, `formulas: ["shc"]` requires both
+`reconstruction.num_cells` and `reconstruction.cell_area`. Missing either is
+refused during validation, before computing moments. Reconstruction targets
+also use these two keys. The metric executors obtain geometry from the model.
+With a non-null broadening, the run writes the `SpinHall_…` curve directly.
+
+To reconstruct it again, keep the moments next to `run.resolved.json`, which
+supplies the geometry, and pass the same broadening explicitly:
+
+```bash
+python -m lsquant reconstruct <dir>/<file>.chebmom2D --formula shc --broadening-meV <same as the run>
+```
+
+A single file otherwise defaults to 10 meV and Fermi energies `[0.0]`.
+For a directory and an explicit formula, incompatible ranks or word shapes
+are skipped and reported in `skipped_files` (file and reason) and by the CLI.
+If no file admits the formula, reconstruction fails before writing curves.
+Legacy moment files take precedence over unified `.chebmom` files. Legacy
+files have no word, and static engine words do not distinguish Greenwood
+from Bastin, so filtering uses the union of catalogue formulas for their
+rank and time axis; full observable words retain their shape restrictions.
+
+The `shc` header uses the stored word: `JXSZ` on the left and `VY` on the
+right give `sigma_z_xy [e^2/h, sigma_z Pauli]`; other spin components and
+directions change the indices. A word without a left spin current is
+labelled `normalised_bastin[A,B] [2*pi/(num_cells*cell_area)]`, naming its
+operators without claiming spin Hall conductivity. Missing words are labelled
+with unknown operators. The numbers and normalisation do not change. The
+SIESTA executor continues to write its existing `shc.dat` header.
 
 ### Formulas by word shape
 
