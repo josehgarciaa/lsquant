@@ -1,0 +1,63 @@
+# Build and test LSQuant on every pull request and on main.
+#
+# Problem: until this workflow the only automatic check was the documentation build, so a change
+# that broke the build, a unit test or a golden file was seen only when somebody ran the checks
+# by hand. This job builds the `golden` preset and runs the three checks of docs/testing.md that
+# fit a hosted runner: CTest, the Python unit suite and the stage-0 golden gate.
+#
+# Platform: Ubuntu 22.04 with the distribution packages gives GCC 11.4, Eigen 3.4.0, FFTW 3.3.8 and
+# GSL 2.7.1, the toolchain that wrote the stage-0 goldens (goldens/stage0/PROVENANCE.md). The
+# strict gate (byte identity) is therefore expected to pass here; it is reported but does not
+# block, because the runner's processor and C library are not under our control. The gate in
+# tolerance mode (GOLDEN_TOL=1, one unit of the last printed digit) blocks.
+#
+# Pitfall: GitHub evaluates a pull request on its merge with the base branch, so two changes that
+# pass alone and fail together are caught here once the first of them is on main.
+#
+# To-do: the later gate stages (1 to 7) and the examples need more time and data than a hosted
+# runner offers; a native-profile job and a job on the minimum supported NumPy/SciPy versions.
+name: tests
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths-ignore: ['docs/**', 'docs-site/**', '**.md', '.github/workflows/docs.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  golden:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    env:
+      LC_NUMERIC: C
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++ cmake libeigen3-dev libboost-dev libgsl-dev libfftw3-dev python3-dev python3-pip
+      - name: Install Python packages
+        run: python3 -m pip install --user numpy==2.2.6 scipy==1.15.2 sympy pybind11 pytest matplotlib
+      - name: Versions
+        run: |
+          g++ --version | head -1
+          cmake --version | head -1
+          python3 -c "import sys, numpy, scipy; print(sys.version.split()[0], numpy.__version__, scipy.__version__)"
+          nproc
+      - name: Configure (golden preset)
+        run: cmake --preset golden
+      - name: Build
+        run: cmake --build build/golden -j 4
+      - name: CTest
+        run: OMP_NUM_THREADS=4 KPM_SEED=12345 ctest --test-dir build/golden -j 2 --output-on-failure
+      - name: Python unit suite
+        run: PYTHONPATH=$PWD/build/golden/lsquant_core:$PWD/python python3 -m pytest tests/unit -q
+      - name: Golden gate, stage 0, strict (reported, does not block)
+        continue-on-error: true
+        run: scripts/check_goldens.sh 0 build/golden
+      - name: Golden gate, stage 0, tolerance mode
+        run: GOLDEN_TOL=1 scripts/check_goldens.sh 0 build/golden
