@@ -76,7 +76,7 @@ def test_reader_builds_spinor_overlap_and_midpoint_connection(tmp_path):
     np.savez(path, uc=uc, tau=np.repeat(tau_orb, 2, axis=0), r_int=r_int, hoppings=h,
              overlap_orb=s_orb, position_orb=Q, fermi_energy=-1.0, mesh=np.array([4, 1, 1]),
              edge_ratio=0.0, nelectron=2, basis="custom")
-    model = load_pyscf_model(path)
+    model = load_pyscf_model(path, dipoles=True)
     assert model.overlaps.shape == (3, 2 * n, 2 * n)
     assert np.allclose(model.overlaps[:, 0::2, 0::2], s_orb)
     assert np.allclose(model.overlaps[:, 0::2, 1::2], 0)

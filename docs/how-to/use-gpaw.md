@@ -75,7 +75,7 @@ python -m lsquant run run.json
 | Key | Value |
 |---|---|
 | `velocity_mode` | `"covariant"` (recommended), `"berry_connection"` or `"bare"`. For `"covariant"` LSQuant builds the position matrix of the orbitals from the radial functions in the export (a few minutes; see below). |
-| `dipole_cache` | Optional `.npz` path where LSQuant stores that position matrix and reuses it for the same export. |
+| `dipole_cache` | Optional `.npz` path where LSQuant stores that position matrix and reuses it for the same export. Relative paths resolve like `model.file` (against the run file). The stored connection is folded Hermitian on load; `basis.json` records the pre-fold residual as `dipole_hermiticity_residual`. |
 | `quadrature_order` | Gauss–Legendre order of that integration, default 48. LSQuant checks the overlap it integrates against GPAW's S(R) and stops if they differ by more than 10⁻⁴. |
 | `soc` | `true` (default): spinful model, H ⊗ 1 + spin–orbit. `false`: spinless model. |
 | `fermi_energy` | In eV, removed as H − E_F S. Default: the Fermi level of GPAW. |
@@ -97,4 +97,5 @@ python -m lsquant run run.json
   plane-wave or a larger-basis calculation before you trust the transport.
 - **Velocity.** Use `covariant`. `berry_connection` leaves out the dipoles
   inside each atom; for the spin Hall plateau of PdSe₂ that changes the
-  result by about 1.5 %.
+  result by about 1.5 %. The moment files are named after the stem of
+  `model.file` (a model `pdse2_lsquant.npz` writes `pdse2_lsquantKPM_...`).
