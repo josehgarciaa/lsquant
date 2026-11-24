@@ -289,6 +289,10 @@ the cache goes to `.lsquant-cache` in the parent of `model.dir` when that
 directory is named `siesta`. Otherwise it goes to `lsquant-cache` in the
 system temporary directory when `model.dir` is not writable, and to
 `.lsquant-cache` in `model.dir` itself in every other case.
+For compatibility, reads also check the legacy location
+`model.dir/.lsquant-cache/dipoles-<key>.npz` after the current location.
+The same cache-key and certificate validation applies to both locations;
+this fallback does not change where new caches are written.
 <!-- source: python/lsquant/models/siesta.py:287-289 (docstring: cache outside siesta/ input directories, content-based invalidation), 382-391 (order: LSQUANT_CACHE_DIR, parent of siesta/, temp dir if not writable, model.dir) -->
 
 The accuracy of the dipole integrals is set by `quadrature_order`,

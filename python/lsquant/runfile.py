@@ -87,7 +87,6 @@ GENERATOR_CATALOGUE: dict[str, str] = {
     "make_square": "examples/05_charge_transport_square/make_square.py",
     "make_ey": "examples/06_spin_relaxation_square/make_ey.py",
     "make_rashba": "examples/06_spin_relaxation_square/make_rashba.py",
-    "gen_models": "python/lsquant/models/wannier.py",
 }
 
 _GENERATOR_TO_TUTORIAL: dict[str, int] = {
@@ -158,7 +157,6 @@ ALLOWED_GENERATOR_PARAMS: dict[str, frozenset[str]] = {
             "disorder_seed",
         }
     ),
-    "gen_models": frozenset(),
 }
 
 
@@ -280,7 +278,7 @@ def default_window_for_basis(basis_name: str) -> str:
 DEFAULT_RUNFILE_DEFAULTS: dict[str, Any] = {
     "model": {
         "kind": "csr",
-        "operators": [],
+        "operators": None,
         "csr_dir": None,
         "name": None,
         "tutorial": None,
@@ -307,10 +305,10 @@ DEFAULT_RUNFILE_DEFAULTS: dict[str, Any] = {
         "trace": "exact",
         "states": None,
         "seed": 12345,
-        "batch": None,
+        "batch": 64,
         "state_label": None,
         "state_block": 1,
-        "left_window": None,
+        "left_window": 32,
     },
     "time": None,
     "reconstruction": {

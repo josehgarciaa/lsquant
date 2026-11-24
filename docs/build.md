@@ -7,6 +7,11 @@ The new core builds with two numerical **profiles**:
 `CMakePresets.json` names both. Preset and manual builds require CMake ≥ 3.21,
 a C++17 compiler, and Boost headers for the legacy Boost.Math Bessel functions.
 
+For CUDA builds, an explicit or cached `LSQUANT_CUDA_ARCHITECTURES` wins.
+Otherwise, a supplied `CMAKE_CUDA_ARCHITECTURES` initializes the project value;
+with neither set, the fallback is `90`. See the
+[CUDA architecture reference](reference/build-presets.md#presets).
+
 ## Presets
 
 ```bash
