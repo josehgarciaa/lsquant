@@ -2,7 +2,7 @@
 
 Defines the rank-1 density-of-states plan (:func:`dos_plan`) and generalised
 rank-2 Kubo correlation plan (:func:`kubo_plan`) as data over the
-five-instruction C++ engine grammar, together with
+seven-instruction C++ engine grammar, together with
 :func:`window_from_gershgorin` and :func:`run_plan`.
 """
 

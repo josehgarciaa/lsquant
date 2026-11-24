@@ -7,8 +7,12 @@ the checkpointing available in both profiles. None of them changes what a run fi
 
 ## Thread placement
 
-When the process is the `lsquant` command (`lsquant run` or `python -m lsquant run`), the
-package sets `OMP_PROC_BIND=spread` and `OMP_PLACES=cores` at import. A plain `import lsquant`
+When the process is the `lsquant` command (`lsquant run` or `python -m lsquant run`) and it
+has its own cores (a CPU set from the batch system, smaller than the machine), the package sets
+`OMP_PROC_BIND=spread` and `OMP_PLACES=cores` at import. Without a CPU set it does not bind:
+OpenMP numbers the places from the first core for every process, so two commands on one node
+would bind to the same cores. `LSQUANT_BIND_THREADS=1` binds anyway (a node you have to
+yourself) and `LSQUANT_BIND_THREADS=0` never binds. A plain `import lsquant`
 in a script or notebook does not set them: with binding, OpenMP pins the importing process to
 one core. If `OMP_NUM_THREADS` is unset, the package sets it to the number of physical cores in
 the process's CPU affinity (`lsquant.runtime`). Each variable is set only when it is unset, so a
@@ -57,13 +61,15 @@ atom positions. A crystal can also be given as hoppings H(R) (`model.hr_file`) w
 ## Checkpoints
 
 `"expansion": {"checkpoint": true}` makes the engine write the moment tensor to
-`<out>/checkpoint_<hash>.lsqckpt` after every fully accumulated trace state:
+`<out>/checkpoint_v2_<hash>.lsqckpt` after every fully accumulated trace state:
 - the file is versioned and written atomically (temporary file, `fsync`, `rename`);
 - a run restarted with the same run file resumes after the last state in the file;
 - the result is bit-identical to an uninterrupted run;
 - the file is removed when the run completes.
 
-This works in both profiles.
+This works for `csr` models (including atom blocks) in both profiles. The filename
+identifies the calculation settings and model file contents. Different or legacy
+checkpoints are reported and ignored; see [the run-file reference](reference/run-file.md).
 
 ## Optional backends
 

@@ -85,6 +85,18 @@ Validation emits one `RuntimeWarning` when `fft_grid` is true without a
 requested `*_fft` formula, or `num_points` is set for a model outside the
 metric executors, where it has no effect. Both keys remain accepted.
 
+### Generator catalogue (`model.kind = "generator"`)
+
+| `model.name` | Module path |
+|---|---|
+| `make_chain` | `examples/01_dos_1d_chain/make_chain.py` |
+| `make_disordered_chain` | `examples/02_localization_1d_chain/make_disordered_chain.py` |
+| `make_haldane` | `examples/03_haldane_hall/make_haldane.py` |
+| `make_chain_mag` | `examples/04_spin_precession_magnetic_chain/make_chain_mag.py` |
+| `make_square` | `examples/05_charge_transport_square/make_square.py` |
+| `make_ey` | `examples/06_spin_relaxation_square/make_ey.py` |
+| `make_rashba` | `examples/06_spin_relaxation_square/make_rashba.py` |
+
 ---
 
 ## MCP Server (`python -m lsquant.mcp_server`)

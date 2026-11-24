@@ -15,7 +15,7 @@ import numpy as np
 
 from .. import _core
 from ..bases import BlochMetricBasis
-from ..models.orthogonal import load_runfile_model
+from ..models.registry import load_runfile_model
 from ..reconstruct import dos_curve, shc
 from ..words import compile as compile_word, parse as parse_word
 from ..words.grammar import OperatorSlot

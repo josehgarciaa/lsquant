@@ -28,10 +28,10 @@ import os
 
 import numpy as np
 
+from .lcao import fold_opposite, opposite_pairs, seed_name_from_file, spinor_lift
 from .siesta import SiestaModel
-
-BOHR = 0.529177210903
-HARTREE = 27.211386245988
+from .units import BOHR_ANGSTROM as BOHR
+from .units import HARTREE_EV as HARTREE
 
 
 class _Reader:
@@ -134,23 +134,20 @@ def load_openmx_model(path, *, dipoles=False):
         if dipoles:
             for x in range(3):
                 D[x, k, rows, cols] = d["olppo"][x][0][b]
-    minus = np.array([index[tuple(-x for x in R)] for R in cells])
+    minus = opposite_pairs(cells)
     du = np.conj(np.swapaxes(ud[minus], 1, 2))
     # Interleaved spinor order: basis function 2*o + s.
     H = np.zeros((nr, 2 * n, 2 * n), complex)
     H[:, 0::2, 0::2], H[:, 1::2, 1::2] = uu, dd
     H[:, 0::2, 1::2], H[:, 1::2, 0::2] = ud, du
-    S_spin = np.zeros((nr, 2 * n, 2 * n), complex)
-    S_spin[:, 0::2, 0::2] = S
-    S_spin[:, 1::2, 1::2] = S
+    S_spin = spinor_lift(S)
     H = (H - mu * S_spin) * HARTREE
     # OpenMX integrates part of H and S on a real-space grid, so H(R) and
     # H(-R)^+ differ by round-off (about 1e-10 relative). Fold both Hermitian,
     # as the SIESTA reader does, and record the removed part.
     folded = {}
     for name, M in (("hamiltonian", H), ("overlap", S_spin)):
-        sym = 0.5 * (M + np.conj(np.swapaxes(M[minus], 1, 2)))
-        folded[name] = float(np.abs(M - sym).max() / max(np.abs(M).max(), 1e-300))
+        sym, folded[name] = fold_opposite(M, minus, residual="mean")
         M[...] = sym
     r_int = np.array(cells, int)
     tau = np.repeat(tau_orb, 2, axis=0)
@@ -161,13 +158,11 @@ def load_openmx_model(path, *, dipoles=False):
         shift = (tau_orb[None, None, :, :] + r_cart[:, None, None, :] - tau_orb[None, :, None, :]) / 2
         A_orb = D * BOHR - np.moveaxis(shift, -1, 0) * S[None]
         # Exact integrals give A(-R)^+ = A(R); OpenMX's grid integration meets
-        # it to about 1e-4 relative. Fold it and record the removed part.
-        sym = 0.5 * (A_orb + np.swapaxes(A_orb[:, minus], 2, 3))
-        folded["connection"] = float(np.abs(A_orb - sym).max() / max(np.abs(A_orb).max(), 1e-300))
-        A = np.zeros((3, nr, 2 * n, 2 * n), complex)
-        A[:, :, 0::2, 0::2] = sym
-        A[:, :, 1::2, 1::2] = sym
-    seed = os.path.splitext(os.path.basename(path))[0]
+        # it to about 1e-4 relative. Fold it, record the removed part, then
+        # lift the connection to spinors.
+        sym, folded["connection"] = fold_opposite(A_orb, minus, residual="mean")
+        A = spinor_lift(sym)
+    seed = seed_name_from_file(path)
     model = SiestaModel(uc, tau, r_int, H, S_spin, dipoles=A, seed_name=seed,
                         metadata=dict(source="openmx", file=os.path.abspath(path),
                                       printed_fermi_level_eV=mu * HARTREE,

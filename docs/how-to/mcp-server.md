@@ -32,19 +32,20 @@ You need:
 The client starts the server as a child process and exchanges messages with it
 only over standard input and output, so the server opens no network port.
 
-- The server reads and writes only inside one directory, the **root**, with
-  one exception: it does not check `model.hr_file`, `model.positions` or
-  `model.atom_map` (see the
-  [known limitation](#work-with-the-assistant) at the end of this guide).
-  The server refuses any run file, model directory, generator script or
-  output directory that resolves outside the root, with
-  `Access denied: path … outside configured root`.
+- The server checks explicit run-file input paths, connector path parameters,
+  generator scripts and output directories against one directory, the **root**.
+  It resolves symbolic links and refuses paths outside the root before starting
+  a run, with `Access denied: <key> … outside the server root`. Errors identify
+  the supplied field without revealing a symbolic link's resolved target.
+  The same check applies to run-file, inspection and reconstruction targets.
 - The `run` tool returns at once with a `run_id`. The calculation runs in a
   separate `python -m lsquant run` process, which inherits the environment of
   the server, including `PYTHONPATH` and `OMP_NUM_THREADS`.
-- A relative path that the assistant sends, including `output.dir` in a run
-  file, is taken relative to the root. The default `output.dir` is `"."`, the
-  root itself, so ask the assistant to set `output.dir` for every run.
+- Relative run-file inputs are tried against the root, then the run file's
+  directory if absent at the root. DeepH's `hamiltonian_file` is relative to
+  `model.dir`; GPAW's `dipole_cache` and `output.dir` are relative to the root.
+  The default `output.dir` is `"."`, the root itself. This is allowed for
+  compatibility; set `output.dir` for every run to keep outputs separate.
 
 ## Choose the root
 
@@ -178,17 +179,19 @@ server, `status` reports only the runs started since the restart. The output
 directories and logs of earlier runs remain on disk, and `inspect` still
 reads them.
 
-When you ask for a reconstruction from a directory that holds both rank-1
-(DOS) and rank-2 (conductivity) moments, ask the assistant to pass the moment
-file and the formula explicitly. With a directory, `reconstruct` applies one
-formula to every moment file in it; see example 18.
+When you request a formula for a directory containing both rank-1 (DOS) and
+rank-2 (conductivity) moments, `reconstruct` skips incompatible files and
+returns their paths and reasons in `skipped_files`. If no file admits the
+formula, it reports an error before writing curves. Without an explicit
+formula, each file uses its own default; see example 18.
 
-> **Known limitation: not every path is checked against the root.** The `run`
-> tool checks `model.dir`, `model.csr_dir`, the generator script and
-> `output.dir` (`python/lsquant/mcp_server.py:108–118`). It does not check
-> `model.hr_file`, `model.positions` or `model.atom_map`, so a run file can
-> read those files from outside the root. Do not rely on the root as a
-> security boundary.
+The run-file path guard includes `model.file`, `model.hr_file`, string-valued
+`model.positions` and `model.atom_map`, and the connector paths `overlap_file`,
+`stru_file`, `orbital_dir`, `position_file`, `dipole_cache` (read and written),
+and `hamiltonian_file` in `model.params`. Inline arrays are unaffected.
+These checks validate explicit paths before dispatch; they do not sandbox
+connector code or prevent concurrent filesystem changes. `status` accepts a
+run identifier, not a filesystem path.
 
 ## See also
 

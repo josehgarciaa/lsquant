@@ -50,14 +50,19 @@ if(LSQUANT_WITH_MPI)
 endif()
 
 if(LSQUANT_WITH_CUDA)
+    # Capture an explicit standard setting before CUDA initialization supplies one.
+    set(_lsquant_cuda_architectures_default "90")
+    if(DEFINED CMAKE_CUDA_ARCHITECTURES)
+        set(_lsquant_cuda_architectures_default "${CMAKE_CUDA_ARCHITECTURES}")
+    endif()
     enable_language(CUDA)
     find_package(CUDAToolkit REQUIRED)
     target_compile_definitions(lsquant_core PUBLIC LSQUANT_WITH_CUDA=1)
     target_sources(lsquant_core PRIVATE core/algebra/atom_block_cuda.cu)
     # GPU compute capabilities the CUDA kernel is compiled for, as a CMake list:
     # 90 = Hopper (H100, H200), 86 = RTX A6000, 80 = A100; "native" picks the
-    # GPU of the build machine. The default stays 90, the tested target.
-    set(LSQUANT_CUDA_ARCHITECTURES "90" CACHE STRING
+    # GPU of the build machine. Without a standard setting, default to tested 90.
+    set(LSQUANT_CUDA_ARCHITECTURES "${_lsquant_cuda_architectures_default}" CACHE STRING
         "CUDA compute capabilities of the atom-block kernel (e.g. 90, 86, 80;86;90 or native)")
     set_target_properties(lsquant_core PROPERTIES
         CUDA_ARCHITECTURES "${LSQUANT_CUDA_ARCHITECTURES}"

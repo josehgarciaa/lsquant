@@ -27,7 +27,7 @@ A key set to `null` is treated as absent: the default applies.
 
 ### Path resolution
 
-`model.dir`, `model.csr_dir`, `model.hr_file`, and `model.positions` and
+`model.dir`, `model.csr_dir`, `model.file`, `model.hr_file`, and `model.positions` and
 `model.atom_map` when they are strings, are resolved in this order:
 
 1. An absolute path (after `~` expansion) is used as is.
@@ -39,6 +39,18 @@ A key set to `null` is treated as absent: the default applies.
 
 `output.dir` follows its own rule: it is relative to the current working
 directory.
+
+For MCP runs, the configured server root replaces the repository root and is
+also the subprocess working directory. After resolution, the server checks all
+explicit model paths, generator scripts and `output.dir` with symbolic links
+resolved. ABACUS's `model.params.overlap_file`, `stru_file`, `orbital_dir` and
+`position_file` follow the input resolution above. GPAW's `dipole_cache` is
+relative to the server root and is checked for reads and writes; DeepH's
+`hamiltonian_file` is checked relative to `model.dir`. Any escape is refused
+before dispatch; the error names the field and its supplied value without
+disclosing the resolved outside path. The default `output.dir: "."` remains
+allowed and writes into the root itself. These restrictions apply only to MCP;
+the command line can still read paths outside the repository.
 
 ## Top-level keys
 
@@ -69,7 +81,7 @@ directory.
 | `label` | string | — | `null` | `csr`, `siesta` | File prefix: `<label>.HAM.CSR` (`csr`) or `<label>.fdf` (`siesta`). |
 | `seed` | string | — | `null` | `wannier` | Wannier90 seed: LSQuant reads `<seed>_hr.dat`, `<seed>.uc` and `<seed>.xyz`. |
 | `file` | path | — | `null` | `openmx`, `pyscf`, `paoflow`, `hamgnn`, `threebodytb`, `abacus`, `gpaw` | `openmx`: the `<System.Name>.scfout` file. `pyscf`: the model file written by `write_pyscf_model` (`.npz`). `paoflow`: the model file written by `write_paoflow_model` (`.npz`). `hamgnn`: the `.npz` of `write_hamgnn_model`. `threebodytb`: the XML of ThreeBodyTB's `write_tb_crys` (`.xml`, `.xml.gz`). `abacus`: H(R) in the ABACUS sparse format. `gpaw`: the `.npz` of `export_gpaw_lcao` (script `models/gpaw.py`). |
-| `operators` | list of strings | operator names | `null` | `csr` | Operators to load as `<label>.<OP>.CSR`. If absent, every `<label>.*.CSR` except `HAM` and `S` is loaded. A listed operator without a file is skipped, except with `numerics.operator = "atom_block"`. |
+| `operators` | list of strings | operator names | `null` | `csr` | Operators to load as `<label>.<OP>.CSR`. If absent, every `<label>.*.CSR` except `HAM` and `S` is loaded. A listed operator without a file raises `FileNotFoundError` naming the missing file, for every CSR backend. |
 | `csr_dir` | path | — | `null` | `wannier`, `basis.name = "real"` | Directory with a prebuilt supercell `<seed>.HAM.CSR` and its `wannier2sparse` receipt `<seed>.out`. LSQuant checks it against `seed` and `basis.supercell` before it loads anything. |
 | `name` | string | see [Generator models](#generator-models) | `null` | `generator` | Generator from the catalogue. |
 | `tutorial` | integer | `1`–`6` | from `name` | `generator` | Tutorial driver to run. Not validated; an unknown value fails at execution with `Unsupported generator`. |
@@ -246,10 +258,15 @@ spin–orbit coupling has no spin operator: the words with `SX`, `SY`, `SZ` or
 
 ### Generator models
 
+Only the executable tutorial generators listed below are accepted. The former
+`gen_models` catalogue entry has been removed because it had no executor.
+
 `model.kind = "generator"` runs a tutorial driver that builds its own models.
 The validator accepts only `basis.name = "real"` and
 `metric.policy = "orthogonal"`. It also requires `basis.disorder` to be absent
 or `null`; otherwise it stops with `pass disorder parameters in model.params`.
+Generator receipts omit the inert default `basis.disorder`, so
+`run.resolved.json` can be passed to `run` again.
 The drivers decide which files are written, and they ignore most `output` and
 `reconstruction` keys.
 
@@ -261,12 +278,16 @@ The drivers decide which files are written, and they ignore most `output` and
 | `make_chain_mag` | 4 | none | `model.dir` (operator directory) |
 | `make_square` | 5 | `L` (`200`), `W` (`[0.5, 1.0, 2.0, 4.0]`), `disorder_seed` (`1`), `dos_moments` (`1024`) | `expansion.seed`, `moments`, `states` (default 1), `window`; `time`; `words`; `reconstruction.broadening_meV` (default 80), `fermi_energies` (default `[2.0]`), `legacy_text_round_trip` |
 | `make_ey`, `make_rashba` | 6 | `ey_l` (`20`), `ey_ds` (`[0.05, 0.07, 0.10]`), `dp_l` (`20`), `dp_lambda` (`0.2`), `dp_ws` (`[0.0, 6.0]`), `dp_moments` (`160`), `dp_steps` (`120`), `dp_tmax` (`45.0`), `ratelaw_l` (`50`), `ratelaw_ds` (`[0.04, 0.06, 0.08, 0.10, 0.14]`), `ratelaw_nr` (`20`), `crosscheck_l` (`8`), `crosscheck_d` (`0.10`), `crosscheck_nr` (`20`), `crosscheck_moments` (`96`), `crosscheck_steps` (`60`), `crosscheck_tmax` (`220.0`), `disorder_seed` (`1`) | `expansion`, `time`, `words`, `reconstruction.kernel` (only `"jackson"`), `broadening_meV` (default 140), `fermi_energies` (default `[2.0]`), `formulas`, `legacy_text_round_trip`, `output.capture_tutorial` |
-| `gen_models` | none | none | Accepted by the validator, but has no tutorial number, so execution fails with `Unsupported generator`. |
 
 `RunFile` resolves `time.bessel`, `legacy_text_round_trip` and
 `capture_tutorial` to `"scipy"`, `false` and `false` before the driver starts.
 The driver defaults (`"legacy"`, `true` and `true`) therefore never apply. Set
 these keys explicitly, as the example run files do.
+
+The defaults printed by `inspect` match a minimal resolved run: in particular,
+`model.operators` is `null`, `expansion.left_window` is `32`, and for the
+64-moment example `expansion.batch` is `64`. When omitted, `batch` follows the
+requested moment count.
 
 ## `numerics`
 
@@ -318,7 +339,7 @@ The `disorder` object accepts `W` (box width in eV), `seed` (draw seed) and
 |---|---|---|---|---|
 | `name` | string | `"real"`, `"bloch"`, `"eigen"` | `"real"` | Representation of H. See [The representation](../how-to/run-lsquant.md#the-representation-supercell-or-k-mesh). |
 | `supercell` | list of 3 integers | positive | `[1, 1, 1]` | Supercell size (`real`) or k-point mesh (`bloch`, `eigen`) for `wannier` and `siesta`. Not used by `csr` or `generator`. |
-| `disorder.W` | number | ≥ 0 | `0.0` | Width of the uniform Anderson disorder, in eV. Used by `wannier` and `siesta`; not used by `csr`; refused for `generator`. |
+| `disorder.W` | number | ≥ 0 | `0.0` | Width of the uniform Anderson disorder, in eV. Used by `wannier` and `siesta`; nonzero W is refused for `csr`; refused for `generator`. |
 | `disorder.seed` | integer | — | `7` | Seed of the disorder draw. |
 | `disorder.kind` | string | `"scalar"`, `"magnetic"`, `"independent"` | `"scalar"` | How the draw acts on spin. `csr`, `wannier` and `generator` models take `"scalar"` only, one value per basis function. See below. |
 
@@ -398,16 +419,9 @@ them. Operators in a word must exist in `model.operators` (or the discovered
 CSR files) for `csr`. `run.resolved.json` stores the canonical form of every
 word.
 
-> **Known limitation: operator names.** Validation accepts any operator name
-> listed in `model.operators`, but `python -m lsquant run` accepts only the
-> names of the default operator list (`A`, `B`, `O`, `P`, `PX`, `SX`, `VX`, …).
-> The per-word compile in `execute_runfile` (`runfile.py:1546`) does not pass
-> the model's operators, so the compiler falls back to
-> `DEFAULT_KNOWN_OPERATORS` (`words/compiler.py:28`, `393–394`) and fails with
-> `Unknown operator` (`words/compiler.py:405`). Name your operator files with
-> the default names, as `examples/15_spatial_operators` does. A word that uses
-> `WINDOW` also needs `model.operators: ["WINDOW"]`
-> (`examples/16_projection_downfold`).
+Custom operator names listed in `model.operators` are accepted by validation and
+execution. For CSR models, provide each corresponding `<label>.<OP>.CSR` file;
+a missing listed file raises `FileNotFoundError` naming that file.
 
 ## `expansion`
 
@@ -420,11 +434,11 @@ word.
 | `seed` | integer | — | `12345` | Seed of the random-phase states. |
 | `batch` | integer | positive | `moments` | Number of Chebyshev vectors held per batch. |
 | `state_label` | string | — | `"exact"` (`exact`) or the generator label (`random`, `"default"`) | `csr` only: the label written into moment file names after `_state`. |
-| `state_block` | integer or string | positive integer, `"auto"` | `1` | Number of trace states propagated together. `"auto"` picks a value from available memory in the native build and resolves to 1 in the golden build. The clean and disordered SIESTA executors treat `"auto"` as 1; the projection executor accepts only an integer. |
+| `state_block` | integer or string | positive integer, `"auto"` | `1` | Number of trace states propagated together. `"auto"` picks a value from available memory in the native build and resolves to 1 in the golden build. The clean and disordered SIESTA executors treat `"auto"` as 1; the projection executor requires an integer and rejects `"auto"` during validation. |
 | `left_window` | integer | positive | `32` | Bra-side streaming window of the native rank-2 path. |
 | `right_window` | integer or string | positive integer, `"all"` | `16` | Ket-side storage window of the native rank-2 path; `"all"` stores all M vectors (resolves to `null`). |
-| `checkpoint` | boolean | — | `false` | `csr` only: checkpoint after every trace state to `checkpoint_<hash>.lsqckpt` in the output directory and resume from it on restart. The file is deleted when the word finishes. |
-| `state_block_rule` | string | — | — | Output only. Ignored on input. The `"auto"` resolution records its reason here in memory; current executors write `run.resolved.json` before this happens. |
+| `checkpoint` | boolean | — | `false` | `csr` only: checkpoint after every trace state to `checkpoint_v2_<hash>.lsqckpt` in the output directory and resume from it on restart only when the calculation fingerprint matches. The file is deleted when the word finishes. |
+| `state_block_rule` | string | — | — | Output only. Ignored on input. The CSR and ordinary Wannier executors record the effective numeric block size and its selection reason in `run.resolved.json`. |
 
 | Condition | Error |
 |---|---|
@@ -432,6 +446,26 @@ word.
 | `basis.name` `"bloch"` or `"eigen"` with `csr` and no `window` | Same message, raised by the executor (the default resolves to `"eigen"`). |
 | `window = "gershgorin"` with `model.kind = "siesta"` | Raised by the SIESTA executors. |
 | `window = "gershgorin"` with `model.hr_file` | `model.hr_file requires an explicit expansion.window` |
+
+Checkpoint filenames use a versioned, full SHA-256 calculation fingerprint.
+It covers the engine word and expansion sizes, resolved numerical window,
+expansion settings (including trace kind, seed, resolved state count and state
+block), basis and disorder settings, metric, numerics, resolved atom-domain
+size, build profile and time settings. Model settings and the size and SHA-256
+of every model file read are included: Hamiltonian or H(R), loaded operators,
+overlap matrix when used, and file-based atom-block positions and atom maps.
+Inline geometry is covered by the model settings. Output and reconstruction
+settings do not affect the fingerprint.
+
+Files are streamed in 1 MiB chunks once per checkpoint-enabled execution, even
+when multiple words run. This adds one sequential read of the input bytes,
+with bounded memory; no mtime cache is used, so same-size edits with preserved
+timestamps are detected. Keep model inputs unchanged during loading and execution.
+Other fingerprints and old word-only checkpoints are reported with an
+`Ignoring checkpoint` warning, left in place, and never passed to the loader.
+An identical calculation can still resume byte-identically. This changes neither
+the binary checkpoint format nor the C++ loader. Wannier and SIESTA executors
+do not currently checkpoint.
 
 ## `time`
 
@@ -458,7 +492,7 @@ The SIESTA projection executor refuses a `time` section.
 |---|---|---|---|---|
 | `broadening_meV` | number | positive | `null` | Target energy resolution of the Jackson kernel, in meV. With `null`, `csr` and `wannier` runs write moments but no curves; SIESTA runs fail. |
 | `formulas` | list of strings | see [Formulas by word shape](#formulas-by-word-shape) | default formula of each word | Reconstruction formulas. Matching is case-insensitive. |
-| `fermi_energies` | list of numbers | — | `[]` | Fermi energies in eV. `time_correlation` writes one curve per entry, so an empty list writes no time curve. SIESTA runs use the first entry (or 0.0) for the oracle and `spin_chern.json`, and every entry (or 0.0) for `fermi_values.json`. |
+| `fermi_energies` | list of numbers | — | `[]` | Fermi energies in eV. `time_correlation` and `time_correlation_curve` write one curve per entry and require a nonempty list when broadening requests a curve (including the default MSD and time-correlation formulas). `row_m0` and `row0` need no list; null broadening keeps moments only. Explicit time-correlation targets also require their own nonempty list. SIESTA runs use the first entry (or 0.0) for the oracle and `spin_chern.json`, and every entry (or 0.0) for `fermi_values.json`. |
 | `kernel` | string | any; only `"jackson"` is implemented | `"jackson"` | Kernel name. The value is lower-cased and recorded; every reconstruction uses the Jackson kernel. |
 | `targets` | list of objects | see [Reconstruction targets](#reconstruction-targets) | `[]` | Extra reconstructions of the same moments, `csr` only. |
 | `per_site_dos` | boolean | — | `false` | `csr` only: also write `DOS_reconstructed.dat`, the DOS divided by the dimension of H, from all M moments. |
@@ -483,43 +517,35 @@ resolved as before; warnings do not change numerical results. `num_points`
 is read only when a clean oracle or projection energy grid is constructed;
 it does not affect a disordered run or a clean run without the oracle.
 
-> **Known limitation: `shc` in `csr` and `wannier` runs.** During
-> `python -m lsquant run`, the `csr` and `wannier` executors do not pass
-> `num_cells` and `cell_area` to the `shc` formula, even when they are set in
-> `reconstruction` (`runfile.py:1714`, `2228`, `2307`). A run with
-> `formulas: ["shc"]` therefore fails with
-> `shc reconstruction requires num_cells and cell_area`. Only the
-> [`reconstruct`](cli.md#reconstruct) subcommand reads them, from the
-> `run.resolved.json` in the same directory as the moment file
-> (`runfile.py:2438`). Verified by running for both `csr` and `wannier`: the
-> run exits with status 1 after writing the moments.
-> `siesta` runs are not affected; they write `shc.dat` themselves.
->
-> Workaround:
->
-> 1. Set `num_cells` and `cell_area` in the `reconstruction` section of the
->    run file **before** the run, because `reconstruct` has no option for
->    them.
-> 2. Run with `formulas` that leave out `"shc"` (for example `["bastin"]`).
-> 3. Reconstruct from the moment file, kept next to its `run.resolved.json`,
->    and pass the broadening and the Fermi energies explicitly. For a single
->    moment file, `reconstruct` otherwise falls back to 10 meV and `[0.0]`
->    and ignores the run-file values:
->
->    ```bash
->    python -m lsquant reconstruct <dir>/<file>.chebmom2D --formula shc --broadening-meV <same as the run>
->    ```
->
-> Use the moment file, not the directory. With a directory, `reconstruct`
-> applies `--formula shc` to every moment file in it (`runfile.py:2393`),
-> including the DOS moments of the same run. It takes the legacy
-> `.chebmom1D`, `.chebmom2D` and `.chebmomTD` files first, and the unified
-> `.chebmom` only when there are no legacy files.
->
-> Verified by running, the workaround writes the `SpinHall_…` curve. On a
-> directory that also holds DOS moments, `reconstruct` writes the spin Hall
-> curve, then exits 1 on the rank-1 file with
-> `rank-2 reconstruction requires moments.rank == 2`.
+For ordinary `csr` and `wannier` runs, `formulas: ["shc"]` requires both
+`reconstruction.num_cells` and `reconstruction.cell_area`. Missing either is
+refused during validation, before computing moments. Reconstruction targets
+also use these two keys. The metric executors obtain geometry from the model.
+With a non-null broadening, the run writes the `SpinHall_…` curve directly.
+
+To reconstruct it again, keep the moments next to `run.resolved.json`, which
+supplies the geometry, and pass the same broadening explicitly:
+
+```bash
+python -m lsquant reconstruct <dir>/<file>.chebmom2D --formula shc --broadening-meV <same as the run>
+```
+
+A single file otherwise defaults to 10 meV and Fermi energies `[0.0]`.
+For a directory and an explicit formula, incompatible ranks or word shapes
+are skipped and reported in `skipped_files` (file and reason) and by the CLI.
+If no file admits the formula, reconstruction fails before writing curves.
+Legacy moment files take precedence over unified `.chebmom` files. Legacy
+files have no word, and static engine words do not distinguish Greenwood
+from Bastin, so filtering uses the union of catalogue formulas for their
+rank and time axis; full observable words retain their shape restrictions.
+
+The `shc` header uses the stored word: `JXSZ` on the left and `VY` on the
+right give `sigma_z_xy [e^2/h, sigma_z Pauli]`; other spin components and
+directions change the indices. A word without a left spin current is
+labelled `normalised_bastin[A,B] [2*pi/(num_cells*cell_area)]`, naming its
+operators without claiming spin Hall conductivity. Missing words are labelled
+with unknown operators. The numbers and normalisation do not change. The
+SIESTA executor continues to write its existing `shc.dat` header.
 
 ### Formulas by word shape
 

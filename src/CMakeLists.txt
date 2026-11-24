@@ -64,6 +64,7 @@ target_link_libraries(kpm_lib PUBLIC
     Threads::Threads
     ${CMAKE_DL_LIBS}
 )
+target_link_libraries(kpm_lib PRIVATE Boost::headers)
 
 # --- Command-line drivers ----------------------------------------------------
 # "<target-name>|<source-file>" — names preserved verbatim from the legacy file

@@ -17,8 +17,8 @@ have left it unset:
 | Variable | Value set by `import lsquant` |
 |---|---|
 | `OMP_NUM_THREADS` | The number of physical cores in the CPU affinity of the process (cpusets included). |
-| `OMP_PROC_BIND` | `spread`, only for the `lsquant` command |
-| `OMP_PLACES` | `cores`, only for the `lsquant` command |
+| `OMP_PROC_BIND` | `spread`, only for the `lsquant` command with its own cores (see below) |
+| `OMP_PLACES` | `cores`, under the same condition |
 
 The default suits a node that you have to yourself. On a node with a CPU
 allocation (cgroups or cpusets, as most batch systems use), the affinity
@@ -79,10 +79,15 @@ build, with the same command run minutes apart:
 For these small problems, 4 threads were 10 to 30 times slower than one.
 `OMP_WAIT_POLICY=passive` was not measured on that node.
 
-The default binding of the `lsquant` command, `OMP_PROC_BIND=spread`, also
-pins threads to cores that other jobs may be using. Set `OMP_PROC_BIND=false`
-if you share cores with other jobs. Python scripts that import `lsquant` are
-not bound; set `OMP_PROC_BIND` yourself if you want binding there.
+The `lsquant` command binds its threads to cores (`OMP_PROC_BIND=spread`,
+`OMP_PLACES=cores`) only when the batch system gave the job its own cores: a
+CPU set smaller than the machine. On a node without one, every process would
+bind to the same cores, counted from the first, and two runs side by side
+would share them while the other cores idle. There the command does not bind.
+Set `LSQUANT_BIND_THREADS=1` to bind anyway, on a node you have to yourself,
+or `LSQUANT_BIND_THREADS=0` never to bind. Python scripts that import
+`lsquant` are not bound; set `OMP_PROC_BIND` yourself if you want binding
+there.
 
 ### Choose a build for small matrices
 
@@ -117,7 +122,8 @@ disorder seeds, submit one job per seed, or a job array with one run file per
 seed, rather than one job with many threads.
 
 The `native-cuda` preset builds the GPU code for compute capability 9.0 by
-default; set `LSQUANT_CUDA_ARCHITECTURES` for other GPUs (see
+default; on a fresh configure set `CMAKE_CUDA_ARCHITECTURES` for other GPUs,
+or override it with `LSQUANT_CUDA_ARCHITECTURES` (see
 [CUDA architecture](../reference/build-presets.md#presets)). A run uses the GPU
 only with a real-space `csr` model and `numerics.operator = "atom_block"`,
 `numerics.execution = "cuda"` (see
@@ -191,23 +197,18 @@ See [Use a SIESTA calculation](use-siesta.md).
 ### Resume a killed run
 
 With `expansion.checkpoint: true`, a `csr` run writes
-`checkpoint_<hash>.lsqckpt` into the output directory after every random or
+`checkpoint_v2_<hash>.lsqckpt` into the output directory after every random or
 unit vector. Run the same command again with the same `--out` directory, and
 LSQuant continues after the last finished vector. The file is deleted when the
 calculation of the quantity finishes.
 
-> **Known limitation: the checkpoint does not record the model or the window.**
-> The file name depends only on the `word`. On loading, LSQuant checks only
-> the number of indices of the moment table (one per Chebyshev expansion,
-> plus one for the time axis of a time-dependent observable), its dimensions,
-> the number of trace vectors, the label of the trace vectors (random or
-> exact) and the `word`. A mismatch in these stops the run with an error that
-> contains `checkpoint does not match this run (rank/dims/states/label/word)`.
-> If you change the Hamiltonian, the window or the seed and run again into a
-> directory that still holds a checkpoint from a killed run, the new run
-> continues from the old moments. Delete stale `checkpoint_*.lsqckpt` files,
-> or use a new output directory, whenever you change the run file.
-> <!-- source: python/lsquant/runfile.py:2148 (file name from the word); lsquant/core/chebyshev/checkpoint.cpp:144–148 (checks rank, dimensions, number of trace vectors, state label, word; error message); label = states_->Label(), set before the load, lsquant/core/chebyshev/moment_engine.cpp:1463 (expansion.state_label is applied only after the run, runfile.py:2150, 2156); rank includes the time axis, moment_engine.cpp:194–204 -->
+> **Checkpoint identity:** the filename fingerprints the resolved window, state
+> generator and seed, expansion and time settings, basis, metric, numerics and
+> model input contents. Changing the window, seed or matrix bytes starts a fresh
+> calculation. Other fingerprints and legacy word-only checkpoints are explicitly
+> reported and ignored, and left in place for their original calculations. No
+> manual deletion is required. See [the run-file reference](../reference/run-file.md)
+> for the fingerprint and hashing cost.
 
 ## Write a batch script
 

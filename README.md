@@ -46,18 +46,17 @@ The quantities you can compute depend on where the Hamiltonian comes from:
 <!-- source, threebodytb row: models/threebodytb.py through the SIESTA clean and projection executors (runfile.py ML_MODEL_KINDS), which accept only Tr[delta(E-H)] and Tr[JXSZ delta(E-H) VY dG-(E)/dE]; ThreeBodyTB has no spin-orbit coupling, so the spin Hall word has no physical content and a spinless file refuses spin words (bases.py); docs/how-to/use-threebodytb.md -->
 <!-- source, abacus row: models/abacus.py through the SIESTA clean and projection executors (runfile.py ML_MODEL_KINDS), which accept only Tr[delta(E-H)] and Tr[JXSZ delta(E-H) VY dG-(E)/dE]; a spinless file refuses spin words (bases.py); docs/how-to/use-nextham.md -->
 <!-- source, gpaw row: models/gpaw.py through the SIESTA clean and projection executors (runfile.py ML_MODEL_KINDS), which accept only Tr[delta(E-H)] and Tr[JXSZ delta(E-H) VY dG-(E)/dE]; docs/how-to/use-gpaw.md -->
-<!-- source, csr row: projected DOS examples/15_spatial_operators/run_layer_dos.json; sigma_xx and sigma_xy examples/03_haldane_hall/run_haldane.json (greenwood, bastin) and examples/13_bastin_sea_surface; time-dependent examples/04 run_spin.json and examples/15 run_msd.json; spin Hall through reconstruct: docs/reference/run-file.md, known limitation "shc in csr and wannier runs" (runfile.py:1714, 2228, 2307, 2438) -->
+<!-- source, csr row: projected DOS examples/15_spatial_operators/run_layer_dos.json; sigma_xx and sigma_xy examples/03_haldane_hall/run_haldane.json (greenwood, bastin) and examples/13_bastin_sea_surface; time-dependent examples/04 run_spin.json and examples/15 run_msd.json; spin Hall with geometry: docs/reference/run-file.md#reconstruction -->
 <!-- source, generator row: make_chain (tutorial 1, DOS), make_haldane (tutorial 3, kubo_bastin and kubo_greenwood in python/lsquant/apps/tutorial03.py:28-31, 255), make_square (tutorial 5, sigma_xx, examples/05 README), make_disordered_chain, make_chain_mag, make_ey/make_rashba (tutorials 2, 4, 6, time-dependent); docs/reference/run-file.md#generator-models -->
 
 ¹ Give the spin current as an operator file `<label>.JXSZ.CSR`, run with the
-`bastin` formula, and apply `shc` afterwards with `python -m lsquant
-reconstruct`, as the [run-file reference](docs/reference/run-file.md#reconstruction)
-describes.
+`shc` formula with `reconstruction.num_cells` and `reconstruction.cell_area`,
+as the [run-file reference](docs/reference/run-file.md#reconstruction) describes.
 
 ## Requirements
 
-You need a C++17 compiler with OpenMP, CMake 3.21 or later for the presets
-(3.16 or later for a manual build), Eigen, FFTW3, GSL and Python 3.10 or later
+You need a C++17 compiler with OpenMP, CMake 3.21 or later, Eigen 3.4 or later, Boost headers,
+FFTW3, GSL and Python 3.10 or later
 with NumPy, SciPy, SymPy and pybind11. [Install LSQuant](docs/how-to/install.md)
 gives the full list and the commands with and without root access.
 

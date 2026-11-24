@@ -165,15 +165,13 @@ basis, the spin and velocity operators need the overlap matrix; see
 [Non-orthogonal bases](nonorthogonal-bases.md).
 <!-- source: reconstruct.py:731-743 shc = 2*pi*bastin/(num_cells*cell_area); factor 1/2 derived from J = (hbar/2) * (1/2){v, sigma_z} -->
 
-> **Known limitation: `shc` in `csr` and `wannier` runs.** A run with
-> `model.kind` `csr` or `wannier` and `formulas: ["shc"]` passes validation
-> and then fails, because the `run` command does not pass the number of cells
-> and the cell area to the formula; `siesta` runs are not affected. The
-> workaround is to run with `bastin` and then apply `shc` with
-> `python -m lsquant reconstruct`, which reads both values from
-> `run.resolved.json`. The header of the `shc` curve always reads
-> `sigma_z Pauli`, even for a charge Hall observable.
-<!-- source: python/lsquant/runfile.py:1714, :2228, :2307 (num_cells and cell_area not passed); verified by running both kinds -->
+Ordinary `csr` and `wannier` runs accept `formulas: ["shc"]` when both
+`reconstruction.num_cells` and `reconstruction.cell_area` are supplied.
+Validation refuses missing geometry before computing moments. The metric
+executors derive it from the model. The curve header follows the stored word:
+a left spin current selects its Pauli component and tensor indices; other
+operators are named as a normalised Bastin response without a spin Hall
+label. This changes no numerical values.
 
 ## The FFT-node variants
 
