@@ -21,7 +21,7 @@ from .bases import (
     make_basis,
     validate_w2s_csr_dir,
 )
-from .models.registry import CONNECTORS, validate_connector_params
+from .models.registry import CONNECTORS, ML_BASE_PARAMS, validate_connector_params
 from .models.wannier import load_wannier_model
 from .moments import run_plan, window_from_gershgorin
 from .reconstruct import (
@@ -1497,12 +1497,8 @@ def uses_metric_executor(model: Mapping[str, Any]) -> bool:
 #: not machine learning, but shares the same kind of input: H(R) and S(R) of
 #: an atomic-orbital basis (models/gpaw.py); its position matrix is built by
 #: quadrature of the radial functions in the export, so covariant is allowed.
-_ML_BASE_PARAMS = frozenset(
-    {"velocity_mode", "fermi_energy", "oracle",
-     "oracle_degeneracy_tolerance", "bloch_memory_mb"}
-)
 ML_MODEL_KINDS: dict[str, tuple[str, frozenset[str]]] = {
-    connector.kind: (connector.path_keys[0], connector.allowed_params - _ML_BASE_PARAMS)
+    connector.kind: (connector.path_keys[0], connector.allowed_params - ML_BASE_PARAMS)
     for connector in CONNECTORS.values() if connector.ml_style
 }
 

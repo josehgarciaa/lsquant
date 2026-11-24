@@ -57,14 +57,14 @@ import numpy as np
 
 #: Base ``model.params`` keys accepted by the four orthogonal models
 #: (wannier, openmx, pyscf, paoflow).
-_METRIC_BASE_PARAMS = frozenset(
+METRIC_BASE_PARAMS = frozenset(
     {"velocity_mode", "spin", "fermi_energy", "oracle",
      "oracle_degeneracy_tolerance", "bloch_memory_mb"}
 )
 
 #: Base ``model.params`` keys accepted by the H(R)/S(R) Hamiltonians
 #: (deeph, deeptb, hamgnn, threebodytb, abacus, gpaw).
-_ML_BASE_PARAMS = frozenset(
+ML_BASE_PARAMS = frozenset(
     {"velocity_mode", "fermi_energy", "oracle",
      "oracle_degeneracy_tolerance", "bloch_memory_mb"}
 )
@@ -215,7 +215,7 @@ CONNECTORS: dict[str, ModelConnector] = {
             "openmx",
             ("file",),
             "Run file with model.kind='openmx' requires 'file' (the .scfout file)",
-            _METRIC_BASE_PARAMS,
+            METRIC_BASE_PARAMS,
             ("bare", "berry_connection"),
             "model.params.velocity_mode for {kind} must be one of {modes}",
             _load_openmx,
@@ -229,7 +229,7 @@ CONNECTORS: dict[str, ModelConnector] = {
             "pyscf",
             ("file",),
             "Run file with model.kind='pyscf' requires 'file' (see write_pyscf_model)",
-            _METRIC_BASE_PARAMS,
+            METRIC_BASE_PARAMS,
             ("bare", "berry_connection"),
             "model.params.velocity_mode for {kind} must be one of {modes}",
             _load_pyscf,
@@ -243,7 +243,7 @@ CONNECTORS: dict[str, ModelConnector] = {
             "wannier",
             ("dir", "seed"),
             "Run file with model.kind='wannier' requires 'dir' and 'seed'",
-            _METRIC_BASE_PARAMS,
+            METRIC_BASE_PARAMS,
             ("bare", "berry_connection"),
             "model.params.velocity_mode for {kind} must be one of {modes}",
             _load_wannier,
@@ -256,7 +256,7 @@ CONNECTORS: dict[str, ModelConnector] = {
             "paoflow",
             ("file",),
             "Run file with model.kind='paoflow' requires 'file' (see write_paoflow_model)",
-            _METRIC_BASE_PARAMS,
+            METRIC_BASE_PARAMS,
             ("bare", "berry_connection"),
             "model.params.velocity_mode for {kind} must be one of {modes}",
             _load_paoflow,
@@ -268,7 +268,7 @@ CONNECTORS: dict[str, ModelConnector] = {
             "deeph",
             ("dir",),
             "Run file with model.kind='deeph' requires 'dir'",
-            _ML_BASE_PARAMS | {"hamiltonian_file"},
+            ML_BASE_PARAMS | {"hamiltonian_file"},
             ("bare", "berry_connection"),
             "model.params.velocity_mode for {kind} must be 'bare' or 'berry_connection' "
             "(no position matrix, so no 'covariant')",
@@ -280,7 +280,7 @@ CONNECTORS: dict[str, ModelConnector] = {
             "deeptb",
             ("dir",),
             "Run file with model.kind='deeptb' requires 'dir'",
-            _ML_BASE_PARAMS,
+            ML_BASE_PARAMS,
             ("bare", "berry_connection"),
             "model.params.velocity_mode for {kind} must be 'bare' or 'berry_connection' "
             "(no position matrix, so no 'covariant')",
@@ -292,7 +292,7 @@ CONNECTORS: dict[str, ModelConnector] = {
             "hamgnn",
             ("file",),
             "Run file with model.kind='hamgnn' requires 'file'",
-            _ML_BASE_PARAMS,
+            ML_BASE_PARAMS,
             ("bare", "berry_connection"),
             "model.params.velocity_mode for {kind} must be 'bare' or 'berry_connection' "
             "(no position matrix, so no 'covariant')",
@@ -304,7 +304,7 @@ CONNECTORS: dict[str, ModelConnector] = {
             "threebodytb",
             ("file",),
             "Run file with model.kind='threebodytb' requires 'file'",
-            _ML_BASE_PARAMS | {"orbitals_per_element"},
+            ML_BASE_PARAMS | {"orbitals_per_element"},
             ("bare", "berry_connection"),
             "model.params.velocity_mode for {kind} must be 'bare' or 'berry_connection' "
             "(no position matrix, so no 'covariant')",
@@ -317,7 +317,7 @@ CONNECTORS: dict[str, ModelConnector] = {
             "abacus",
             ("file",),
             "Run file with model.kind='abacus' requires 'file'",
-            _ML_BASE_PARAMS | {"overlap_file", "stru_file", "orbital_dir",
+            ML_BASE_PARAMS | {"overlap_file", "stru_file", "orbital_dir",
                                "orbitals_per_element", "position_file"},
             ("bare", "berry_connection"),
             "model.params.velocity_mode for abacus must be 'bare' or 'berry_connection'; "
@@ -334,7 +334,7 @@ CONNECTORS: dict[str, ModelConnector] = {
             "gpaw",
             ("file",),
             "Run file with model.kind='gpaw' requires 'file'",
-            _ML_BASE_PARAMS | {"soc", "quadrature_order", "dipole_cache"},
+            ML_BASE_PARAMS | {"soc", "quadrature_order", "dipole_cache"},
             ("bare", "berry_connection"),
             "model.params.velocity_mode for {kind} must be 'bare' or 'berry_connection' "
             "(no position matrix, so no 'covariant')",
