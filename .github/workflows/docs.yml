@@ -4,7 +4,7 @@
 # docs-site/assemble.sh, with the Doxygen C++ API under api/. Pull requests build
 # the site and check it; only pushes to main (or a manual run on main) deploy.
 #
-# Pitfall: the Doxygen configure step still needs the Eigen/GSL/FFTW -dev
+# Pitfall: the Doxygen configure step still needs the Boost/Eigen/GSL/FFTW -dev
 # packages, because the top-level CMakeLists find_package()s them even though
 # the docs target compiles no source.
 #
@@ -34,7 +34,7 @@ jobs:
       - name: Install system packages
         run: |
           sudo apt-get update
-          sudo apt-get install -y doxygen graphviz libeigen3-dev libgsl-dev libfftw3-dev
+          sudo apt-get install -y doxygen graphviz libboost-dev libeigen3-dev libgsl-dev libfftw3-dev
       - name: Install MkDocs
         run: pip install -r docs-site/requirements.txt
       - name: Assemble the site source
