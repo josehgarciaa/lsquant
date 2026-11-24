@@ -31,7 +31,7 @@ on-site energies +Delta (B) and -Delta (N) and hopping t:
 
 Usage (from this directory, after the two runs of run_graphene.json and run_hbn.json):
     python benchmark.py ../../out/optical_graphene ../../out/optical_hbn
-Writes benchmark.json (every number below) and the curves in bench_*.dat, read by plot_benchmark.py.
+Writes benchmark.json (every number below) and the curves in bench_*.npz, read by plot_benchmark.py.
 """
 import glob
 import json
