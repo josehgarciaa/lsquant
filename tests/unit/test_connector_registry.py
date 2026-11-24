@@ -53,9 +53,12 @@ def _model_with_paths(connector, params=None):
 
 def _validated_params(connector):
     # Wannier90 validates params only with a trigger param; give it one.
-    if connector.metric_trigger is not None:
-        return {"velocity_mode": "bare", "oracle": True}
-    return {"oracle": True}
+    params = ({"velocity_mode": "bare", "oracle": True}
+              if connector.metric_trigger is not None else {"oracle": True})
+    # ABACUS additionally requires its S(R) file and STRU params.
+    if connector.kind == "abacus":
+        params = dict(params, overlap_file="s", stru_file="STRU")
+    return params
 
 
 def test_every_registered_kind_is_known():
@@ -140,7 +143,9 @@ def test_abacus_covariant_rule():
     )
     accepted = dict(model, params=dict(model["params"], position_file="pos"))
     rf = RunFile.from_dict(dict(BASE, model=accepted))
-    assert rf.model["params"]["position_file"] == "pos"
+    # path_params are resolved like model.file, so "pos" comes back absolute.
+    assert os.path.isabs(rf.model["params"]["position_file"])
+    assert rf.model["params"]["position_file"].endswith("pos")
     # GPAW admits covariant through its radial quadrature, without any param.
     gpaw = CONNECTORS["gpaw"]
     assert effective_velocity_modes(gpaw, {}) == ("bare", "berry_connection", "covariant")
