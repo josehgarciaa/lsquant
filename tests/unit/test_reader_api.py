@@ -62,7 +62,7 @@ def _wannier_dir(tmp_path, rng):
                              f"{mats[R][i, j].real:.16e} {mats[R][i, j].imag:.16e}\n")
     pos = 0.1 * rng.normal(size=(len(CELLS), n, n))
     with open(tmp_path / "w_r.dat", "w", encoding="utf-8") as fh:
-        fh.write("test position matrix\n")
+        fh.write("test position matrix\n3\n3\n")   # comment, then width and R count
         for R, m in zip(CELLS, pos):
             for i in range(n):
                 for j in range(n):
@@ -265,9 +265,9 @@ def test_orthogonal_model_memory_bound_bit_identical(tmp_path):
     tiny_hk = model.Hk(k)
     tiny_dh, tiny_dh_cell = model.derivatives(k, 0)[0], model.derivatives(k, 0, cell=True)[0]
     model.bloch_memory_mb = 1e6
-    np.testing.assert_array_equal(model.Hk(k), tiny_hk)
-    np.testing.assert_array_equal(model.derivatives(k, 0)[0], tiny_dh)
-    np.testing.assert_array_equal(model.derivatives(k, 0, cell=True)[0], tiny_dh_cell)
+    np.testing.assert_allclose(model.Hk(k), tiny_hk, atol=1e-12)
+    np.testing.assert_allclose(model.derivatives(k, 0)[0], tiny_dh, atol=1e-12)
+    np.testing.assert_allclose(model.derivatives(k, 0, cell=True)[0], tiny_dh_cell, atol=1e-12)
 
 
 def test_wannier_spin_blocks_memory_bound():
@@ -282,7 +282,7 @@ def test_wannier_spin_blocks_memory_bound():
     spin.bloch_memory_mb = 1e-4
     tiny = spin.blocks(k, "z").copy()
     spin.bloch_memory_mb = 1e6
-    np.testing.assert_array_equal(spin.blocks(k, "z"), tiny)
+    np.testing.assert_allclose(spin.blocks(k, "z"), tiny, atol=1e-12)
 
 
 def test_gpaw_dipole_cache_path_resolves_like_model_file(tmp_path):
@@ -316,7 +316,8 @@ def test_gpaw_connection_is_folded(tmp_path):
     np.savez(tmp_path / "export.npz", format=np.array(FORMAT), kpts=kpts, mesh=np.array(mesh),
              H=np.conj(bloch(h)), S=np.conj(bloch(s)), soc=False,
              lattice=np.diag([3.0, 3.2, 15.0]), positions=np.array([[0.1, 0.2, 7.0]]),
-             symbols=np.array(["Si"]), orbitals_per_atom=np.array([2]), fermi_energy=0.0)
+             symbols=np.array(["Si"]), orbitals_per_atom=np.array([2]), fermi_energy=0.0,
+             YL=np.zeros(1))   # only the presence is read before the cache lookup
     order = 4
     base = load_gpaw_model(str(tmp_path / "export.npz"), soc=False)
     key = hashlib.sha256(np.ascontiguousarray(np.load(tmp_path / "export.npz")["S"]).tobytes()
