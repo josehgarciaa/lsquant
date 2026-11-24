@@ -419,6 +419,7 @@ word.
 | `right_window` | integer or string | positive integer, `"all"` | `16` | Ket-side storage window of the native rank-2 path; `"all"` stores all M vectors (resolves to `null`). |
 | `checkpoint` | boolean | — | `false` | `csr` only: checkpoint after every trace state to `checkpoint_<hash>.lsqckpt` in the output directory and resume from it on restart. The file is deleted when the word finishes. |
 | `state_block_rule` | string | — | — | Output only. Ignored on input. The `"auto"` resolution records its reason here in memory; current executors write `run.resolved.json` before this happens. |
+| `trace_coverage` | object | — | — | Output only. Ignored on input. Written to `run.resolved.json` when an exact trace uses fewer states than the dimension: `{"states": n, "dimension": N}`, an average over the first n of N basis functions. |
 
 | Condition | Error |
 |---|---|
