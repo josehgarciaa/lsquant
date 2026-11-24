@@ -37,6 +37,35 @@ from .wannier import hk_blocks, load_wannier_model, read_position_matrix
 _AXES = {"x": 0, "y": 1, "z": 2}
 
 
+def _k_chunk_count(n_points, fixed_bytes, per_k_bytes, memory_mb):
+    """k points per Bloch-sum chunk under a MiB workspace bound.
+
+    The sums are independent per k, so chunking the k points is
+    bit-identical to one call; the bound only sets the chunk size.
+    """
+    chunk = max(1, int((float(memory_mb) * 1024**2 - fixed_bytes) // per_k_bytes))
+    return min(chunk, n_points)
+
+
+def _hk_blocks_bounded(r_cart, tau, hoppings, k_points, memory_mb):
+    """``hk_blocks`` over k chunks bounded by ``memory_mb`` (bit-identical).
+
+    Pitfall: ``hk_blocks`` and ``bloch_sum`` dress the atom gauge in a
+    different order, so the bound is applied by chunking the k points here
+    instead of switching routines.
+    """
+    points = np.atleast_2d(np.asarray(k_points, dtype=float))
+    nr, width = hoppings.shape[0], hoppings.shape[1]
+    chunk = _k_chunk_count(len(points), 2 * hoppings.nbytes,
+                           16 * nr + 32 * width + 16 * width * width, memory_mb)
+    if chunk >= len(points):
+        return hk_blocks(r_cart, tau, hoppings, points)
+    out = np.empty((len(points), width, width), dtype=np.complex128)
+    for start in range(0, len(points), chunk):
+        out[start:start + chunk] = hk_blocks(r_cart, tau, hoppings, points[start:start + chunk])
+    return out
+
+
 def _read_win_window(path):
     """Return the outer window (eV) of a ``.win`` file; missing keys mean all bands."""
     lo, hi = -np.inf, np.inf
@@ -146,8 +175,11 @@ class WannierSpin:
 
     ``S(R) = (1/N_k) sum_k exp(-2 pi i k.R) S_W(k)`` on the R range of the
     ``n1 x n2 x n3`` mesh, centred on the origin. :meth:`blocks` returns the
-    atom-gauge matrix at Cartesian k points.
+    atom-gauge matrix at Cartesian k points. ``bloch_memory_mb`` bounds the
+    workspace of the R sum, chunking the k points (bit-identical per k).
     """
+
+    bloch_memory_mb = 256.0
 
     def __init__(self, model_dir, seed, uc, tau):
         kpts, S_w = read_wannier_spin(model_dir, seed)
@@ -162,9 +194,18 @@ class WannierSpin:
 
     def blocks(self, k_points, component):
         a = _AXES[component.lower()]
-        kf = np.atleast_2d(k_points) @ self.uc.T / (2 * np.pi)
-        cell = np.einsum("kr,rab->kab", np.exp(2j * np.pi * (kf @ self.r_int.T)), self.spin_r[a])
-        p = np.exp(1j * (np.atleast_2d(k_points) @ self.tau.T))
+        k = np.atleast_2d(k_points)
+        kf = k @ self.uc.T / (2 * np.pi)
+        spin = self.spin_r[a]
+        nr, width = len(self.r_int), len(self.tau)
+        chunk = _k_chunk_count(len(k), 2 * spin.nbytes,
+                               16 * nr + 16 * width * width, self.bloch_memory_mb)
+        cell = np.empty((len(k), width, width), dtype=np.complex128)
+        phases = np.exp(2j * np.pi * (kf @ self.r_int.T))
+        for start in range(0, len(k), chunk):
+            stop = start + chunk
+            cell[start:stop] = np.einsum("kr,rab->kab", phases[start:stop], spin, optimize=True)
+        p = np.exp(1j * (k @ self.tau.T))
         atom = p.conj()[:, :, None] * cell * p[:, None, :]
         return 0.5 * (atom + np.conj(np.swapaxes(atom, 1, 2)))
 
@@ -208,7 +249,8 @@ class OrthogonalModel:
         return k_mesh(self.uc, supercell)
 
     def Hk(self, k):
-        return hk_blocks(self.r_cart, self.tau, self.hoppings, np.atleast_2d(k))
+        return _hk_blocks_bounded(self.r_cart, self.tau, self.hoppings,
+                                  np.atleast_2d(k), self.bloch_memory_mb)
 
     def Sk(self, k):
         n = len(np.atleast_2d(k))
@@ -218,12 +260,14 @@ class OrthogonalModel:
         """Return ``(dH_a, dS_a=0)``: atom derivative, or cell derivative in the atom gauge."""
         k = np.atleast_2d(k)
         if cell:
-            dH = bloch_sum(self.r_cart, np.zeros_like(self.tau), self.hoppings, k, derivative=axis)
+            dH = bloch_sum(self.r_cart, np.zeros_like(self.tau), self.hoppings, k,
+                           derivative=axis, cell=True, memory_mb=self.bloch_memory_mb)
             p = np.exp(1j * (k @ self.tau.T))
             dH = p.conj()[:, :, None] * dH * p[:, None, :]
         else:
             # +dH_atom/dk. dhk_blocks keeps the wannier2sparse sign, -dH_atom/dk.
-            dH = bloch_sum(self.r_cart, self.tau, self.hoppings, k, derivative=axis)
+            dH = bloch_sum(self.r_cart, self.tau, self.hoppings, k, derivative=axis,
+                           memory_mb=self.bloch_memory_mb)
         return dH, np.zeros_like(dH)
 
     def Ak(self, k, axis):
@@ -232,7 +276,8 @@ class OrthogonalModel:
             raise ValueError("covariant velocity requires the position matrix (_r.dat)")
         r_int, A = self.positions
         k = np.atleast_2d(k)
-        full = bloch_sum(r_int @ self.uc, self.tau, A[axis], k)
+        full = bloch_sum(r_int @ self.uc, self.tau, A[axis], k,
+                         memory_mb=self.bloch_memory_mb)
         return full - np.diag(self.tau[:, axis])[None, :, :]
 
     def spin_blocks(self, k, component):
@@ -246,17 +291,26 @@ class OrthogonalModel:
         return self.spin.blocks(k, component)
 
 
-def load_wannier_metric_model(model_dir, seed, *, spin="labels", positions=None, fermi_energy=None):
+def load_wannier_metric_model(model_dir, seed, *, spin="labels", dipoles=None, positions=None,
+                              fermi_energy=None):
     """Wannier90 model for the metric executor.
 
     ``spin`` is ``"labels"`` (diagonal Pauli matrices on the spinor labels,
     as Wannier90 orders each spinor projection up then down) or ``"exact"``
-    (:class:`WannierSpin`). ``positions=True`` reads ``<seed>_r.dat``;
-    ``None`` reads it when present. ``fermi_energy`` (eV) selects the energy
+    (:class:`WannierSpin`). ``dipoles`` selects the position matrix read from
+    ``<seed>_r.dat``: ``None`` (the default) reads it when the file is
+    present, ``True`` reads it, ``False`` skips it. The deprecated
+    ``positions`` keyword has the same three values: when given it wins and a
+    ``DeprecationWarning`` says so. ``fermi_energy`` (eV) selects the energy
     origin and is removed as ``H(R) - E_F 1``; a Wannier90 file carries none,
     so the default is 0.0. Energies, windows and Fermi energies of the run
     file are measured from it.
     """
+    if positions is not None:
+        import warnings
+        warnings.warn("load_wannier_metric_model(positions=...) is deprecated; use dipoles=... "
+                      "instead", DeprecationWarning, stacklevel=2)
+        dipoles = positions
     base = os.path.join(model_dir, seed)
     if not (os.path.isfile(base + ".uc") and os.path.isfile(base + ".xyz")):
         write_wannier_geometry(model_dir, seed)
@@ -267,9 +321,9 @@ def load_wannier_metric_model(model_dir, seed, *, spin="labels", positions=None,
     if len(origin_index) != 1:
         raise ValueError("the Wannier model has no unique R = 0 block")
     hoppings[origin_index[0]] -= origin * np.eye(w.num_wann)
-    if positions is None:
-        positions = os.path.isfile(base + "_r.dat")
-    pos = read_position_matrix(base + "_r.dat", base + "_hr.dat") if positions else None
+    if dipoles is None:
+        dipoles = os.path.isfile(base + "_r.dat")
+    pos = read_position_matrix(base + "_r.dat", base + "_hr.dat") if dipoles else None
     if spin not in ("labels", "exact"):
         raise ValueError("Wannier spin must be 'labels' or 'exact'")
     spin_obj = WannierSpin(model_dir, seed, w.uc, w.tau) if spin == "exact" else None

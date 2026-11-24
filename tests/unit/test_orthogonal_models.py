@@ -127,7 +127,7 @@ def test_wannier_adapter_matches_velocity_blocks(tmp_path, mode):
     target = tmp_path / "graphene"
     shutil.copytree(GRAPHENE, target)
     _write_r_dat(str(target), "graphene", np.random.default_rng(11))
-    adapter = load_wannier_metric_model(str(target), "graphene", positions=True)
+    adapter = load_wannier_metric_model(str(target), "graphene", dipoles=True)
     basis = BlochMetricBasis(adapter, [5, 4, 1], velocity_mode=mode)
     wannier = load_wannier_model(str(target), seed="graphene")
     for axis in "xy":
