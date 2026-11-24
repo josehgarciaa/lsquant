@@ -63,6 +63,7 @@ from pathlib import Path
 import numpy as np
 
 from .lcao import assemble_blocks, build_lcao_model
+from .siesta import spinor_lift
 
 LEGACY_FILES = ("hamiltonians_pred.h5", "hamiltonians.h5")
 PACK_FILES = ("hamiltonian_pred.h5", "hamiltonian.h5")
@@ -208,7 +209,7 @@ def load_deeph_model(directory, *, hamiltonian_file=None, fermi_energy=None):
                 cells[tuple(r)] = len(r_int)
                 r_int.append(tuple(r))
                 hamiltonian.append(np.zeros_like(kb[0]))
-            hamiltonian[cells[tuple(r)]] = hamiltonian[cells[tuple(r)]] + np.kron(block, np.eye(2))
+            hamiltonian[cells[tuple(r)]] = hamiltonian[cells[tuple(r)]] + spinor_lift(block)
         r_int, hamiltonian = np.array(r_int, int), np.array(hamiltonian)
         meta["hamiltonian_file"] = [str(h_path), str(hkb)]
     else:

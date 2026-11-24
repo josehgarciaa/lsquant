@@ -31,6 +31,7 @@ import numpy as np
 
 from .bloch import bloch_sum, k_mesh
 from .registry import load_runfile_model  # noqa: F401  (re-export; the dispatcher lives in the connector registry)
+from .units import BOHR_ANGSTROM
 from .wannier import hk_blocks, load_wannier_model, read_position_matrix
 
 _AXES = {"x": 0, "y": 1, "z": 2}
@@ -294,7 +295,7 @@ def write_wannier_geometry(model_dir, seed):
                 j += 1
             unit = rows[0][0].lower() if rows and len(rows[0]) == 1 else "ang"
             vectors = np.array([r for r in rows if len(r) == 3], float)
-            cell = vectors * (0.529177210903 if unit.startswith("bohr") else 1.0)
+            cell = vectors * (BOHR_ANGSTROM if unit.startswith("bohr") else 1.0)
             break
     if cell is None or cell.shape != (3, 3):
         raise ValueError(f"{base}.win: no unit_cell_cart block with three vectors")
@@ -343,8 +344,7 @@ def write_paoflow_model(paoflow, path, *, sh_l=None, sh_j=None, locality_warning
     elif "Sj" not in arrays:
         paoflow.spin_operator()
         arrays, attrs = paoflow.data_controller.data_dicts()
-    bohr = 0.529177210903
-    alat = float(attrs["alat"]) * bohr
+    alat = float(attrs["alat"]) * BOHR_ANGSTROM
     uc = np.asarray(arrays["a_vectors"], float) * alat
     hr = np.asarray(arrays["HRs"])[:, :, :, :, :, 0]
     n1, n2, n3 = hr.shape[2:5]
@@ -364,7 +364,7 @@ def write_paoflow_model(paoflow, path, *, sh_l=None, sh_j=None, locality_warning
                 for a, b, c in combos:
                     r_int.append([-a, -b, -c])
                     blocks.append(hr[:, :, i, j, l] / len(combos))
-    tau = (np.asarray(arrays["Dnm"])[:, 0, :] - np.asarray(arrays["Dnm"])[0, 0, :]) * bohr
+    tau = (np.asarray(arrays["Dnm"])[:, 0, :] - np.asarray(arrays["Dnm"])[0, 0, :]) * BOHR_ANGSTROM
     r_arr, blocks = np.array(r_int), np.array(blocks)
     size = np.abs(blocks).max(axis=(1, 2))
     reach = np.max(np.abs(r_arr) / np.maximum(np.array([n1, n2, n3]) // 2, 1), axis=1)
@@ -381,8 +381,10 @@ def write_paoflow_model(paoflow, path, *, sh_l=None, sh_j=None, locality_warning
 
 def load_paoflow_model(path):
     """Read a file of :func:`write_paoflow_model` as an orthogonal model with on-site spin."""
+    from .lcao import seed_name_from_file
+
     d = np.load(path)
-    seed = os.path.splitext(os.path.basename(path))[0]
+    seed = seed_name_from_file(path)
     return OrthogonalModel(d["uc"], d["tau"], d["r_int"], d["hoppings"], seed_name=seed,
                            spin=np.asarray(d["spin"], complex),
                            metadata=dict(source="paoflow", file=os.path.abspath(path)))

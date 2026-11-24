@@ -449,7 +449,8 @@ def load_gpaw_model(path, *, soc=True, fermi_energy=None, tolerance=1e-10, dipol
     quadrature error: 1e-5 at order 48 for PdSe2). ``dipole_cache`` names an
     ``.npz`` that stores the result for the same export, cells and order.
     """
-    from .lcao import assemble_blocks, build_lcao_model
+    from .lcao import assemble_blocks, build_lcao_model, fold_opposite, opposite_pairs
+    from .siesta import spinor_lift
 
     data = read_gpaw_lcao(path)
     norb = data["orbitals_per_atom"].astype(int)
@@ -511,10 +512,11 @@ def load_gpaw_model(path, *, soc=True, fermi_energy=None, tolerance=1e-10, dipol
         if error > overlap_tolerance:
             raise ValueError(f"the quadrature overlap differs from GPAW's S(R) by {error:.1e} "
                              f"(> {overlap_tolerance:g}); raise quadrature_order")
-        minus = np.array([np.where((model.r_int == -R).all(axis=1))[0][0] for R in model.r_int])
-        model.metadata["dipole_hermiticity_residual"] = float(np.abs(A_q - A_q[:, minus].transpose(0, 1, 3, 2)).max())
-        lift = (lambda X: np.kron(X, np.eye(2))) if with_soc else (lambda X: X)
-        model.dipoles = np.array([[lift(A_q[v, n]) for n in range(len(model.r_int))] for v in range(3)], complex)
+        partner = opposite_pairs(model.r_int)
+        # The connection is only measured, not folded (audit item B7).
+        model.metadata["dipole_hermiticity_residual"] = fold_opposite(A_q, partner, residual="absolute")[1]
+        lifted = spinor_lift(A_q) if with_soc else A_q
+        model.dipoles = np.asarray(lifted, complex)
     return model
 
 
