@@ -483,7 +483,8 @@ def load_gpaw_model(path, *, soc=True, fermi_energy=None, tolerance=1e-10, dipol
     ef = float(data["fermi_energy"]) if fermi_energy is None else float(fermi_energy)
     meta = {"source": "gpaw", "file": str(path), "spin_orbit": "non-self-consistent PAW on-site term"
             if with_soc else "none", "k_mesh": [int(n) for n in data["mesh"]],
-            "gpaw_fermi_level_eV": float(data["fermi_energy"])}
+            "gpaw_fermi_level_eV": float(data["fermi_energy"]),
+            "fermi_energy_source": "file" if fermi_energy is None else "run file"}
     model = build_lcao_model(data["lattice"], data["positions"], norb, r_h, H, S, spinful=with_soc,
                              seed_name="gpaw", metadata=meta, fermi_energy=ef, overlap_r_int=r_s)
     if dipoles:

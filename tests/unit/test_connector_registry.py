@@ -117,12 +117,29 @@ def test_wannier_trigger_params():
     assert uses_metric_executor(dict(model, params=["velocity_mode"])) is False
 
 
-def test_wannier_params_unvalidated_without_trigger():
-    # Preserved behaviour (a known gap, fixed by the validation unification):
-    # a Wannier90 model without a trigger param keeps its params unchecked.
+def test_wannier_params_validated_without_trigger():
+    # A Wannier90 model without a trigger param keeps the plain CSR executor,
+    # but its params are still validated: unknown keys are refused, and the
+    # executor-only params say how to reach the metric executor.
     model = {"kind": "wannier", "dir": ".", "seed": "s", "params": {_BAD_KEY: 1}}
-    rf = RunFile.from_dict(dict(BASE, model=model))
-    assert rf.model["params"] == {_BAD_KEY: 1}
+    with pytest.raises(ValueError) as exc:
+        RunFile.from_dict(dict(BASE, model=model))
+    assert str(exc.value) == (
+        f"Unknown key '{_BAD_KEY}' in run file (model.params (wannier)); "
+        f"allowed keys are {sorted(CONNECTORS['wannier'].allowed_params)}"
+    )
+    for key in ("oracle", "oracle_degeneracy_tolerance", "bloch_memory_mb"):
+        with pytest.raises(ValueError) as exc:
+            RunFile.from_dict(dict(BASE, model={"kind": "wannier", "dir": ".", "seed": "s",
+                                                "params": {key: True}}))
+        assert str(exc.value) == (
+            f"model.params.{key} for kind='wannier' needs the metric executor; "
+            "set params.velocity_mode, params.spin or params.fermi_energy to use it"
+        )
+    # Trigger params still route the model to the metric executor.
+    rf = RunFile.from_dict(dict(BASE, model={"kind": "wannier", "dir": ".", "seed": "s",
+                                             "params": {"velocity_mode": "bare"}}))
+    assert uses_metric_executor(rf.model)
 
 
 def test_abacus_covariant_rule():
@@ -138,7 +155,7 @@ def test_abacus_covariant_rule():
     with pytest.raises(ValueError) as exc:
         RunFile.from_dict(dict(BASE, model=model))
     assert str(exc.value) == (
-        "model.params.velocity_mode for abacus must be 'bare' or 'berry_connection'; "
+        "model.params.velocity_mode for abacus must be one of ['bare', 'berry_connection']; "
         "'covariant' needs model.params.position_file (ABACUS's data-rR-sparse.csr)"
     )
     accepted = dict(model, params=dict(model["params"], position_file="pos"))
@@ -156,27 +173,41 @@ def test_abacus_covariant_rule():
 
 
 def test_velocity_mode_error_texts():
+    from lsquant.models.registry import velocity_mode_error
     for connector in CONNECTORS.values():
         params = {"velocity_mode": "bogus"}
         model = _model_with_paths(connector, params)
         with pytest.raises(ValueError) as exc:
             RunFile.from_dict(dict(BASE, model=model))
-        expected = connector.velocity_error.format(
-            kind=connector.kind,
-            modes=list(effective_velocity_modes(connector, params)))
-        assert str(exc.value) == expected, connector.kind
+        assert str(exc.value) == velocity_mode_error(connector, params), connector.kind
+        # One wording for every kind; the missing covariant says why.
+        modes = list(effective_velocity_modes(connector, params))
+        assert str(exc.value).startswith(
+            f"model.params.velocity_mode for {connector.kind} must be one of ")
+        if "covariant" in modes:
+            assert ";" not in str(exc.value)
+        elif connector.kind == "abacus":
+            assert str(exc.value).endswith(
+                "; 'covariant' needs model.params.position_file (ABACUS's data-rR-sparse.csr)")
+        else:
+            assert str(exc.value).endswith("; no position matrix, so no 'covariant'")
 
 
 def test_spin_fermi_refusals():
+    # spin stays refused for the readers that store their own spinors, with a
+    # spin-only message; fermi_energy selects the energy origin for every kind.
     for kind in ("openmx", "pyscf", "paoflow"):
         connector = CONNECTORS[kind]
-        for bad in ("spin", "fermi_energy"):
-            model = _model_with_paths(connector, {bad: 0.1})
-            with pytest.raises(ValueError) as exc:
-                RunFile.from_dict(dict(BASE, model=model))
-            assert str(exc.value) == connector.refusal
-    # Wannier90 accepts both; SIESTA and the H(R)/S(R) kinds refuse spin by
-    # key validation (it is not in their allowed params).
+        model = _model_with_paths(connector, {"spin": "labels"})
+        with pytest.raises(ValueError) as exc:
+            RunFile.from_dict(dict(BASE, model=model))
+        assert str(exc.value) == connector.refusal
+        assert "fermi_energy" not in connector.refusal
+    for connector in CONNECTORS.values():
+        params = dict(_validated_params(connector), fermi_energy=0.1)
+        rf = RunFile.from_dict(dict(BASE, model=_model_with_paths(connector, params)))
+        assert rf.model["params"]["fermi_energy"] == 0.1
+    # The wannier spin values are unchanged.
     wannier = _model_with_paths(CONNECTORS["wannier"],
                                 {"velocity_mode": "bare", "spin": "labels", "fermi_energy": 0.0})
     assert RunFile.from_dict(dict(BASE, model=wannier)).model["kind"] == "wannier"
@@ -203,7 +234,7 @@ def test_metric_executor_names_message():
                                reference=True))
     assert str(exc.value) == (
         f"Expected a metric-executor model ({expected_names}, or wannier with "
-        "params.velocity_mode or params.spin) when 'reference' is set, got 'csr'"
+        "params.velocity_mode, params.spin or params.fermi_energy) when 'reference' is set, got 'csr'"
     )
 
 

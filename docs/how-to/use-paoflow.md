@@ -141,9 +141,12 @@ python -m lsquant run run.json
 | `projection.window` | In eV, measured from the DFT Fermi energy. |
 <!-- source: default velocity runfile.py:1515; covariant refused models/orthogonal.py:418, runfile.py:1515–1516; oracle: apps/stage6b_siesta.py:322, projection/runfile.py:214–228 -->
 
-Leave out `model.params.spin` and `model.params.fermi_energy`: both come from
-the file, and either key stops the run with
-`a PAOFLOW model carries its own on-site spin and energies from E_F; remove model.params.spin and model.params.fermi_energy`.
+Leave out `model.params.spin`: it comes from the file, and the key stops the
+run with
+`a PAOFLOW model carries its own on-site spin; remove model.params.spin`.
+`model.params.fermi_energy` (eV) is accepted: by default the energies stay
+measured from the Fermi energy recorded in the file; an explicit value `x`
+replaces it, shifting `H(R = 0)` by `−(x − E_F(file)) 1`.
 LSQuant also stops the run when H(k) is not Hermitian or the file lacks a
 field.
 <!-- source: python/lsquant/runfile.py:1512–1514 -->

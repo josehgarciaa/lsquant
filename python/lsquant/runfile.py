@@ -22,7 +22,15 @@ from .bases import (
     make_basis,
     validate_w2s_csr_dir,
 )
-from .models.registry import CONNECTORS, ML_BASE_PARAMS, validate_connector_params
+from .models.registry import (
+    CONNECTORS,
+    ML_BASE_PARAMS,
+    NON_CONNECTOR_MODEL_KEYS,
+    metric_trigger_clause,
+    validate_bare_params,
+    validate_connector_params,
+    validate_model_keys,
+)
 from .models.wannier import load_wannier_model
 from .moments import run_plan, velocity_window, window_from_gershgorin
 from .trace_coverage import trace_coverage
@@ -401,12 +409,13 @@ def validate_runfile_dict(raw: Mapping[str, Any]) -> None:
         k for k, connector in CONNECTORS.items()
         if connector.metric_trigger is None
     )
+    trigger_clause = metric_trigger_clause()
     if reference is not None and not metric_kind:
         raise ValueError(f"Expected a metric-executor model ({metric_names}, or wannier with "
-                         f"params.velocity_mode or params.spin) when 'reference' is set, got {kind!r}")
+                         f"{trigger_clause}) when 'reference' is set, got {kind!r}")
     if projection["kind"] != "none" and not metric_kind:
         raise ValueError(f"Expected a metric-executor model ({metric_names}, or wannier with "
-                         f"params.velocity_mode or params.spin) when projection is enabled, got {kind!r}")
+                         f"{trigger_clause}) when projection is enabled, got {kind!r}")
     # Non-connector kinds first; the connector kinds follow in registry order
     # (siesta and wannier are named above: siesta keeps its own dispatch and
     # wannier is also a plain CSR executor kind).
@@ -419,24 +428,27 @@ def validate_runfile_dict(raw: Mapping[str, Any]) -> None:
             f"Unknown model.kind '{kind}'; expected one of {', '.join(repr(k) for k in known_kinds)}"
         )
     if kind == "csr":
+        validate_model_keys(kind, NON_CONNECTOR_MODEL_KEYS["csr"] | {"kind", "params"}, model)
         if model.get("hr_file"):
             operator_config = raw.get("numerics") or {}
             if not isinstance(operator_config, Mapping) or operator_config.get("operator") != "atom_block":
                 raise ValueError("model.hr_file requires numerics.operator='atom_block'")
         if not model.get("hr_file") and (not model.get("dir") or not model.get("label")):
             raise ValueError(
-                "Run file with model.kind='csr' requires 'dir' and 'label'"
+                "model.kind='csr' requires 'dir' and 'label'"
             )
+        validate_bare_params(kind, model)
     elif kind in CONNECTORS:
         connector = CONNECTORS[kind]
+        validate_model_keys(kind, connector.model_keys, model)
         for path_key in connector.path_keys:
             if not model.get(path_key):
                 raise ValueError(connector.missing_path_error)
-        # A Wannier90 model without a trigger param keeps the plain CSR
-        # executor and its params stay unvalidated (preserved behaviour).
-        if connector.metric_trigger is None or metric_kind:
-            validate_connector_params(connector, model)
+        validate_connector_params(connector, model, for_metric_executor=metric_kind)
     elif kind == "generator":
+        validate_model_keys(
+            kind, NON_CONNECTOR_MODEL_KEYS["generator"] | {"kind", "params"}, model
+        )
         gen_name = model.get("name")
         if not gen_name or not isinstance(gen_name, str):
             raise ValueError(
@@ -1586,9 +1598,9 @@ def uses_metric_executor(model: Mapping[str, Any]) -> bool:
     """True when the model runs through BlochMetricBasis (velocity modes, physical spin).
 
     SIESTA, OpenMX, PAOFLOW and machine-learning models (``ML_MODEL_KINDS``)
-    always do. A Wannier90 model does when its
-    ``params`` set ``velocity_mode`` or ``spin``; without them it keeps the
-    original Wannier executor and its CSR and real-space bases.
+    always do. A Wannier90 model does when its ``params`` set ``velocity_mode``,
+    ``spin`` or ``fermi_energy``; without them it keeps the original Wannier
+    executor and its CSR and real-space bases.
     """
     kind = str(_get_or(model, "kind", "csr"))
     connector = CONNECTORS.get(kind)
@@ -1679,8 +1691,8 @@ def execute_runfile(
     # SIESTA keeps its own dispatch below (disorder, projection, clean).
     if connector is not None and kind != "siesta" and uses_metric_executor(rf.model):
         if rf.basis["name"] == "real" or rf.basis["disorder"]["W"] != 0:
-            raise ValueError(f"model.kind={kind!r} with params.velocity_mode/spin runs in the "
-                             "clean bloch or eigen basis")
+            raise ValueError(f"model.kind='{kind}' runs in the clean bloch or eigen basis "
+                             "(real basis and disorder are available for siesta)")
         if not connector.keep_metric_policy and str(rf.metric["policy"]) == "orthogonal":
             # S = 1: the exact Lowdin route of the metric executors is the orthogonal one.
             # A non-orthogonal machine-learning model takes the same exact route with its S.

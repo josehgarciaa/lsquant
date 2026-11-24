@@ -85,7 +85,7 @@ the command line can still read paths outside the repository.
 | `csr_dir` | path | — | `null` | `wannier`, `basis.name = "real"` | Directory with a prebuilt supercell `<seed>.HAM.CSR` and its `wannier2sparse` receipt `<seed>.out`. LSQuant checks it against `seed` and `basis.supercell` before it loads anything. |
 | `name` | string | see [Generator models](#generator-models) | `null` | `generator` | Generator from the catalogue. |
 | `tutorial` | integer | `1`–`6` | from `name` | `generator` | Tutorial driver to run. Not validated; an unknown value fails at execution with `Unsupported generator`. |
-| `params` | object | depends on `kind` | `{}` | `siesta`, `openmx`, `pyscf`, `wannier`, `paoflow`, `deeph`, `deeptb`, `hamgnn`, `threebodytb`, `abacus`, `gpaw`, `generator` | Model parameters. See [SIESTA models](#siesta-models), [OpenMX models](#openmx-models), [PySCF models](#pyscf-models), [Wannier90 and PAOFLOW models in the metric executors](#wannier90-and-paoflow-models-in-the-metric-executors), [Machine-learning Hamiltonians in the metric executors](#machine-learning-hamiltonians-in-the-metric-executors) and [Generator models](#generator-models). For `csr` the object is not checked and not used; for `wannier` it is checked only when it holds `velocity_mode`, `spin` or `fermi_energy`. |
+| `params` | object | depends on `kind` | `{}` | `siesta`, `openmx`, `pyscf`, `wannier`, `paoflow`, `deeph`, `deeptb`, `hamgnn`, `threebodytb`, `abacus`, `gpaw`, `generator` | Model parameters. See [SIESTA models](#siesta-models), [OpenMX models](#openmx-models), [PySCF models](#pyscf-models), [Wannier90 and PAOFLOW models in the metric executors](#wannier90-and-paoflow-models-in-the-metric-executors), [Machine-learning Hamiltonians in the metric executors](#machine-learning-hamiltonians-in-the-metric-executors) and [Generator models](#generator-models). For `csr` any key is refused (the kind uses no parameters). Every kind validates the object: it must be a JSON object or null, and an unknown key stops with `Unknown key ... in run file (model.params (<kind>))`. For `wannier`, `oracle`, `oracle_degeneracy_tolerance` and `bloch_memory_mb` need one of the trigger keys `velocity_mode`, `spin` or `fermi_energy`, which select the metric executor. |
 | `positions` | path or array | file of `x y z` lines, `.xyz`-like file, or `(N, 2)`/`(N, 3)` array | `null` | `csr` with `atom_block` | Orbital positions. |
 | `orbitals_per_atom` | integer | positive | `null` | `csr` with `atom_block` | Uniform number of orbitals per atom. Give this or `atom_map`, not both. Required with `hr_file`. |
 | `atom_map` | path or array | one integer per orbital | `null` | `csr` with `atom_block` | Atom index of every orbital. |
@@ -96,19 +96,19 @@ the command line can still read paths outside the repository.
 
 | `model.kind` | Required keys | Validator error if missing |
 |---|---|---|
-| `csr` | `dir` and `label`, unless `hr_file` is set | `Run file with model.kind='csr' requires 'dir' and 'label'` |
+| `csr` | `dir` and `label`, unless `hr_file` is set | `model.kind='csr' requires 'dir' and 'label'` |
 | `csr` with `hr_file` | `numerics.operator = "atom_block"` | `model.hr_file requires numerics.operator='atom_block'` |
-| `wannier` | `dir` and `seed` | `Run file with model.kind='wannier' requires 'dir' and 'seed'` |
-| `siesta` | `dir` and `label` | `SIESTA model requires dir and label` |
-| `openmx` | `file` | `Run file with model.kind='openmx' requires 'file' (the .scfout file)` |
-| `pyscf` | `file` | `Run file with model.kind='pyscf' requires 'file' (see write_pyscf_model)` |
-| `paoflow` | `file` | `Run file with model.kind='paoflow' requires 'file' (see write_paoflow_model)` |
-| `deeph` | `dir` | `Run file with model.kind='deeph' requires 'dir'` |
-| `deeptb` | `dir` | `Run file with model.kind='deeptb' requires 'dir'` |
-| `hamgnn` | `file` | `Run file with model.kind='hamgnn' requires 'file'` |
-| `threebodytb` | `file` | `Run file with model.kind='threebodytb' requires 'file'` |
-| `abacus` | `file`, `params.overlap_file`, `params.stru_file` | `Run file with model.kind='abacus' requires 'file'`; `model.params.overlap_file is required for model.kind='abacus' ...` |
-| `gpaw` | `file` | `Run file with model.kind='gpaw' requires 'file'` |
+| `wannier` | `dir` and `seed` | `model.kind='wannier' requires 'dir' and 'seed'` |
+| `siesta` | `dir` and `label` | `model.kind='siesta' requires 'dir' and 'label'` |
+| `openmx` | `file` | `model.kind='openmx' requires 'file' (the .scfout file)` |
+| `pyscf` | `file` | `model.kind='pyscf' requires 'file' (see write_pyscf_model)` |
+| `paoflow` | `file` | `model.kind='paoflow' requires 'file' (see write_paoflow_model)` |
+| `deeph` | `dir` | `model.kind='deeph' requires 'dir'` |
+| `deeptb` | `dir` | `model.kind='deeptb' requires 'dir'` |
+| `hamgnn` | `file` | `model.kind='hamgnn' requires 'file'` |
+| `threebodytb` | `file` | `model.kind='threebodytb' requires 'file'` |
+| `abacus` | `file`, `params.overlap_file`, `params.stru_file` | `model.kind='abacus' requires 'file'`; `model.params.overlap_file is required for model.kind='abacus' ...` |
+| `gpaw` | `file` | `model.kind='gpaw' requires 'file'` |
 | `generator` | `name` | `Run file with model.kind='generator' requires 'name' from [...]` |
 
 For `csr`, the executor also needs `<dir>/<label>.HAM.CSR` and, when
@@ -125,13 +125,20 @@ it stops with
 species, to integrate the orbital dipole matrices.
 
 LSQuant uses the energies as stored in the TSHS file, where E_F = 0. It records
-the printed Fermi level in `basis.json` and never subtracts it.
+the printed Fermi level in `basis.json` (`printed_fermi_level_eV`) and never
+subtracts it unless the run file asks: `model.params.fermi_energy` (eV, on the
+scale of the SIESTA output) makes `x` the energy origin by shifting H by
+`−(x − E_printed) S`. It is refused when the file has no printed level. Every
+reader records the origin it used in `basis.json` as
+`fermi_energy_subtracted_eV` with `fermi_energy_source` (`"file"`, `"run
+file"` or `"none"`).
 
 Allowed keys in `model.params`:
 
 | Key | Type | Allowed values | Default | Meaning |
 |---|---|---|---|---|
 | `velocity_mode` | string | `"bare"`, `"berry_connection"`, `"covariant"` | `"berry_connection"` (clean and projected runs); `"covariant"` (disordered and real-space runs) | How velocity operators are built from H, S and the dipoles. See [Non-orthogonal bases](../explanation/nonorthogonal-bases.md). |
+| `fermi_energy` | number | finite or null | the printed Fermi level | Energy origin (eV), removed as `H − x S`; null (or omitted) keeps the file's reference. |
 | `oracle` | boolean | — | `false` | Clean runs: also compute the exact per-k spin Hall oracle (`exact_shc.json`, `spin_chern.json`). Disordered runs refuse `true`. |
 | `oracle_degeneracy_tolerance` | number | positive, finite | `1e-6` | Degeneracy tolerance of the oracle, in eV. |
 | `bloch_memory_mb` | number | positive, finite | `256.0` | Workspace limit of the Bloch sums, in MiB (clean runs). It sets how many k points are summed at once; a model too large for one k point within the limit is summed one k point at a time. |
@@ -157,8 +164,9 @@ Hermitian; the removed relative parts are recorded in the model metadata
 
 Allowed keys in `model.params`: `velocity_mode` (`"bare"`,
 `"berry_connection"`, `"covariant"`; default `"berry_connection"`), `oracle`,
-`oracle_degeneracy_tolerance`, `bloch_memory_mb`. `spin` and `fermi_energy`
-are refused.
+`oracle_degeneracy_tolerance`, `bloch_memory_mb` and `fermi_energy`.
+`spin` is refused (the file stores the spinors). `fermi_energy` (eV) overrides
+the chemical potential: H is stored as `H − x S` instead of `H − mu S`.
 
 ### PySCF models
 
@@ -173,8 +181,9 @@ position matrix of the Gaussian basis.
 
 Allowed keys in `model.params`: `velocity_mode` (`"bare"`,
 `"berry_connection"`, `"covariant"`; default `"berry_connection"`), `oracle`,
-`oracle_degeneracy_tolerance`, `bloch_memory_mb`. `spin` and `fermi_energy`
-are refused.
+`oracle_degeneracy_tolerance`, `bloch_memory_mb` and `fermi_energy`.
+`spin` is refused (the file stores the spinors). `fermi_energy` (eV) overrides
+the origin the file was written with: H is shifted by `−(x − E_F(file)) S`.
 
 ### Wannier90 and PAOFLOW models in the metric executors
 
@@ -195,7 +204,7 @@ which is the same with S = 1.
 |---|---|---|---|---|
 | `velocity_mode` | `wannier`, `paoflow` | `"bare"`, `"berry_connection"`, `"covariant"` (`wannier` only) | `"berry_connection"` | `bare`: cell derivative of H. `berry_connection`: derivative in the atom gauge, H(k) = Σ_R e^{ik·(R+τ_j−τ_i)} H(R). `covariant`: ∂H_cell + i[H, A], with the full position matrix A of `<seed>_r.dat`. Velocities have the sign +∂H; `WannierModel.velocity_blocks` returns −∂H, and a Hall word gives the same result with either sign. |
 | `spin` | `wannier` | `"labels"`, `"exact"` | `"labels"` | `labels`: Pauli matrices on the spinor labels (Wannier90 orders each spinor projection up, then down). `exact`: S_W(k) = V†S_B V from `<seed>.spn`, with V = U_dis U from `<seed>_u.mat` and `<seed>_u_dis.mat`. With spin–orbit coupling the Wannier functions mix spin, so only `exact` is the spin operator. |
-| `fermi_energy` | `wannier` | number (eV) | `0.0` | Subtracted from H(R = 0). Energies, `projection.window` and `reconstruction.fermi_energies` are then measured from it. |
+| `fermi_energy` | `wannier`, `paoflow` | finite number or null (eV) | `wannier`: `0.0` (a Wannier90 file carries none); `paoflow`: the Fermi energy of the file | Subtracted from H (`H(R = 0)` for these orthogonal models; `−(x − E_F(file)) 1` replaces the file's origin for `paoflow`). Energies, `projection.window` and `reconstruction.fermi_energies` are then measured from it. |
 | `oracle`, `oracle_degeneracy_tolerance`, `bloch_memory_mb` | both | as for SIESTA | as for SIESTA | As in [SIESTA models](#siesta-models). |
 
 For `spin = "exact"` on a disentangled model LSQuant also reads `<seed>.eig`
@@ -214,7 +223,7 @@ write_paoflow_model(paoflow, "pdse2_paoflow.npz")
 
 PAOFLOW has no position matrix, so `velocity_mode = "covariant"` is refused;
 `berry_connection` is the velocity of PAOFLOW's `gradient_and_momenta`. `spin`
-and `fermi_energy` are refused for `paoflow`.
+is refused for `paoflow` (the file stores the on-site spin operator).
 
 ### Machine-learning Hamiltonians in the metric executors
 
@@ -238,7 +247,7 @@ out. These runs need `basis.name` `bloch` or `eigen` and
 | Key | Kinds | Allowed values | Default | Meaning |
 |---|---|---|---|---|
 | `velocity_mode` | all | `"bare"`, `"berry_connection"`; for `abacus` with `position_file` and for `gpaw` also `"covariant"` | `"berry_connection"` | As for SIESTA. Without a position matrix `"covariant"` is refused. |
-| `fermi_energy` | all | number (eV) | `deeph`: `fermi_level` or `fermi_energy_eV` of `info.json`, else `0.0`; `deeptb`: `0.0`; `hamgnn`: `0.0`; `threebodytb`: `efermi` of the file; `abacus`: `0.0`; `gpaw`: the Fermi level of GPAW in the file | Removed as H(R) − E_F S(R). Energies, `projection.window` and `reconstruction.fermi_energies` are then measured from it. |
+| `fermi_energy` | all | finite number or null (eV) | `deeph`: `fermi_level` or `fermi_energy_eV` of `info.json`, else `0.0`; `deeptb`: `0.0`; `hamgnn`: `0.0`; `threebodytb`: `efermi` of the file; `abacus`: `0.0`; `gpaw`: the Fermi level of GPAW in the file | Energy origin, removed as H(R) − E_F S(R); omitted or null selects the default. Energies, `projection.window` and `reconstruction.fermi_energies` are then measured from it. |
 | `hamiltonian_file` | `deeph` | file name in `dir` | `hamiltonians_pred.h5` or `hamiltonian_pred.h5`, then the DFT file `hamiltonians.h5` or `hamiltonian.h5` | The H(R) file to read. |
 | `orbitals_per_element` | `threebodytb` | object, element → positive integer | ThreeBodyTB's table (`Atomdata.jl`) | Orbitals of one atom of an element; for elements missing from the table or a modified database. |
 | `overlap_file`, `stru_file` | `abacus` | paths | required | S(R) in the ABACUS sparse format and the ABACUS `STRU` of the same structure. Resolved like `model.file`. |

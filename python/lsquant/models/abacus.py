@@ -293,14 +293,15 @@ def _shells_of(label, orbital_file, search_dirs, orbitals_per_element):
 
 
 def load_abacus_model(hamiltonian_file, *, overlap_file, stru_file, orbital_dir=None,
-                      orbitals_per_element=None, fermi_energy=0.0, position_file=None):
+                      orbitals_per_element=None, fermi_energy=None, position_file=None):
     """Read an ABACUS-format H(R) (NextHAM ``hr_tot``, or ABACUS's own) with its S(R) and STRU.
 
     Returns a non-orthogonal model (:class:`~lsquant.models.siesta.SiestaModel`)
     in eV and Angstrom, spinful when the matrix dimension is twice the
-    number of orbitals (``nspin = 4``). ``fermi_energy`` (eV) is removed as
-    ``H - E_F S``. The orbital files are searched in ``orbital_dir``, then
-    next to ``stru_file``. ``position_file`` (ABACUS's ``data-rR-sparse.csr``)
+    number of orbitals (``nspin = 4``). ``fermi_energy`` (eV) selects the
+    energy origin and is removed as ``H - E_F S``; the files carry none, so
+    the default is 0.0. The orbital files are searched in ``orbital_dir``,
+    then next to ``stru_file``. ``position_file`` (ABACUS's ``data-rR-sparse.csr``)
     adds the connection of the covariant velocity.
     """
     from .lcao import build_lcao_model
@@ -327,13 +328,18 @@ def load_abacus_model(hamiltonian_file, *, overlap_file, stru_file, orbital_dir=
     else:
         raise ValueError(f"H(R) has dimension {width}, but STRU and the orbital files give {norb.sum()} "
                          "orbitals; check the orbital files (the basis of the training data)")
+    if fermi_energy is None:
+        origin, source = 0.0, "none"
+    else:
+        origin, source = float(fermi_energy), "run file"
     meta = dict(source="abacus", hamiltonian_file=h_path, overlap_file=s_path, stru_file=stru_path,
                 elements=elements, orbital_l=[int(x) for x in ell],
                 basis="ABACUS numerical atomic orbitals of STRU (NUMERICAL_ORBITAL)",
-                orbital_positions="atom-centred: every orbital on its atom")
+                orbital_positions="atom-centred: every orbital on its atom",
+                fermi_energy_source=source)
     model = build_lcao_model(lattice, positions, norb, h_r, hamiltonian * RYDBERG_EV, overlap, spinful=spinful,
                              seed_name=os.path.basename(h_path), metadata=meta,
-                             fermi_energy=float(fermi_energy), overlap_r_int=s_r)
+                             fermi_energy=origin, overlap_r_int=s_r)
     if position_file is not None:
         q_path = os.path.abspath(os.path.expanduser(str(position_file)))
         _attach_connection(model, q_path)
