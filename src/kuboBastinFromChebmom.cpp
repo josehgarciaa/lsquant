@@ -7,6 +7,7 @@
 #include <complex>		/* for std::vector mostly class*/
 
 #include "chebyshev_moments.hpp"
+#include "legacy_moment_input.hpp"
 #include "observable.hpp"
 
 // Thin wrapper (Phase 5): the Kubo-Bastin reconstruction now lives in the unified
@@ -20,6 +21,8 @@ int main(int argc, char *argv[])
 {
 	if (argc != 3) { printHelpMessage(); return 0; }
 	printWelcomeMessage();
+
+	if (!chebyshev::LegacyMomentInputReadable(argv[1])) return 1;
 
 	const double broadening = stod(argv[2]);
 

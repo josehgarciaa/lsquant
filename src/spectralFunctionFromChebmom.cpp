@@ -8,6 +8,7 @@
 #include <omp.h>
 
 #include "chebyshev_moments.hpp"
+#include "legacy_moment_input.hpp"
 #include "observable.hpp"
 
 // Thin wrapper (Phase 5): the spectral-function DOS sum is the unified
@@ -26,6 +27,8 @@ int main(int argc, char *argv[])
 	}
 	else
 		printWelcomeMessage();
+
+	if (!chebyshev::LegacyMomentInputReadable(argv[1])) return 1;
 
 	const double broadening  = stod(argv[2]);
 

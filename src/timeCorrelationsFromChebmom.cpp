@@ -10,6 +10,7 @@
 #include "chebyshev_solver.hpp"
 #include "chebyshev_coefficients.hpp"
 #include "chebyshev_moments.hpp"
+#include "legacy_moment_input.hpp"
 
 void printHelpMessage();
 void printWelcomeMessage();
@@ -23,6 +24,8 @@ int main(int argc, char *argv[])
 	}
 	else
 		printWelcomeMessage();
+
+	if (!chebyshev::LegacyMomentInputReadable(argv[1])) return 1;
 
 	const double broadening  = stod(argv[2]);
 	const double fermiEner  = stod(argv[3]);

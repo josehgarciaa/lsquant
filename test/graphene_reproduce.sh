@@ -48,7 +48,10 @@ echo "PASS(determinism): two fresh runs are byte-identical"
 if ! grep -qi "gershgorin" "$ALOG"; then
   echo "FAIL(bounds): Gershgorin safeguard not announced (no BOUNDS file present)"; cat "$ALOG"; exit 1
 fi
-HI="$(grep -oE '\-?[0-9]+\.[0-9]+' "$ALOG" | awk '{v=$1<0?-$1:$1; if(v>m)m=v} END{print m+0}')"
+# Only the numbers of the line that announces the estimate. Pitfall: the log also carries
+# timings and a time stamp ([hh:mm:ss.mmm]); taking the largest decimal of the whole log made
+# this test fail whenever it ran in the last ten seconds of a minute (ss.mmm > 50).
+HI="$(grep -i "gershgorin" "$ALOG" | grep -oE '\-?[0-9]+\.[0-9]+' | awk '{v=$1<0?-$1:$1; if(v>m)m=v} END{print m+0}')"
 awk -v hi="$HI" 'BEGIN{ if (hi>1 && hi<50) exit 0; else exit 1 }' \
   || { echo "FAIL(bounds): estimate |E|max=$HI out of sane range (1,50) -- check for [-100,100] fallback"; exit 1; }
 echo "PASS(bounds): Gershgorin+10% safeguard active, |E|max~=$HI (not [-100,100])"

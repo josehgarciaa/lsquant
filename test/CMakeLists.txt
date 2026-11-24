@@ -296,3 +296,32 @@ add_test(NAME example_localization_smoke
 # and the longitudinal sigma_xx vanishes in the gap.
 add_test(NAME example_haldane_smoke
          COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/example_haldane_smoke.sh ${CMAKE_BINARY_DIR})
+
+# All active legacy moment-file readers must reject missing inputs before output.
+# Each test gets private scratch space and one thread, with no numerical work.
+foreach(driver IN ITEMS
+        inline_spectralFunctionFromChebmom
+        inline_kuboGreenwoodFromChebmom
+        inline_kuboBastinFromChebmom
+        inline_kuboBastinSeaFromChebmom
+        inline_kuboBastinSurfFromChebmom
+        inline_timeCorrelationsFromChebmom
+        inline_kuboGreenwoodFromChebmom_FFTgrid
+        inline_kuboBastinFromChebmom_FFTgrid)
+    set(extension chebmom2D)
+    set(time_driver OFF)
+    if(driver STREQUAL "inline_spectralFunctionFromChebmom")
+        set(extension chebmom1D)
+    elseif(driver STREQUAL "inline_timeCorrelationsFromChebmom")
+        set(extension chebmomTD)
+        set(time_driver ON)
+    endif()
+    add_test(NAME missing_moment_${driver}
+        COMMAND ${CMAKE_COMMAND}
+            "-DDRIVER=$<TARGET_FILE:${driver}>"
+            "-DSCRATCH=${CMAKE_CURRENT_BINARY_DIR}/missing_moment_${driver}"
+            "-DEXTENSION=${extension}" "-DTIME_DRIVER=${time_driver}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/legacy_missing_moment.cmake")
+    set_tests_properties(missing_moment_${driver} PROPERTIES
+        TIMEOUT 5 ENVIRONMENT "OMP_NUM_THREADS=1;OPENBLAS_NUM_THREADS=1")
+endforeach()
