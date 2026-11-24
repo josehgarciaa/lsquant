@@ -77,9 +77,11 @@ import struct
 
 import numpy as np
 
-#: Rydberg in eV and Angstrom in Bohr, as in pyatb's constants.py.
-RYDBERG_EV = 13.605698066
-ANGSTROM_BOHR = 1.8897259886
+#: Rydberg in eV and Angstrom in Bohr, as in pyatb's constants.py; kept in
+#: lsquant.models.units under their own names (the Rydberg differs from the
+#: ThreeBodyTB value and from HARTREE_EV / 2 on purpose).
+from .units import ANGSTROM_BOHR
+from .units import RYDBERG_EV_ABACUS as RYDBERG_EV
 _POSITION_KINDS = ("Direct", "Cartesian", "Cartesian_au", "Cartesian_angstrom")
 
 
@@ -340,15 +342,12 @@ def load_abacus_model(hamiltonian_file, *, overlap_file, stru_file, orbital_dir=
 
 def _attach_connection(model, q_path):
     """Give ``model`` the midpoint connection built from ABACUS's r(R) file."""
-    from .siesta import midpoint_connection
+    from .siesta import fold_opposite, midpoint_connection, opposite_pairs, spinor_lift
 
     q_r, q = read_abacus_rr(q_path)
     width = model.num_wann
     if q.shape[2] * 2 == width:
-        lifted = np.zeros((3, len(q_r), width, width))
-        lifted[:, :, 0::2, 0::2] = q
-        lifted[:, :, 1::2, 1::2] = q
-        q = lifted
+        q = spinor_lift(q)
     elif q.shape[2] != width:
         raise ValueError(f"r(R) has dimension {q.shape[2]}, H(R) {width}; use the files of one ABACUS run")
     cells = {tuple(r): n for n, r in enumerate(model.r_int)}
@@ -363,11 +362,7 @@ def _attach_connection(model, q_path):
         raise ValueError(f"r(R) has elements up to {missing:.1e} Bohr on cells where S(R) is zero; "
                          "use the files of one ABACUS run")
     a = midpoint_connection(full / ANGSTROM_BOHR, model.overlaps, model.tau, model.r_cart)
-    minus = [cells.get(tuple(-r)) for r in model.r_int]
-    if any(m is None for m in minus):
-        raise ValueError("the R list of the model is not closed under R -> -R")
-    sym = 0.5 * (a + np.conj(np.swapaxes(a[:, minus], 2, 3)))
-    scale = max(float(np.abs(a).max()), 1e-300)
-    model.metadata["connection_hermiticity_residual"] = float(np.abs(a - sym).max() / scale)
+    sym, residual = fold_opposite(a, opposite_pairs(model.r_int), residual="mean")
+    model.metadata["connection_hermiticity_residual"] = residual
     model.metadata["position_file"] = q_path
     model.dipoles = sym

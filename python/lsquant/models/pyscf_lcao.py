@@ -36,8 +36,8 @@ import warnings
 
 import numpy as np
 
-BOHR = 0.529177210903
-HARTREE = 27.211386245988
+from .units import BOHR_ANGSTROM as BOHR
+from .units import HARTREE_EV as HARTREE
 
 
 def ghf_to_interleaved(nao):
@@ -122,6 +122,8 @@ def write_pyscf_model(mf, path, *, mesh=None, fermi_energy=None, overlap_cutoff=
     """
     from pyscf import gto as mgto
 
+    from .siesta import spinor_lift
+
     cell = mf.cell
     nao = cell.nao_nr()
     if mf.mo_coeff is None or not getattr(mf, "converged", True):
@@ -145,8 +147,7 @@ def write_pyscf_model(mf, path, *, mesh=None, fermi_energy=None, overlap_cutoff=
     else:
         fock = np.asarray(mf.get_hcore(cell, kpts)) + _band_veff(mf, dm, kpts)
     fock = np.asarray(fock)[:, perm][:, :, perm] * HARTREE
-    s_k = np.asarray(cell.pbc_intor("int1e_ovlp", hermi=1, kpts=kpts))
-    s_k = np.array([np.kron(s, np.eye(2)) for s in s_k])
+    s_k = spinor_lift(np.asarray(cell.pbc_intor("int1e_ovlp", hermi=1, kpts=kpts)))
     nelec = int(round(cell.nelectron))
     if fermi_energy is None:
         import scipy.linalg as sla
@@ -248,21 +249,20 @@ def load_pyscf_model(path, *, connection=True, bloch_memory_mb=4096.0):
     velocity, built from the analytic position matrix. An all-electron
     basis gives large blocks, so the Bloch-sum workspace defaults to 4 GiB.
     """
-    from .siesta import SiestaModel, midpoint_connection, spinor_scalar
+    from .siesta import SiestaModel, midpoint_connection, spinor_lift
+    from .lcao import seed_name_from_file
 
     d = np.load(path)
     uc, tau, r_int = d["uc"], d["tau"], d["r_int"]
     s_orb = d["overlap_orb"]
-    S = np.array([spinor_scalar(s) for s in s_orb])
+    S = spinor_lift(s_orb)
     A = None
     if connection:
         q = d["position_orb"]  # (3, N_R, n, n)
         tau_orb = tau[0::2]
         a_orb = midpoint_connection(q, s_orb, tau_orb, r_int @ uc)
-        A = np.zeros((3, len(r_int), len(tau), len(tau)), complex)
-        A[:, :, 0::2, 0::2] = a_orb
-        A[:, :, 1::2, 1::2] = a_orb
-    seed = os.path.splitext(os.path.basename(str(path)))[0]
+        A = np.asarray(spinor_lift(a_orb), complex)
+    seed = seed_name_from_file(path)
     return SiestaModel(uc, tau, r_int, d["hoppings"], S, dipoles=A, seed_name=seed,
                        bloch_memory_mb=float(bloch_memory_mb),
                        metadata=dict(source="pyscf", file=os.path.abspath(str(path)),
