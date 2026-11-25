@@ -117,10 +117,11 @@ For `csr`, the executor also needs `<dir>/<label>.HAM.CSR` and, when
 ### SIESTA models
 
 `model.kind = "siesta"` reads `<dir>/<label>.fdf` and `<dir>/<label>.TSHS`
-(or `<label>.HSX`) with `sisl`. `models/siesta.py` accepts only a
-non-orthogonal Hamiltonian with spin–orbit coupling. For any other Hamiltonian
-it stops with
-`load_siesta_model requires a nonorthogonal SIESTA SOC Hamiltonian`. With
+(or `<label>.HSX`) with `sisl`. `models/siesta.py` accepts a
+non-orthogonal Hamiltonian with spin–orbit coupling, or an unpolarized one,
+which it lifts to two identical spin blocks (so a spinless run needs no spin
+degeneracy factor). For any other Hamiltonian it stops with
+`load_siesta_model requires a nonorthogonal SIESTA Hamiltonian, spin-orbit or unpolarized`. With
 `velocity_mode = "covariant"` it also reads `<dir>/<species>.ion.xml` for every
 species, to integrate the orbital dipole matrices.
 

@@ -368,6 +368,47 @@ def write_wannier_geometry(model_dir, seed):
     return base + ".uc", base + ".xyz"
 
 
+def wigner_seitz_blocks(hr, uc, tau, *, tolerance=1e-5):
+    """Place the H(R) of a periodic FFT grid on Wigner-Seitz images, orbital pair by orbital pair.
+
+    ``hr[m, n, i, j, l]`` is PAOFLOW's block on grid index (i, j, l) of an
+    n1 x n2 x n3 grid, with ``H(k) = sum_R exp(-i k.R) H(R)``. Each index
+    stands for every lattice vector R = (i, j, l) + (s1 n1, s2 n2, s3 n3).
+    The element (m, n) is put on the image whose bond, in the stored
+    convention R' = -R (``exp(+i k.R')``, atom gauge), is shortest:
+    |R'.uc + tau_n - tau_m|. Images whose lengths agree within
+    ``tolerance`` (relative) share the element equally. On the DFT mesh this
+    changes nothing; between the mesh points it keeps the point symmetry of
+    the lattice, which a fixed parallelogram of R (the grid indices folded to
+    [-n/2, n/2]) breaks on a hexagonal lattice. Wannier90 does the same with
+    ``use_ws_distance``. The pair (n, m) at -R' has the same bond length and
+    gets the same weights, so H(k) stays Hermitian. Returns ``(r_int, blocks)``.
+    """
+    hr = np.asarray(hr)
+    nawf = hr.shape[0]
+    mesh = np.array(hr.shape[2:5])
+    uc, tau = np.asarray(uc, float), np.asarray(tau, float)
+    shifts = np.array([(a, b, c) for a in (range(-2, 3) if mesh[0] > 1 else [0])
+                       for b in (range(-2, 3) if mesh[1] > 1 else [0])
+                       for c in (range(-2, 3) if mesh[2] > 1 else [0])])
+    bond0 = tau[None, :, :] - tau[:, None, :]                          # tau_n - tau_m, (m, n, 3)
+    accumulated = {}
+    for index in np.ndindex(*mesh):
+        images = -(np.asarray(index)[None, :] + shifts * mesh[None, :])  # stored R' for each shift
+        lengths = np.linalg.norm((images @ uc)[:, None, None, :] + bond0[None], axis=-1)  # (s, m, n)
+        shortest = lengths.min(axis=0)
+        chosen = lengths <= shortest[None] * (1 + tolerance) + tolerance
+        weights = chosen / chosen.sum(axis=0)[None]
+        block = hr[:, :, index[0], index[1], index[2]]
+        for s in np.where(chosen.any(axis=(1, 2)))[0]:
+            key = tuple(int(x) for x in images[s])
+            if key not in accumulated:
+                accumulated[key] = np.zeros((nawf, nawf), complex)
+            accumulated[key] += weights[s] * block
+    keys = sorted(accumulated)
+    return np.array(keys, int), np.array([accumulated[k] for k in keys])
+
+
 def write_paoflow_model(paoflow, path, *, sh_l=None, sh_j=None, locality_warning=1e-2):
     """Write the PAO Hamiltonian, orbital positions and spin of a PAOFLOW run to ``path`` (.npz).
 
@@ -375,7 +416,9 @@ def write_paoflow_model(paoflow, path, *, sh_l=None, sh_j=None, locality_warning
     ``H(k) = sum_R exp(-i k.R) H(R)``; the file stores ``H(-R)`` so that the
     LSQuant convention ``exp(+i k.R)`` gives the same ``H(k)``. Energies are
     relative to the DFT Fermi energy, as in PAOFLOW. The spin is PAOFLOW's
-    on-site operator times two (Pauli units).
+    on-site operator times two (Pauli units). Each element of the grid is
+    placed on its Wigner-Seitz image (:func:`wigner_seitz_blocks`), so H(k)
+    between the DFT k points keeps the symmetry of the lattice.
 
     ``sh_l``, ``sh_j`` are passed to PAOFLOW's ``spin_operator``: one entry
     per l shell of every atom in basis order, with ``sh_j`` the j of the
@@ -398,31 +441,21 @@ def write_paoflow_model(paoflow, path, *, sh_l=None, sh_j=None, locality_warning
         arrays.pop("sh_j", None)
         paoflow.spin_operator(sh_l=np.asarray(sh_l), sh_j=np.asarray(sh_j))
         arrays, attrs = paoflow.data_controller.data_dicts()
-    elif "Sj" not in arrays:
+    elif "Sj" not in arrays and attrs.get("dftSO", False):
         paoflow.spin_operator()
         arrays, attrs = paoflow.data_controller.data_dicts()
+    if "Sj" not in arrays:
+        # Spinless model (no spin-orbit in the DFT run): no spin operator; the
+        # optical and charge words then need spin_degeneracy = 2.
+        nawf = np.asarray(arrays["HRs"]).shape[0]
+        arrays["Sj"] = np.zeros((3, nawf, nawf), complex)
     alat = float(attrs["alat"]) * BOHR_ANGSTROM
     uc = np.asarray(arrays["a_vectors"], float) * alat
     hr = np.asarray(arrays["HRs"])[:, :, :, :, :, 0]
     n1, n2, n3 = hr.shape[2:5]
 
-    def images(i, n):
-        # On an even grid the Nyquist index n/2 is both +n/2 and -n/2; half of
-        # the block goes to each, which keeps H(k) Hermitian at every k.
-        if n % 2 == 0 and i == n // 2:
-            return [n // 2, -n // 2]
-        return [i if i < n / 2 else i - n]
-
-    r_int, blocks = [], []
-    for i in range(n1):
-        for j in range(n2):
-            for l in range(n3):
-                combos = [(a, b, c) for a in images(i, n1) for b in images(j, n2) for c in images(l, n3)]
-                for a, b, c in combos:
-                    r_int.append([-a, -b, -c])
-                    blocks.append(hr[:, :, i, j, l] / len(combos))
     tau = (np.asarray(arrays["Dnm"])[:, 0, :] - np.asarray(arrays["Dnm"])[0, 0, :]) * BOHR_ANGSTROM
-    r_arr, blocks = np.array(r_int), np.array(blocks)
+    r_arr, blocks = wigner_seitz_blocks(hr, uc, tau)
     size = np.abs(blocks).max(axis=(1, 2))
     reach = np.max(np.abs(r_arr) / np.maximum(np.array([n1, n2, n3]) // 2, 1), axis=1)
     inner = size[np.any(r_arr != 0, axis=1)].max() if len(r_arr) > 1 else 1.0

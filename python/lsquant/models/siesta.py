@@ -328,25 +328,31 @@ def load_siesta_model(directory, label=None, *, dipoles=False, quadrature_order=
     # The FDF reader attaches species/orbital metadata from the run files;
     # the binary-only reader can leave placeholder atomic species behind.
     source = fdf.read_hamiltonian(order=[binary.suffix.lstrip(".")])
-    if source.orthogonal or not source.spin.is_spinorbit:
-        raise ValueError("load_siesta_model requires a nonorthogonal SIESTA SOC Hamiltonian")
+    unpolarized = source.spin.is_unpolarized
+    if source.orthogonal or not (source.spin.is_spinorbit or unpolarized):
+        raise ValueError("load_siesta_model requires a nonorthogonal SIESTA Hamiltonian, "
+                         "spin-orbit or unpolarized")
     geometry = source.geometry
     no = int(geometry.no)
     cell = np.asarray(geometry.cell, float)
     r_int = np.asarray(geometry.lattice.sc_off, int)
     atom_indices = np.asarray(geometry.o2a(np.arange(no)), int)
     centres = np.asarray(geometry.xyz)[atom_indices]
-    components = [source.tocsr(i) for i in range(8)]
+    # Unpolarized (no spin-orbit): one spatial matrix, lifted to identical spin blocks.
+    components = [source.tocsr(0)] if unpolarized else [source.tocsr(i) for i in range(8)]
     spatial_s = source.tocsr(source.S_idx)
     h_blocks, s_blocks, support = [], [], []
     for ir in range(len(r_int)):
         sl = slice(ir*no, (ir+1)*no)
         data = [c[:, sl].toarray() for c in components]
         block = np.zeros((2*no, 2*no), complex)
-        block[0::2, 0::2] = data[0] + 1j*data[4]
-        block[1::2, 1::2] = data[1] + 1j*data[5]
-        block[0::2, 1::2] = data[2] + 1j*data[3]
-        block[1::2, 0::2] = data[6] + 1j*data[7]
+        if unpolarized:
+            block[0::2, 0::2] = block[1::2, 1::2] = data[0]
+        else:
+            block[0::2, 0::2] = data[0] + 1j*data[4]
+            block[1::2, 1::2] = data[1] + 1j*data[5]
+            block[0::2, 1::2] = data[2] + 1j*data[3]
+            block[1::2, 0::2] = data[6] + 1j*data[7]
         overlap = spatial_s[:, sl].toarray()
         h_blocks.append(block)
         s_blocks.append(overlap)
@@ -376,7 +382,7 @@ def load_siesta_model(directory, label=None, *, dipoles=False, quadrature_order=
         for name, matrices in (("H", model.hoppings), ("S", model.overlaps)):
             reference = np.asarray(getattr(source, name+"k")(k_fractional, gauge=gauge,
                                                                format="array", dtype=np.complex128))
-            if name == "S" and reference.shape == (no, no):
+            if reference.shape == (no, no):     # S always; H of an unpolarized run
                 reference = spinor_scalar(reference)
             rebuilt = bloch_sum(model.r_cart, model.tau, matrices, k_cart, cell=cell_gauge)
             error = float(np.max(np.abs(rebuilt-reference)))
