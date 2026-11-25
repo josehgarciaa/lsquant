@@ -37,3 +37,23 @@ bands outside their window, which add about +0.07 e²/h to the Fermi-sea sum
 there.
 
 **Set it up and run it:** [Example 21 README](README.md).
+
+## Check
+
+Verify the published plateaus from the committed curves, from the repository root:
+
+```bash
+python3 examples/21_pdse2_downfolding/check.py --data-only
+```
+
+Compare completed SIESTA outputs with their matching committed curves:
+
+```bash
+python3 examples/21_pdse2_downfolding/check.py --siesta-direct out/pdse2_routes --siesta-projected out/pdse2_routes_projected --siesta-reduced12 out/pdse2_reduced12
+```
+
+Supply only the output directories available. Omitted routes are reported as
+not checked. Every supplied route requires its topology JSON; the current
+projection execution path does not produce that file, which is reported as a
+failed input requirement. The direct reconstruction has no committed matching
+reference, so its curve comparison is explicitly reported as not checked.

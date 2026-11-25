@@ -129,3 +129,17 @@ shared 96-core node under heavy load, with one OpenMP thread, the DOS run took
 - J. H. García, M. Vila, C.-H. Hsu, X. Waintal, V. M. Pereira, and S. Roche,
   *Canted persistent spin texture and quantum spin Hall effect in $\mathrm{WTe_2}$*,
   Phys. Rev. Lett. **125**, 256603 (2020).
+
+## Check
+
+Check completed outputs without repeating the calculation, from the repository root:
+
+```bash
+python3 examples/07_spin_hall_bi_bilayer/check.py /tmp/completed_quick --quick
+python3 examples/07_spin_hall_bi_bilayer/check.py /tmp/completed_production --production
+```
+
+Use the actual output directory in place of the example path. Quick checks
+validate the exact oracle and topology; production also checks the resolution against
+the gap and reports the reconstructed value next to the exact one, without
+asserting it (see above: it is still under study). Missing inputs or unsupported calibration fail.

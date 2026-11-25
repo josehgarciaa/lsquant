@@ -82,3 +82,23 @@ k point: 220 for the window run, 12 for the reduced model.
 | `run_siesta_reduced12.json` | LSQuant run file of the reduced SIESTA model |
 | `data/siesta_reduced12_kpm.dat`, `data/siesta_reduced12_exact.dat` | σᶻ_xy of the reduced model against E − E_F, KPM and exact |
 | `plot.py` | the figure |
+
+## Check
+
+Verify the published plateaus from the committed curves, from the repository root:
+
+```bash
+python3 examples/21_pdse2_downfolding/check.py --data-only
+```
+
+Compare completed SIESTA outputs with their matching committed curves:
+
+```bash
+python3 examples/21_pdse2_downfolding/check.py --siesta-direct out/pdse2_routes --siesta-projected out/pdse2_routes_projected --siesta-reduced12 out/pdse2_reduced12
+```
+
+Supply only the output directories available. Omitted routes are reported as
+not checked. Every supplied route requires its topology JSON; the current
+projection execution path does not produce that file, which is reported as a
+failed input requirement. The direct reconstruction has no committed matching
+reference, so its curve comparison is explicitly reported as not checked.
