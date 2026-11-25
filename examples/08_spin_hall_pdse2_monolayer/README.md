@@ -122,3 +122,16 @@ shared 96-core node under heavy load, with one OpenMP thread, the DOS run took
   methodologies*, Phys. Rep. **893**, 1–123 (2021) ([arXiv:1811.07387](https://arxiv.org/abs/1811.07387)).
 - A. Oyedele et al., *$\mathrm{PdSe_2}$: Pentagonal two-dimensional layers with high
   air stability for electronics*, J. Am. Chem. Soc. **139**, 14090 (2017).
+
+## Check
+
+Check completed outputs without repeating the calculation, from the repository root:
+
+```bash
+python3 examples/08_spin_hall_pdse2_monolayer/check.py /tmp/completed_quick --quick
+python3 examples/08_spin_hall_pdse2_monolayer/check.py /tmp/completed_production --production
+```
+
+Use the actual output directory in place of the example path. Quick checks
+validate the exact oracle and topology; production also gates the reconstructed
+plateau and its resolution. Missing inputs or unsupported calibration fail.

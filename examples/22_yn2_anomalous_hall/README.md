@@ -144,3 +144,21 @@ for SIESTA on 12 processes.
 LSQuant gives σ_xy = −3 e²/h here. Wannier90's `postw90.x` (`berry_task =
 ahc`) gives +3 e²/h for the same Wannier90 model, with the same magnitude at
 every energy: the two codes use opposite sign conventions for σ_xy.
+
+## Check
+
+Check the committed Hall curves and path band gaps, from the repository root:
+
+```bash
+python3 examples/22_yn2_anomalous_hall/check.py --data-only
+```
+
+Compare completed anomalous Hall outputs with the committed curves:
+
+```bash
+python3 examples/22_yn2_anomalous_hall/check.py out/yn2_ahc
+```
+
+The signed Chern plateau is negative in this convention. The gap inferred from
+the committed band path is checked separately from the conductivity plateau;
+it does not establish a global gap over the full Brillouin zone.

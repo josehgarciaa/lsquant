@@ -64,3 +64,23 @@ the PdSe₂ pentagonal monolayer, *Phys. Chem. Chem. Phys.* (2022),
 [doi:10.1039/D2CP01822E](https://doi.org/10.1039/D2CP01822E).
 
 **Set it up and run it:** [Example 20 README](README.md).
+
+## Check
+
+Verify the published plateaus from the committed curves, from the repository root:
+
+```bash
+python3 examples/20_pdse2_spin_hall_routes/check.py --data-only
+```
+
+Compare completed SIESTA outputs with their matching committed curves:
+
+```bash
+python3 examples/20_pdse2_spin_hall_routes/check.py --siesta-direct out/pdse2_routes --siesta-projected out/pdse2_routes_projected --siesta-reduced12 out/pdse2_reduced12
+```
+
+Supply only the output directories available. Omitted routes are reported as
+not checked. Every supplied route requires its topology JSON; the current
+projection execution path does not produce that file, which is reported as a
+failed input requirement. The direct reconstruction has no committed matching
+reference, so its curve comparison is explicitly reported as not checked.
