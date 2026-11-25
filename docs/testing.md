@@ -107,6 +107,24 @@ GATE PASS (stage 0)
 With the default strict byte comparison, the same run reports those two files as `DIFFERS`.
 Use tolerance mode to check a build on a new machine; code changes require strict comparison.
 
+## The SIESTA run files: reduced goldens
+
+The 24 run files `runs/goldens/g11_*.json` (Bi(111) bilayer and PdSe2 monolayer) are compared in
+stage 7 with `goldens/stage7_siesta/<name>.json`. These goldens are not the output files: one
+curve is 1.2 MB and a rank-2 moment file 16 MB. Each holds the curves sampled on at most 256 rows,
+their number of rows, largest absolute value and integral, and the numbers of the exact oracle.
+`scripts/siesta_golden.py` writes and compares them.
+
+The comparison is relative, in every mode of the gate, because the Bloch matrices pass through
+LAPACK and its rounding depends on the BLAS library of the machine. Between two machines the
+reconstructed curves agreed to 7e-10 and the exact oracle to 7e-7; the tolerances are 1e-7
+(`S7_SIESTA_RTOL`) and 1e-5 (`S7_SIESTA_ORACLE_RTOL`). A run file without a golden is reported as
+`INFO ... has no reduced golden` and is not counted.
+
+```bash
+S7_SET=list S7_LIST="g11_bi_berry_connection_lowdin_dos" scripts/check_goldens.sh 7runs build/golden
+```
+
 ## Reading a failure
 
 When a file differs, the gate prints the first differing bytes and one line from
