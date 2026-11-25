@@ -9,6 +9,11 @@ oracle (`spin_chern.json`, `exact_shc.json`).
 Produced at commit `f41c384` with the `golden` preset: GCC 11.4.0 (Ubuntu 22.04), Eigen 3.4.0,
 FFTW 3.3.8, GSL 2.7.1, Python 3.10.12, NumPy 2.2.6, SciPy 1.15.2, sisl 0.16.4, 20 threads.
 
+The PdSe2 spin Hall files with the `berry_connection` and `covariant` velocities come from a second
+machine, same commit and preset, built with the conda-forge toolchain: GCC 11.4.0, glibc 2.34,
+Python 3.10, NumPy 2.2.6, SciPy 1.15.2, sisl 0.16.4, 12 to 16 threads. One such run takes 7 to
+9 hours and holds about 60 GB of memory.
+
 These are compared with a relative tolerance, not byte for byte (stage 7 of
 `scripts/check_goldens.sh`; `S7_SIESTA_RTOL`, `S7_SIESTA_ORACLE_RTOL`). Measured between two machines
 with different BLAS libraries: reconstructed density of states 8e-14, reconstructed spin Hall curve
