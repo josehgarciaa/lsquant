@@ -98,6 +98,24 @@ def minimal_image_blocks(matrices_k, k_frac, mesh, uc, tau, tolerance=1e-5):
     return r_int, np.array([out[tuple(r)] for r in r_int])
 
 
+def hermitize_blocks(r_int, blocks):
+    """Return blocks with M(-R) = M(R)^dagger exactly: the average of each pair.
+
+    The Kohn-Sham matrix of a density-fitted PySCF run is Hermitian only to
+    about 1e-9 relative; LSQuant's Bloch sums require 1e-10.
+    """
+    r_int = np.asarray(r_int, int)
+    blocks = np.array(blocks, complex)
+    index = {tuple(r): i for i, r in enumerate(r_int)}
+    out = blocks.copy()
+    for i, r in enumerate(r_int):
+        j = index.get(tuple(-r))
+        if j is None:
+            raise ValueError(f"block {tuple(r)} has no partner at {tuple(-r)}")
+        out[i] = 0.5 * (blocks[i] + blocks[j].conj().T)
+    return out
+
+
 def edge_ratio(r_int, blocks, mesh):
     """Largest |M(R)| on the outer half of the supercell over the largest with R != 0."""
     mesh = np.asarray(mesh)
@@ -115,7 +133,10 @@ def write_pyscf_model(mf, path, *, mesh=None, fermi_energy=None, overlap_cutoff=
     """Write a converged periodic two-component PySCF calculation to ``path`` (.npz).
 
     ``mf`` is a converged ``pyscf.pbc.dft.KGKS`` (or ``KGHF``) object, with
-    or without ``.x2c1e()``. ``mesh`` is the Monkhorst-Pack mesh on which the
+    or without ``.x2c1e()``, or a spin-restricted ``KRKS``/``KRHF`` object
+    (no spin-orbit coupling), whose Kohn-Sham matrix is lifted to identical
+    spin blocks. PySCF's ``KGKS`` has no range-separated hybrids; ``KRKS``
+    has them (``xc = "HSE06"``). ``mesh`` is the Monkhorst-Pack mesh on which the
     Kohn-Sham matrix is built (default: the SCF mesh, which must then be a
     full Gamma-centred mesh). ``fermi_energy`` (eV) defaults to the middle of
     the gap at the electron count of the cell; for a metal, pass it.
@@ -146,7 +167,12 @@ def write_pyscf_model(mf, path, *, mesh=None, fermi_energy=None, overlap_cutoff=
         fock = mf.get_fock(dm=dm)
     else:
         fock = np.asarray(mf.get_hcore(cell, kpts)) + _band_veff(mf, dm, kpts)
-    fock = np.asarray(fock)[:, perm][:, :, perm] * HARTREE
+    fock = np.asarray(fock)
+    if fock.shape[-1] == nao:
+        # Spin-restricted KRKS/KRHF (no spin-orbit coupling): the same matrix for both spins.
+        fock = spinor_lift(fock) * HARTREE
+    else:
+        fock = fock[:, perm][:, :, perm] * HARTREE
     s_k = spinor_lift(np.asarray(cell.pbc_intor("int1e_ovlp", hermi=1, kpts=kpts)))
     nelec = int(round(cell.nelectron))
     if fermi_energy is None:
@@ -155,6 +181,7 @@ def write_pyscf_model(mf, path, *, mesh=None, fermi_energy=None, overlap_cutoff=
         nocc = nelec * len(kpts)
         fermi_energy = float(0.5 * (ev[nocc - 1] + ev[nocc]))
     r_h, h_blocks = minimal_image_blocks(fock - fermi_energy * s_k, k_frac, mesh, uc, tau)
+    h_blocks = hermitize_blocks(r_h, h_blocks)
     ratio = edge_ratio(r_h, h_blocks, mesh)
     if ratio > locality_warning:
         warnings.warn(f"PySCF H(R) has not decayed at the edge of the {mesh.tolist()} supercell "

@@ -1,0 +1,7 @@
+&PROJWFC
+  prefix = 'hbn_open'
+  outdir = './tmp'
+  filpdos = 'hbn.pdos'
+  lsym = .false.
+  lwrite_overlaps = .true.
+/

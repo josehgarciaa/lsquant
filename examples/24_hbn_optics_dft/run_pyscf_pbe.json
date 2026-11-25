@@ -1,0 +1,52 @@
+{
+  "model": {
+    "kind": "pyscf",
+    "file": "examples/24_hbn_optics_dft/pyscf/hbn_pyscf_pbe.npz",
+    "params": {
+      "velocity_mode": "covariant"
+    }
+  },
+  "basis": {
+    "name": "eigen",
+    "supercell": [
+      120,
+      120,
+      1
+    ]
+  },
+  "metric": {
+    "policy": "nonorthogonal",
+    "route": "lowdin",
+    "applier": "exact"
+  },
+  "word": "Tr[VX delta(E-H) VX dG-(E)/dE]",
+  "words": [
+    "Tr[VX delta(E-H) VX dG-(E)/dE]",
+    "Tr[VY delta(E-H) VY dG-(E)/dE]"
+  ],
+  "expansion": {
+    "moments": 1600,
+    "window": [
+      -38.0,
+      23.0
+    ],
+    "trace": "exact",
+    "seed": 2026
+  },
+  "reconstruction": {
+    "kernel": "jackson",
+    "broadening_meV": 60.0
+  },
+  "output": {
+    "legacy_layout": false,
+    "write_chebmom": true,
+    "dir": "out/hbn_pyscf_pbe"
+  },
+  "projection": {
+    "kind": "shift",
+    "window": [
+      -21.0,
+      22.0
+    ]
+  }
+}

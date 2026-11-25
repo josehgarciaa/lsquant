@@ -26,6 +26,9 @@ SHC_WORD = "Tr[JXSZ delta(E-H) VY dG-(E)/dE]"
 AHC_WORD = "Tr[VX delta(E-H) VY dG-(E)/dE]"
 AHC_UNITS = "e^2/h"
 DOS_WORD = "Tr[delta(E-H)]"
+# Longitudinal Bastin words: their moments feed reconstruct.optical_conductivity.
+XX_WORD = "Tr[VX delta(E-H) VX dG-(E)/dE]"
+YY_WORD = "Tr[VY delta(E-H) VY dG-(E)/dE]"
 
 
 def _state_block_or_one(value):
@@ -180,12 +183,14 @@ def execute_siesta_runfile(rf, out_dir):
     if rf.expansion["trace"] not in ("random", "exact"):
         raise ValueError(f"Expected trace in ('random', 'exact'), got {rf.expansion['trace']!r}")
     canonical = {name: parse_word(word).canonical()
-                 for name, word in (("shc", SHC_WORD), ("ahc", AHC_WORD), ("dos", DOS_WORD))}
+                 for name, word in (("shc", SHC_WORD), ("ahc", AHC_WORD), ("dos", DOS_WORD),
+                                    ("xx", XX_WORD), ("yy", YY_WORD))}
     if any(parse_word(word).canonical() not in canonical.values() for word in rf.words):
         raise ValueError(
-            f"Expected SHC ({SHC_WORD!r}), anomalous Hall ({AHC_WORD!r}) or identity DOS "
-            f"({DOS_WORD!r}) word, got {rf.words!r}"
+            f"Expected SHC ({SHC_WORD!r}), anomalous Hall ({AHC_WORD!r}), longitudinal "
+            f"({XX_WORD!r}, {YY_WORD!r}) or identity DOS ({DOS_WORD!r}) word, got {rf.words!r}"
         )
+    longitudinal = {canonical["xx"]: "xx", canonical["yy"]: "yy"}
     # "shc" and "ahc" both name the full Bastin curve in e^2/h; "sea" and "surf"
     # add its two parts (reconstruct.kubo_bastin_sea/surf) with the same normalisation.
     allowed_formulas = {"shc", "ahc", "sea", "surf", "dos", "dos_curve"}
@@ -268,6 +273,7 @@ def execute_siesta_runfile(rf, out_dir):
         with timing.phase("moments", word=word):
             mu, compiled = compute_moments(basis, word, _prepared=production_plan)
         spin_word = parse_word(word).canonical() == canonical["shc"]
+        axis = longitudinal.get(parse_word(word).canonical())
         prefix = compiled.reconstruction.legacy_moment_prefix
         size = f"{rf.expansion['moments']}" + (f"x{rf.expansion['moments']}" if mu.rank == 2 else "")
         stem = f"{prefix}{model.seed_name}KPM_M{size}_state{mu.state_label}"
@@ -291,11 +297,14 @@ def execute_siesta_runfile(rf, out_dir):
                                      backend=rf.reconstruction.get("bastin_backend", "tables"))
                 if spin_word:
                     curve_name, header = "shc", f"energy_eV sigma_z_xy [{UNITS}]"
+                elif axis:
+                    # Static sigma_aa(E); the optical conductivity comes from the moment file.
+                    curve_name, header = f"sigma_{axis}", f"energy_eV sigma_{axis} [{AHC_UNITS}]"
                 else:
                     curve_name, header = "ahc", f"energy_eV sigma_xy [{AHC_UNITS}]"
                 scale = 2*np.pi/(bloch.num_cells*area)
                 for part, function in (("sea", kubo_bastin_sea), ("surf", kubo_bastin_surf)):
-                    if part in rf.reconstruction["formulas"]:
+                    if part in (rf.reconstruction.get("formulas") or ()):
                         part_energy, part_values = function(reconstruction_mu, broadening)
                         part_path = out/f"{curve_name}_{part}.dat"
                         np.savetxt(part_path, np.column_stack((part_energy, scale*np.real(part_values))),
@@ -339,8 +348,12 @@ def execute_siesta_runfile(rf, out_dir):
                                 max_curve_difference=float(np.max(np.abs(values-vr)))))
     _write_json(out/"eigen_comparison.json", comparisons)
     hall_words = [parse_word(word).canonical() for word in rf.words
-                  if parse_word(word).canonical() != canonical["dos"]]
+                  if parse_word(word).canonical() in (canonical["shc"], canonical["ahc"])]
     spin_oracle = not hall_words or canonical["shc"] in hall_words
+    if params.get("oracle", False) and not hall_words and any(
+            parse_word(word).canonical() in longitudinal for word in rf.words):
+        raise ValueError("oracle is defined for the spin Hall and anomalous Hall words, "
+                         "not for the longitudinal words")
     if params.get("oracle", False) and not spin_oracle:
         # Exact anomalous Hall: the same occupied-band sum with VX in place of JXSZ.
         with timing.phase("oracle"):

@@ -8,7 +8,8 @@ Three checks:
   :meth:`WannierModel.velocity_blocks` (up to the Wannier90 sign) for a
   position matrix with off-diagonal and R != 0 elements;
 - a PAOFLOW model written by ``write_paoflow_model`` reproduces PAOFLOW's
-  ``H(k) = sum_R exp(-i k.R) H(R)`` and carries its on-site spin.
+  ``H(k) = sum_R exp(-i k.R) H(R)`` on the grid's k points and carries its
+  on-site spin.
 """
 import os
 import shutil
@@ -182,8 +183,10 @@ def test_paoflow_round_trip(tmp_path):
     model = load_paoflow_model(path)
     bohr = 0.529177210903
     uc = a_vectors * alat_bohr * bohr
-    k = rng.uniform(-1, 1, size=(5, 3)) @ (2 * np.pi * np.linalg.inv(uc).T)
-    k[:, 2] = 0
+    # On the grid's own k points H(k) does not depend on which lattice image
+    # carries each element (the writer picks the Wigner-Seitz one).
+    frac = np.array([[i / 3, j / 3, 0] for i in range(3) for j in range(3)])
+    k = frac @ (2 * np.pi * np.linalg.inv(uc).T)
     # PAOFLOW convention in the cell gauge, then the atom-gauge phase.
     R = np.array([[i if i <= 1 else i - 3, j if j <= 1 else j - 3, 0] for i in range(3) for j in range(3)]) @ uc
     blocks = np.array([hrs[:, :, i, j, 0, 0] for i in range(3) for j in range(3)])

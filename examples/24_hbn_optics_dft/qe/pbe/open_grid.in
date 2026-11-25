@@ -1,0 +1,4 @@
+&INPUTPP
+  prefix = 'hbn'
+  outdir = './tmp'
+/

@@ -10,7 +10,7 @@ from pathlib import Path
 import numpy as np
 
 from .. import _core
-from ..apps.stage6b_siesta import (PhaseReceipt, _write_json, oracle_energies, SHC_WORD)
+from ..apps.stage6b_siesta import (PhaseReceipt, _write_json, oracle_energies, SHC_WORD, XX_WORD, YY_WORD)
 from ..bases import BlochMetricBasis
 from ..models.registry import load_runfile_model
 from ..oracle.spin_hall import spin_berry_curvature, sigma_xy, UNITS
@@ -185,6 +185,10 @@ def execute_projection_runfile(rf, out_dir):
                    states=rf.expansion["states"] or 16, seed=rf.expansion["seed"],
                    batch=rf.expansion["batch"], window=window,
                    state_block=int(rf.expansion.get("state_block", 1)))
+    # Longitudinal Bastin words have no projected oracle: their moments feed
+    # reconstruct.optical_conductivity, and the static curve is written as usual.
+    longitudinal = {parse_word(XX_WORD).canonical(), parse_word(YY_WORD).canonical()}
+    rank_two = longitudinal | {parse_word(SHC_WORD).canonical()}
     names = sorted({slot.operator_key.upper() for word in rf.words for slot in parse_word(word).slots
                     if isinstance(slot, OperatorSlot)})
     with timing.phase("operators"):
@@ -192,9 +196,10 @@ def execute_projection_runfile(rf, out_dir):
         for word in rf.words:
             production = prepare_projection_moments(basis, word, **options)
             if (production[2].match.entry.shape_id == "kubo_bastin" and
-                    parse_word(word).canonical() != parse_word(SHC_WORD).canonical()):
+                    parse_word(word).canonical() not in rank_two):
                 raise ValueError(
-                    f"Expected physical SHC word {SHC_WORD!r} for rank-two projected oracle, got {word!r}"
+                    f"Expected the SHC word {SHC_WORD!r} or a longitudinal word ({XX_WORD!r}, "
+                    f"{YY_WORD!r}) for a rank-two projected run, got {word!r}"
                 )
             # Validate source operators before any oracle or moments run.
             for slot in parse_word(word).slots:
@@ -214,20 +219,26 @@ def execute_projection_runfile(rf, out_dir):
     energy_grid = oracle_energies(rf.reconstruction, original.eigenvalues, broadening_meV)
     moments, curves = [], []
     for index, (word, plan) in enumerate(prepared):
-        with timing.phase("oracle", word=word):
-            before, before_diag = exact_word_curve(original, word, energy_grid,
-                                                   broadening=broadening, cell_area=area,
-                                                   degeneracy_tolerance=tolerance)
-            after, after_diag = exact_word_curve(projected, word, energy_grid,
-                                                 broadening=broadening, cell_area=area,
-                                                 degeneracy_tolerance=tolerance)
-            error = dict(word=word, window=rf.projection["window"], oracle_error=word_error(before, after),
-                         unprojected_diagnostics=before_diag, projected_diagnostics=after_diag)
+        if parse_word(word).canonical() in longitudinal:
+            error = dict(word=word, window=rf.projection["window"], oracle="skipped",
+                         reason="no projected oracle for a longitudinal word")
             receipt["words"].append(error)
-            path = out/f"word_{index}_oracle.json"
-            _write_json(path, dict(energies=energy_grid.tolist(), unprojected=before.tolist(),
-                                   projected=after.tolist(), **error))
-            curves.append(str(path))
+            timing.skip("oracle", error["reason"], word=word)
+        else:
+            with timing.phase("oracle", word=word):
+                before, before_diag = exact_word_curve(original, word, energy_grid,
+                                                       broadening=broadening, cell_area=area,
+                                                       degeneracy_tolerance=tolerance)
+                after, after_diag = exact_word_curve(projected, word, energy_grid,
+                                                     broadening=broadening, cell_area=area,
+                                                     degeneracy_tolerance=tolerance)
+                error = dict(word=word, window=rf.projection["window"], oracle_error=word_error(before, after),
+                             unprojected_diagnostics=before_diag, projected_diagnostics=after_diag)
+                receipt["words"].append(error)
+                path = out/f"word_{index}_oracle.json"
+                _write_json(path, dict(energies=energy_grid.tolist(), unprojected=before.tolist(),
+                                       projected=after.tolist(), **error))
+                curves.append(str(path))
         with timing.phase("moments", word=word):
             mu, compiled = compute_projection_moments(basis, word, _prepared=plan)
             path = out/f"word_{index}.chebmom"
@@ -245,7 +256,8 @@ def execute_projection_runfile(rf, out_dir):
             if mu.rank == 2:
                 E, values = shc(reconstruction_mu, broadening_meV, projected.num_cells, area,
                                 backend=rf.reconstruction.get("bastin_backend", "tables"))
-                units = UNITS
+                # Static sigma_aa(E) of a longitudinal word is a charge conductivity.
+                units = "e^2/h" if parse_word(word).canonical() in longitudinal else UNITS
             else:
                 E, values = dos_curve(reconstruction_mu, broadening_meV)
                 values /= projected.num_cells
@@ -254,7 +266,9 @@ def execute_projection_runfile(rf, out_dir):
             np.savetxt(path, np.column_stack((E, values)), fmt="%.17g", header=f"energy_eV value [{units}]")
             curves.append(str(path))
             inside = (energy_grid >= E.min()) & (energy_grid <= E.max())
-            if np.any(inside):
+            if parse_word(word).canonical() in longitudinal:
+                pass
+            elif np.any(inside):
                 error["kpm_vs_projected_oracle"] = word_error(after[inside], np.interp(energy_grid[inside], E, values))
                 error["kpm_comparison"] = "KPM/Jackson versus Gaussian oracle; kernels differ"
             else:
