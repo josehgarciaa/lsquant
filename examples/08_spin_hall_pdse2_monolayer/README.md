@@ -133,5 +133,6 @@ python3 examples/08_spin_hall_pdse2_monolayer/check.py /tmp/completed_production
 ```
 
 Use the actual output directory in place of the example path. Quick checks
-validate the exact oracle and topology; production also gates the reconstructed
-plateau and its resolution. Missing inputs or unsupported calibration fail.
+validate the exact oracle and topology; production also checks the resolution against
+the gap and reports the reconstructed value next to the exact one, without
+asserting it (see above: it is still under study). Missing inputs or unsupported calibration fail.
