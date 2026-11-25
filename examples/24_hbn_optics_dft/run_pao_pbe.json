@@ -1,0 +1,43 @@
+{
+  "model": {
+    "kind": "paoflow",
+    "file": "examples/24_hbn_optics_dft/qe/pbe/hbn_paoflow_pbe.npz",
+    "params": {
+      "velocity_mode": "berry_connection"
+    }
+  },
+  "basis": {
+    "name": "eigen",
+    "supercell": [
+      120,
+      120,
+      1
+    ]
+  },
+  "metric": {
+    "policy": "orthogonal"
+  },
+  "word": "Tr[VX delta(E-H) VX dG-(E)/dE]",
+  "words": [
+    "Tr[VX delta(E-H) VX dG-(E)/dE]",
+    "Tr[VY delta(E-H) VY dG-(E)/dE]"
+  ],
+  "expansion": {
+    "moments": 1700,
+    "window": [
+      -38.0,
+      26.0
+    ],
+    "trace": "exact",
+    "seed": 2026
+  },
+  "reconstruction": {
+    "kernel": "jackson",
+    "broadening_meV": 60.0
+  },
+  "output": {
+    "legacy_layout": false,
+    "write_chebmom": true,
+    "dir": "out/hbn_pao_pbe"
+  }
+}

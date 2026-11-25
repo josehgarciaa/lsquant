@@ -1,0 +1,128 @@
+{
+ "siesta_pbe": {
+  "label": "SIESTA, PBE, DZP",
+  "spin_degeneracy": 1,
+  "mu": 0.7571115973741769,
+  "direct_gap": 4.610029384274488,
+  "direct_gap_k": [
+   1.672839538652712,
+   2.8974425542024758,
+   0.0
+  ],
+  "onset_half_height": 4.6191619765747,
+  "first_peak": 5.659999999999999,
+  "alpha_2d_static": 1.0072812167782734,
+  "kpm_vs_sos_max_relative": 0.018179300844989917,
+  "kramers_kronig_max_relative": 0.00222708399427627,
+  "anisotropy_max_relative": 3.4632267474821646e-05,
+  "im_sigma_negative_below_gap": true
+ },
+ "pyscf_pbe": {
+  "label": "PySCF, PBE, DZVP",
+  "spin_degeneracy": 1,
+  "mu": -0.0009377930603342577,
+  "direct_gap": 4.638170297908719,
+  "direct_gap_k": [
+   1.6728395387064525,
+   2.89744307394966,
+   0.0
+  ],
+  "onset_half_height": 4.646082227399211,
+  "first_peak": 5.76,
+  "alpha_2d_static": 0.9867713134343375,
+  "kpm_vs_sos_max_relative": 0.015466443111667281,
+  "kramers_kronig_max_relative": 0.0023592814587395875,
+  "anisotropy_max_relative": 0.0003563546541576742,
+  "im_sigma_negative_below_gap": true
+ },
+ "pyscf_hse": {
+  "label": "PySCF, HSE06, DZVP",
+  "spin_degeneracy": 1,
+  "mu": -0.0009377930603342577,
+  "direct_gap": 6.000437679230184,
+  "direct_gap_k": [
+   1.6728395387064525,
+   2.89744307394966,
+   0.0
+  ],
+  "onset_half_height": 6.009103823993256,
+  "first_peak": 7.14,
+  "alpha_2d_static": 0.7630717542827502,
+  "kpm_vs_sos_max_relative": 0.018515109403772094,
+  "kramers_kronig_max_relative": 0.002962174292933802,
+  "anisotropy_max_relative": 0.0004738171942737561,
+  "im_sigma_negative_below_gap": true
+ },
+ "w90_pbe": {
+  "label": "QE + Wannier90, PBE",
+  "spin_degeneracy": 2,
+  "mu": 2.35275080906149,
+  "direct_gap": 4.711414000060949,
+  "direct_gap_k": [
+   1.672839538652712,
+   2.8974425542024758,
+   0.0
+  ],
+  "onset_half_height": 4.720609433926488,
+  "first_peak": 5.739999999999999,
+  "alpha_2d_static": 0.964816574193153,
+  "kpm_vs_sos_max_relative": 0.014069281846909226,
+  "kramers_kronig_max_relative": 0.00159219078907507,
+  "anisotropy_max_relative": 0.004721767259449678,
+  "im_sigma_negative_below_gap": true
+ },
+ "w90_hse": {
+  "label": "QE + Wannier90, HSE06",
+  "spin_degeneracy": 2,
+  "mu": 3.0,
+  "direct_gap": 6.120915000000675,
+  "direct_gap_k": [
+   1.672839538652712,
+   2.8974425542024758,
+   0.0
+  ],
+  "onset_half_height": 6.1322667504642165,
+  "first_peak": 7.16,
+  "alpha_2d_static": 0.7449655823794731,
+  "kpm_vs_sos_max_relative": 0.020731218231920992,
+  "kramers_kronig_max_relative": 0.0030763982771188337,
+  "anisotropy_max_relative": 0.007406577740954907,
+  "im_sigma_negative_below_gap": true
+ },
+ "pao_pbe": {
+  "label": "QE + PAOFLOW, PBE",
+  "spin_degeneracy": 2,
+  "mu": 2.35275080906149,
+  "direct_gap": 4.711419153453942,
+  "direct_gap_k": [
+   1.672839538652712,
+   2.8974425542024758,
+   0.0
+  ],
+  "onset_half_height": 4.707278934348156,
+  "first_peak": 5.699999999999999,
+  "alpha_2d_static": 1.365310070243936,
+  "kpm_vs_sos_max_relative": 0.013579550232770759,
+  "kramers_kronig_max_relative": 0.0005469960208346222,
+  "anisotropy_max_relative": 6.415120088441401e-07,
+  "im_sigma_negative_below_gap": true
+ },
+ "pao_hse": {
+  "label": "QE + PAOFLOW, HSE06",
+  "spin_degeneracy": 2,
+  "mu": 3.0,
+  "direct_gap": 6.120924113934448,
+  "direct_gap_k": [
+   0.836419769326356,
+   1.4487212771012379,
+   0.0
+  ],
+  "onset_half_height": 6.161136525659431,
+  "first_peak": 7.22,
+  "alpha_2d_static": 1.1079437971216293,
+  "kpm_vs_sos_max_relative": 0.025468286296141163,
+  "kramers_kronig_max_relative": 0.0006296044207882857,
+  "anisotropy_max_relative": 5.513483901052621e-07,
+  "im_sigma_negative_below_gap": true
+ }
+}

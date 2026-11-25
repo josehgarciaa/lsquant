@@ -1,0 +1,9 @@
+&INPUTPP
+  prefix = 'hbn_open'
+  outdir = './tmp'
+  seedname = 'hbn'
+  write_mmn = .true.
+  write_amn = .true.
+  write_unk = .false.
+  atom_proj = .true.
+/
