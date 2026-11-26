@@ -1319,6 +1319,19 @@ s7_goldens() {   # <threads>: every run file, every golden
       done
     fi
   done
+  # G11: the SIESTA run files against their reduced goldens (goldens/stage7_siesta/<name>.json:
+  # sampled curves, integrals and oracle numbers; scripts/siesta_golden.py). The comparison is
+  # relative, not byte for byte: the Bloch matrices pass through LAPACK, whose rounding depends on
+  # the BLAS library of the machine. S7_SIESTA_RTOL (default 1e-7) bounds the reconstructed curves,
+  # S7_SIESTA_ORACLE_RTOL (default 1e-5) the exact-oracle numbers.
+  for f in "$S7_RUNS"/g11_*.json; do
+    n="$(basename "$f" .json)"; s7want $n || continue
+    s7skip $T $n && continue
+    r="$REPO/goldens/stage7_siesta/$n.json"
+    if [ ! -f "$r" ]; then echo "INFO      [T=$T] $n.json has no reduced golden (goldens/stage7_siesta/$n.json)"; continue; fi
+    a="$("$PYTHON" "$REPO/scripts/siesta_golden.py" check "$B/$n" "$r" "${S7_SIESTA_RTOL:-1e-7}" "${S7_SIESTA_ORACLE_RTOL:-1e-5}" 2>&1)"
+    s7chk $? "[T=$T] $n.json vs goldens/stage7_siesta/$n.json (G11, reduced golden): ${a##*$'\n'}"
+  done
 }
 
 # the MCP server: run g1.json and g5.json through `run`, poll `status`, cmp the outputs
