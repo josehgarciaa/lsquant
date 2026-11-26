@@ -9,10 +9,11 @@ oracle (`spin_chern.json`, `exact_shc.json`).
 Produced at commit `f41c384` with the `golden` preset: GCC 11.4.0 (Ubuntu 22.04), Eigen 3.4.0,
 FFTW 3.3.8, GSL 2.7.1, Python 3.10.12, NumPy 2.2.6, SciPy 1.15.2, sisl 0.16.4, 20 threads.
 
-The PdSe2 spin Hall files with the `berry_connection` and `covariant` velocities come from a second
-machine, same commit and preset, built with the conda-forge toolchain: GCC 11.4.0, glibc 2.34,
-Python 3.10, NumPy 2.2.6, SciPy 1.15.2, sisl 0.16.4, 12 to 16 threads. One such run takes 7 to
-9 hours there and holds about 60 GB of memory. The PdSe2 files with the `bare` velocity come from
+The PdSe2 spin Hall files with the `berry_connection` and `covariant` velocities come from two
+other machines, same commit and preset, built with the conda-forge toolchain (GCC 11.4.0,
+Python 3.10, NumPy 2.2.6, SciPy 1.15.2, sisl 0.16.4), 12 to 16 threads: `berry_connection_generalised`
+and `covariant_lowdin` from one (glibc 2.34), the other four from the second. One such run takes 7 to
+10 hours there and holds about 60 GB of memory. The PdSe2 files with the `bare` velocity come from
 the first machine (22 hours each, three at once at 20 threads).
 
 These are compared with a relative tolerance, not byte for byte (stage 7 of
